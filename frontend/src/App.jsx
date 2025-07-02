@@ -64,7 +64,7 @@ function App() {
       <div style={{ maxWidth: 700, width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <img
-            src="/ravenloom.png"
+            src="/raven.png"
             alt="RavenLoom"
             style={{
               width: '96px',
