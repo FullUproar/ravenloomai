@@ -1,0 +1,16 @@
+:root {
+    --bg: #0D0D0D;
+    --text: #D9D9E3;
+    --primary: #5D4B8C;
+    --cta: #3A8DFF;
+    --pop: #FF6F59;
+    --font-header: 'Cinzel', serif;
+    --font-body: 'Inter', sans-serif;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-body);
+    background-color: var(--bg);
+    color: var(--text);
+}
