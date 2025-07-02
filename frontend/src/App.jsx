@@ -1,5 +1,8 @@
 import { gql, useQuery, useMutation } from '@apollo/client';
 import { useState } from 'react';
+import { auth } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import Login from './Login.jsx';
 
 // GraphQL queries/mutations
 const GET_PLAN = gql`
@@ -24,6 +27,15 @@ function App() {
   const [sendChat, { loading: chatting }] = useMutation(CHAT);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    return () => unsub();
+  }, []);
+
+  if (!user) return <Login onLogin={setUser} />;
+
 
   if (loading) return <p style={{ color: '#ccc' }}>Loading...</p>;
   if (error) return <p style={{ color: '#f88' }}>Error loading plan: {error.message}</p>;
@@ -33,22 +45,22 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
-
+  
     const userMessage = input.trim();
     setMessages((prev) => [...prev, { role: 'user', text: userMessage }]);
     setInput('');
-
+  
     try {
       const res = await sendChat({
         variables: { userId: 'test-user-001', message: userMessage },
       });
-
+  
       const reply = res.data.chat.reply;
       setMessages((prev) => [...prev, { role: 'assistant', text: reply }]);
     } catch (err) {
       setMessages((prev) => [...prev, { role: 'assistant', text: "⚠️ Error: " + err.message }]);
     }
-  };
+  };  
 
   return (
     <main style={{
@@ -144,6 +156,9 @@ function App() {
           </button>
         </form>
       </div>
+      <button onClick={() => signOut(auth)} style={{ marginTop: '1rem', color: '#ccc' }}>
+        Sign Out
+      </button>
     </main>
   );
 }
