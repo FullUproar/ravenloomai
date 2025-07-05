@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import Login from './Login.jsx';
+import ReactMarkdown from 'react-markdown';
 
 // GraphQL queries/mutations
 const GET_PLAN = gql`
@@ -110,17 +111,41 @@ function App() {
           marginBottom: '1rem'
         }}>
           {messages.map((msg, idx) => (
-            <div key={idx} style={{
-              textAlign: msg.role === 'user' ? 'right' : 'left',
-              background: msg.role === 'user' ? '#3A8DFF' : '#2D2D40',
-              color: '#fff',
-              padding: '0.75rem 1rem',
-              borderRadius: '1rem',
-              margin: '0.5rem 0',
-              maxWidth: '80%',
-              alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start'
-            }}>
-              {msg.text}
+            <div
+              key={idx}
+              style={{
+                textAlign: msg.role === 'user' ? 'right' : 'left',
+                background: msg.role === 'user' ? '#3A8DFF' : '#2D2D40',
+                color: '#fff',
+                padding: '0.75rem 1rem',
+                borderRadius: '1rem',
+                margin: '0.5rem 0',
+                maxWidth: '80%',
+                alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {msg.role === 'assistant' ? (
+                <ReactMarkdown
+                  components={{
+                    a: ({ node, ...props }) => <a {...props} style={{ color: '#3A8DFF' }} />,
+                    code: ({ inline, children }) =>
+                      inline ? (
+                        <code style={{ background: '#333', padding: '2px 4px', borderRadius: '4px' }}>
+                          {children}
+                        </code>
+                      ) : (
+                        <pre style={{ background: '#111', padding: '1rem', borderRadius: '6px', overflowX: 'auto' }}>
+                          <code>{children}</code>
+                        </pre>
+                      )
+                  }}
+                >
+                  {msg.text}
+                </ReactMarkdown>
+              ) : (
+                msg.text
+              )}
             </div>
           ))}
           {chatting && <div style={{ color: '#888' }}>🤖 Thinking...</div>}
