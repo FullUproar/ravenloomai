@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vercel dev",
     "install:all": "npm install && cd frontend && npm install",
-    "build": "ls -la && cd frontend && npm install && npm run build",
+    "build": "cd frontend && npm install && npm run build && cp -r dist ../dist",
     "build:frontend": "cd frontend && npm install && npm run build",
     "init-db": "node scripts/init-vercel-db.js"
   },
