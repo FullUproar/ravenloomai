@@ -1,0 +1,21 @@
+{
+  "name": "ravenloom",
+  "version": "1.0.0",
+  "description": "AI-powered project management",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "cd frontend && npm run build",
+    "init-db": "node scripts/init-vercel-db.js"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.12.2",
+    "@as-integrations/next": "^3.2.0",
+    "graphql": "^16.11.0",
+    "graphql-tag": "^2.12.6",
+    "openai": "^5.8.2",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  }
+}

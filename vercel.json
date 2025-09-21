@@ -1,0 +1,14 @@
+{
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "npm install",
+  "framework": null,
+  "functions": {
+    "api/graphql.js": {
+      "maxDuration": 10
+    },
+    "api/init-db.js": {
+      "maxDuration": 10
+    }
+  }
+}

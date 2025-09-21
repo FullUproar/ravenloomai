@@ -11,7 +11,9 @@ import {
 } from '@apollo/client';
 
 const client = new ApolloClient({
-  uri: 'http://localhost:4013/graphql', // local development server with EST timezone fixes
+  uri: process.env.NODE_ENV === 'production'
+    ? '/api/graphql'  // Uses same domain in production (Vercel)
+    : 'http://localhost:3000/api/graphql', // Vercel dev server
   cache: new InMemoryCache()
 });
 

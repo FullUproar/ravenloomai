@@ -65,19 +65,28 @@ This will:
 - Create the new schema (projects, goals, tasks, metrics, reminders, chat_messages)
 - Add sample data for testing
 
-## 📦 Deployment
+## 📦 Deployment on Vercel (Recommended)
 
-### Vercel (Frontend)
-1. Connect your GitHub repo to Vercel
-2. Set root directory to `frontend`
-3. Deploy
+### One-Click Deploy
+1. Push code to GitHub
+2. Import project in Vercel
+3. Add environment variables:
+   - `POSTGRES_URL` - Vercel Postgres connection string
+   - `OPENAI_API_KEY` - Your OpenAI API key
+   - `INIT_DB_SECRET` - Secret for database initialization
 
-### Railway/Render (Backend)
-1. Set environment variables:
-   - `OPENAI_API_KEY`
-   - `DATABASE_URL`
-   - `PORT`
-2. Set start command: `cd backend && npm start`
+### Manual Setup
+1. Install Vercel CLI: `npm i -g vercel`
+2. Run `vercel` in project root
+3. Add Vercel Postgres from dashboard
+4. Set environment variables in Vercel dashboard
+
+### Initialize Database
+After deployment, initialize the database:
+```bash
+npm run init-db
+```
+Or visit: `https://your-app.vercel.app/api/init-db` (POST with auth header)
 
 ## 🔧 Environment Variables
 
