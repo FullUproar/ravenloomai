@@ -3,15 +3,33 @@ import pg from 'pg';
 const { Pool } = pg;
 
 export default async function handler(req, res) {
+  // Allow CORS for initialization
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Simple auth check (you should use proper auth in production)
+  // Simple auth check - very basic for initialization
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Authorization required' });
+  }
+
+  // Check if database URL exists
+  if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
+    return res.status(500).json({
+      error: 'Database not configured',
+      details: 'POSTGRES_URL environment variable is missing. Please add Vercel PostgreSQL to your project.'
+    });
   }
 
   const pool = new Pool({
