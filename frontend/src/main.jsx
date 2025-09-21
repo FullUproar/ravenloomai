@@ -11,7 +11,7 @@ import {
 } from '@apollo/client';
 
 const client = new ApolloClient({
-  uri: 'https://ravenloom-production.up.railway.app/graphql', // your live API
+  uri: 'http://localhost:4013/graphql', // local development server with EST timezone fixes
   cache: new InMemoryCache()
 });
 

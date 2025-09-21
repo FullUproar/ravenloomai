@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+
+# Production build
+frontend/dist/
+
+# Local settings
+.claude/settings.local.json
