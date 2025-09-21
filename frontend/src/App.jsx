@@ -122,13 +122,68 @@ function App() {
     }
   }, [projectsData, selectedProjectId]);
 
-  // Bypass auth for testing - remove this line to re-enable authentication
-  if (!user) setUser({ uid: "test-user-001" });
-  
-  // if (!user) return <Login onLogin={setUser} />;
+  // Show login if no user
+  if (!user) return <Login onLogin={setUser} />;
 
   if (projectsLoading) return <p style={{ color: '#ccc' }}>Loading projects...</p>;
-  if (projectsError) return <p style={{ color: '#f88' }}>Error loading projects: {projectsError.message}</p>;
+
+  // Check for database initialization errors
+  if (projectsError) {
+    const errorMessage = projectsError.message || '';
+    const isDatabaseError = errorMessage.includes('relation') ||
+                           errorMessage.includes('plans') ||
+                           errorMessage.includes('projects') ||
+                           errorMessage.includes('does not exist');
+
+    if (isDatabaseError) {
+      return (
+        <main style={{
+          backgroundColor: '#0D0D0D',
+          color: '#D9D9E3',
+          minHeight: '100vh',
+          padding: '2rem',
+          fontFamily: "'Inter', sans-serif",
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            maxWidth: 500,
+            textAlign: 'center',
+            padding: '2rem',
+            background: '#1A1A1A',
+            borderRadius: '12px',
+            border: '2px solid #5D4B8C'
+          }}>
+            <h1 style={{ color: '#5D4B8C', marginBottom: '1rem' }}>🔧 Database Setup Required</h1>
+            <p style={{ color: '#aaa', marginBottom: '2rem' }}>
+              Your database needs to be initialized before you can use RavenLoom.
+            </p>
+            <button
+              onClick={() => window.location.href = '/init-db.html'}
+              style={{
+                padding: '1rem 2rem',
+                fontSize: '1.1rem',
+                backgroundColor: '#5D4B8C',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}
+            >
+              Initialize Database
+            </button>
+            <p style={{ color: '#888', marginTop: '2rem', fontSize: '0.9rem' }}>
+              This will set up all required tables and sample data.
+            </p>
+          </div>
+        </main>
+      );
+    }
+
+    return <p style={{ color: '#f88' }}>Error loading projects: {projectsError.message}</p>;
+  }
 
   const projects = projectsData?.getProjects || [];
 
