@@ -21,6 +21,10 @@
     "express": "^4.21.2",
     "graphql": "^16.11.0",
     "graphql-playground-middleware-express": "^1.7.23",
+    "graphql-scalars": "^1.25.0",
+    "graphql-tag": "^2.12.6",
+    "graphql-type-json": "^0.3.2",
+    "node-fetch": "^3.3.2",
     "openai": "^5.8.2",
     "pg": "^8.16.3"
   }

@@ -4,59 +4,23 @@ import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import Login from './Login.jsx';
 import ProjectDashboard from './ProjectDashboard.jsx';
-import ReactMarkdown from 'react-markdown';
 
-// GraphQL queries/mutations
+// GraphQL queries/mutations for persona-based system
 const GET_PROJECTS = gql`
   query GetProjects($userId: String!) {
     getProjects(userId: $userId) {
       id
       title
       description
-      domain
       status
+      completionType
+      outcome
       createdAt
-    }
-  }
-`;
-
-const GET_PROJECT = gql`
-  query GetProject($userId: String!, $projectId: ID!) {
-    getProject(userId: $userId, projectId: $projectId) {
-      id
-      title
-      description
-      domain
-      status
-      goals {
+      persona {
         id
-        title
-        description
-        targetValue
-        currentValue
-        unit
-        status
-        targetDate
-      }
-      tasks {
-        id
-        title
-        description
-        type
-        status
-        priority
-        assignedTo
-        requiresApproval
-        dueDate
-        completedAt
-      }
-      metrics {
-        id
-        name
-        value
-        unit
-        recordedAt
-        source
+        displayName
+        archetype
+        specialization
       }
     }
   }
@@ -68,24 +32,36 @@ const CREATE_PROJECT = gql`
       id
       title
       description
-      domain
+      completionType
+      outcome
     }
   }
 `;
 
-const CHAT = gql`
-  mutation Chat($userId: String!, $projectId: ID, $message: String!) {
-    chat(userId: $userId, projectId: $projectId, message: $message) {
-      reply
-      suggestedTasks {
-        title
-        description
-        type
-      }
-      suggestedMetrics {
-        name
-        value
-        unit
+const CREATE_PERSONA_FROM_GOAL = gql`
+  mutation CreatePersonaFromGoal(
+    $projectId: ID!
+    $userId: String!
+    $userGoal: String!
+    $preferences: CommunicationPreferencesInput
+  ) {
+    createPersonaFromGoal(
+      projectId: $projectId
+      userId: $userId
+      userGoal: $userGoal
+      preferences: $preferences
+    ) {
+      id
+      displayName
+      archetype
+      specialization
+      voice
+      interventionStyle
+      communicationPreferences {
+        tone
+        verbosity
+        emoji
+        platitudes
       }
     }
   }
@@ -97,16 +73,13 @@ function App() {
   const [showCreateProject, setShowCreateProject] = useState(false);
 
   const { loading: projectsLoading, error: projectsError, data: projectsData } = useQuery(GET_PROJECTS, {
-    variables: { userId: user?.uid || "test-user-001" },
+    variables: { userId: user?.uid || "test-user-123" },
     skip: !user
   });
 
-  const [createProject] = useMutation(CREATE_PROJECT, {
-    refetchQueries: [{ query: GET_PROJECTS, variables: { userId: user?.uid || "test-user-001" } }],
-    onCompleted: (data) => {
-      // Select the newly created project
-      setSelectedProjectId(data.createProject.id);
-    }
+  const [createProject] = useMutation(CREATE_PROJECT);
+  const [createPersona] = useMutation(CREATE_PERSONA_FROM_GOAL, {
+    refetchQueries: ['GetProjects']
   });
 
   useEffect(() => {
@@ -117,7 +90,6 @@ function App() {
   // Auto-select first project if none selected
   useEffect(() => {
     if (projectsData?.getProjects?.length > 0 && !selectedProjectId) {
-      console.log('Auto-selecting project:', projectsData.getProjects[0].title, 'ID:', projectsData.getProjects[0].id);
       setSelectedProjectId(projectsData.getProjects[0].id);
     }
   }, [projectsData, selectedProjectId]);
@@ -127,61 +99,7 @@ function App() {
 
   if (projectsLoading) return <p style={{ color: '#ccc' }}>Loading projects...</p>;
 
-  // Check for database initialization errors
   if (projectsError) {
-    const errorMessage = projectsError.message || '';
-    const isDatabaseError = errorMessage.includes('relation') ||
-                           errorMessage.includes('plans') ||
-                           errorMessage.includes('projects') ||
-                           errorMessage.includes('does not exist');
-
-    if (isDatabaseError) {
-      return (
-        <main style={{
-          backgroundColor: '#0D0D0D',
-          color: '#D9D9E3',
-          minHeight: '100vh',
-          padding: '2rem',
-          fontFamily: "'Inter', sans-serif",
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          <div style={{
-            maxWidth: 500,
-            textAlign: 'center',
-            padding: '2rem',
-            background: '#1A1A1A',
-            borderRadius: '12px',
-            border: '2px solid #5D4B8C'
-          }}>
-            <h1 style={{ color: '#5D4B8C', marginBottom: '1rem' }}>🔧 Database Setup Required</h1>
-            <p style={{ color: '#aaa', marginBottom: '2rem' }}>
-              Your database needs to be initialized before you can use RavenLoom.
-            </p>
-            <button
-              onClick={() => window.location.href = '/init-db.html'}
-              style={{
-                padding: '1rem 2rem',
-                fontSize: '1.1rem',
-                backgroundColor: '#5D4B8C',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer'
-              }}
-            >
-              Initialize Database
-            </button>
-            <p style={{ color: '#888', marginTop: '2rem', fontSize: '0.9rem' }}>
-              This will set up all required tables and sample data.
-            </p>
-          </div>
-        </main>
-      );
-    }
-
     return <p style={{ color: '#f88' }}>Error loading projects: {projectsError.message}</p>;
   }
 
@@ -190,27 +108,62 @@ function App() {
   const handleCreateProject = async (projectData) => {
     try {
       console.log('Creating project:', projectData);
-      const result = await createProject({
+
+      // Step 1: Create the project
+      const projectResult = await createProject({
         variables: {
-          userId: user?.uid || "test-user-001",
-          input: projectData
+          userId: user?.uid || "test-user-123",
+          input: {
+            title: projectData.title,
+            description: projectData.description,
+            completionType: projectData.completionType || 'milestone',
+            outcome: projectData.outcome
+          }
         }
       });
-      console.log('Project created:', result.data.createProject);
+
+      const projectId = projectResult.data.createProject.id;
+      console.log('Project created with ID:', projectId);
+
+      // Step 2: Create AI persona from user goal
+      const personaResult = await createPersona({
+        variables: {
+          projectId: parseInt(projectId),
+          userId: user?.uid || "test-user-123",
+          userGoal: projectData.userGoal,
+          preferences: projectData.preferences || {
+            tone: 'friendly',
+            verbosity: 'balanced',
+            emoji: true,
+            platitudes: false
+          }
+        }
+      });
+
+      console.log('Persona created:', personaResult.data.createPersonaFromGoal);
+
+      // Select the new project
+      setSelectedProjectId(projectId);
       setShowCreateProject(false);
     } catch (error) {
       console.error('Error creating project:', error);
+      alert('Failed to create project: ' + error.message);
     }
   };
 
   if (showCreateProject) {
-    return <CreateProjectForm onSubmit={handleCreateProject} onCancel={() => setShowCreateProject(false)} />;
+    return (
+      <CreateProjectForm
+        onSubmit={handleCreateProject}
+        onCancel={() => setShowCreateProject(false)}
+      />
+    );
   }
 
   if (selectedProjectId) {
     return (
-      <ProjectDashboard 
-        userId={user?.uid || "test-user-001"}
+      <ProjectDashboard
+        userId={user?.uid || "test-user-123"}
         projectId={selectedProjectId}
         projects={projects}
         onProjectChange={setSelectedProjectId}
@@ -233,31 +186,24 @@ function App() {
     }}>
       <div style={{ maxWidth: 700, width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <img
-            src="/raven.png"
-            alt="RavenLoom"
-            style={{
-              width: '96px',
-              filter: 'drop-shadow(0 0 6px #5D4B8C)'
-            }}
-          />
           <h1 style={{
             fontFamily: "'Cinzel', serif",
             fontSize: '2.5rem',
             color: '#5D4B8C',
             marginTop: '1rem',
           }}>
-            RavenLoom
+            🪶 RavenLoom
           </h1>
+          <p style={{ color: '#aaa', marginTop: '0.5rem' }}>PM in a box. Just add any human.</p>
         </div>
 
         {projects.length === 0 ? (
           <div style={{ textAlign: 'center', marginTop: '3rem' }}>
             <h2 style={{ color: '#D9D9E3', marginBottom: '1rem' }}>Welcome to RavenLoom</h2>
             <p style={{ color: '#aaa', marginBottom: '2rem' }}>
-              Create your first project to get started with autonomous goal achievement
+              Create your first project and let AI guide you to success
             </p>
-            <button 
+            <button
               onClick={() => setShowCreateProject(true)}
               style={{
                 padding: '1rem 2rem',
@@ -266,49 +212,98 @@ function App() {
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
               }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#6D5B9C'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#5D4B8C'}
             >
               Create Project
             </button>
           </div>
         ) : (
-          <div style={{ textAlign: 'center', marginTop: '3rem' }}>
-            <h2 style={{ color: '#D9D9E3', marginBottom: '1rem' }}>Your Projects</h2>
+          <div style={{ marginTop: '2rem' }}>
+            <h2 style={{ color: '#D9D9E3', marginBottom: '1.5rem', fontSize: '1.5rem' }}>Your Projects</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {projects.map(project => (
-                <div 
+                <div
                   key={project.id}
                   onClick={() => setSelectedProjectId(project.id)}
                   style={{
                     background: '#1A1A1A',
                     padding: '1.5rem',
-                    borderRadius: '8px',
+                    borderRadius: '12px',
                     cursor: 'pointer',
-                    border: '2px solid transparent',
-                    transition: 'border-color 0.2s'
+                    border: '2px solid #2D2D40',
+                    transition: 'all 0.2s'
                   }}
-                  onMouseEnter={(e) => e.target.style.borderColor = '#5D4B8C'}
-                  onMouseLeave={(e) => e.target.style.borderColor = 'transparent'}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#5D4B8C';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#2D2D40';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
                 >
-                  <h3 style={{ color: '#5D4B8C', margin: '0 0 0.5rem 0' }}>{project.title}</h3>
-                  <p style={{ color: '#aaa', margin: '0 0 0.5rem 0' }}>{project.description}</p>
-                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.9rem' }}>
-                    <span style={{ color: '#888' }}>Domain: {project.domain}</span>
-                    <span style={{ color: '#888' }}>Status: {project.status}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                    <h3 style={{ color: '#5D4B8C', margin: 0, fontSize: '1.3rem' }}>{project.title}</h3>
+                    {project.persona && (
+                      <span style={{
+                        backgroundColor: '#2D2D40',
+                        color: '#9D8BCC',
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '12px',
+                        fontSize: '0.85rem',
+                        fontWeight: '500'
+                      }}>
+                        {project.persona.displayName}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ color: '#aaa', margin: '0.5rem 0', lineHeight: '1.5' }}>
+                    {project.description}
+                  </p>
+                  {project.outcome && (
+                    <p style={{ color: '#888', margin: '0.5rem 0', fontSize: '0.9rem' }}>
+                      🎯 {project.outcome}
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', marginTop: '0.75rem' }}>
+                    <span style={{ color: '#666' }}>
+                      {project.completionType === 'milestone' && '📍 Milestone'}
+                      {project.completionType === 'habit_formation' && '🔁 Habit'}
+                      {project.completionType === 'ongoing' && '⏳ Ongoing'}
+                    </span>
+                    <span style={{
+                      color: project.status === 'active' ? '#4CAF50' : '#888',
+                      fontWeight: '500'
+                    }}>
+                      ● {project.status}
+                    </span>
                   </div>
                 </div>
               ))}
-              <button 
+              <button
                 onClick={() => setShowCreateProject(true)}
                 style={{
-                  padding: '1rem',
+                  padding: '1.25rem',
                   fontSize: '1rem',
-                  backgroundColor: '#2D2D40',
+                  backgroundColor: 'transparent',
                   color: '#5D4B8C',
                   border: '2px dashed #5D4B8C',
-                  borderRadius: '8px',
-                  cursor: 'pointer'
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  fontWeight: '500'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#1A1A1A';
+                  e.target.style.borderColor = '#6D5B9C';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = 'transparent';
+                  e.target.style.borderColor = '#5D4B8C';
                 }}
               >
                 + Create New Project
@@ -317,7 +312,19 @@ function App() {
           </div>
         )}
       </div>
-      <button onClick={() => signOut(auth)} style={{ marginTop: '2rem', color: '#ccc', background: 'none', border: 'none', cursor: 'pointer' }}>
+      <button
+        onClick={() => signOut(auth)}
+        style={{
+          marginTop: '3rem',
+          color: '#666',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: '0.9rem'
+        }}
+        onMouseEnter={(e) => e.target.style.color = '#888'}
+        onMouseLeave={(e) => e.target.style.color = '#666'}
+      >
         Sign Out
       </button>
     </main>
@@ -325,13 +332,35 @@ function App() {
 }
 
 function CreateProjectForm({ onSubmit, onCancel }) {
+  const [step, setStep] = useState(1);
+  const [userGoal, setUserGoal] = useState('');
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [domain, setDomain] = useState('business');
+  const [outcome, setOutcome] = useState('');
+  const [completionType, setCompletionType] = useState('milestone');
+  const [preferences, setPreferences] = useState({
+    tone: 'friendly',
+    verbosity: 'balanced',
+    emoji: true,
+    platitudes: false
+  });
+
+  const handleContinue = () => {
+    // Extract title from first sentence of user goal
+    const extractedTitle = userGoal.split('.')[0].split('\n')[0].substring(0, 80);
+    setTitle(extractedTitle);
+    setStep(2);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit({ title, description, domain });
+    onSubmit({
+      title,
+      description: userGoal,
+      outcome,
+      completionType,
+      userGoal,
+      preferences
+    });
   };
 
   return (
@@ -345,109 +374,286 @@ function CreateProjectForm({ onSubmit, onCancel }) {
       flexDirection: 'column',
       alignItems: 'center'
     }}>
-      <div style={{ maxWidth: 500, width: '100%' }}>
-        <h1 style={{ textAlign: 'center', color: '#5D4B8C', marginBottom: '2rem' }}>Create New Project</h1>
-        
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div style={{ maxWidth: 600, width: '100%' }}>
+        <h1 style={{
+          textAlign: 'center',
+          color: '#5D4B8C',
+          marginBottom: '0.5rem',
+          fontFamily: "'Cinzel', serif"
+        }}>
+          Create New Project
+        </h1>
+        <p style={{ textAlign: 'center', color: '#888', marginBottom: '2rem' }}>
+          Step {step} of 2
+        </p>
+
+        {step === 1 && (
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3' }}>Project Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              placeholder="e.g., E-commerce Startup, Health Journey"
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                fontSize: '1rem',
-                background: '#1A1A1A',
-                border: '1px solid #333',
-                borderRadius: '4px',
-                color: '#D9D9E3'
-              }}
-            />
-          </div>
-          
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3' }}>Description</label>
+            <label style={{
+              display: 'block',
+              marginBottom: '1rem',
+              color: '#D9D9E3',
+              fontSize: '1.1rem',
+              fontWeight: '500'
+            }}>
+              What do you want to achieve?
+            </label>
+            <p style={{ color: '#aaa', marginBottom: '1rem', fontSize: '0.95rem' }}>
+              Describe your goal in your own words. Our AI will help you create a plan and guide you every step of the way.
+            </p>
             <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe your project goals and what you want to achieve..."
-              rows={4}
+              value={userGoal}
+              onChange={(e) => setUserGoal(e.target.value)}
+              placeholder="Example: I want to lose 20 pounds by eating healthier and exercising regularly. I need someone to keep me accountable and help me build better habits."
+              rows={6}
               style={{
                 width: '100%',
-                padding: '0.75rem',
+                padding: '1rem',
                 fontSize: '1rem',
                 background: '#1A1A1A',
-                border: '1px solid #333',
-                borderRadius: '4px',
+                border: '2px solid #2D2D40',
+                borderRadius: '8px',
                 color: '#D9D9E3',
-                resize: 'vertical'
+                resize: 'vertical',
+                lineHeight: '1.5',
+                fontFamily: 'inherit'
               }}
+              onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
+              onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
             />
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+              <button
+                type="button"
+                onClick={onCancel}
+                style={{
+                  flex: 1,
+                  padding: '0.875rem',
+                  fontSize: '1rem',
+                  backgroundColor: '#2D2D40',
+                  color: '#D9D9E3',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleContinue}
+                disabled={!userGoal.trim() || userGoal.trim().length < 20}
+                style={{
+                  flex: 2,
+                  padding: '0.875rem',
+                  fontSize: '1rem',
+                  backgroundColor: (userGoal.trim() && userGoal.trim().length >= 20) ? '#5D4B8C' : '#333',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: (userGoal.trim() && userGoal.trim().length >= 20) ? 'pointer' : 'not-allowed',
+                  fontWeight: '500'
+                }}
+              >
+                Continue →
+              </button>
+            </div>
           </div>
-          
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3' }}>Domain</label>
-            <select
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                fontSize: '1rem',
-                background: '#1A1A1A',
-                border: '1px solid #333',
-                borderRadius: '4px',
-                color: '#D9D9E3'
-              }}
-            >
-              <option value="business">Business</option>
-              <option value="health">Health & Fitness</option>
-              <option value="creative">Creative</option>
-              <option value="personal">Personal Development</option>
-              <option value="education">Education</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-            <button
-              type="submit"
-              disabled={!title.trim()}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                fontSize: '1rem',
-                backgroundColor: title.trim() ? '#5D4B8C' : '#333',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: title.trim() ? 'pointer' : 'not-allowed'
-              }}
-            >
-              Create Project
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                fontSize: '1rem',
-                backgroundColor: '#333',
-                color: '#D9D9E3',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+        )}
+
+        {step === 2 && (
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3', fontWeight: '500' }}>
+                Project Title
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  fontSize: '1rem',
+                  background: '#1A1A1A',
+                  border: '2px solid #2D2D40',
+                  borderRadius: '8px',
+                  color: '#D9D9E3'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
+                onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3', fontWeight: '500' }}>
+                Desired Outcome
+              </label>
+              <input
+                type="text"
+                value={outcome}
+                onChange={(e) => setOutcome(e.target.value)}
+                placeholder="What does success look like?"
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  fontSize: '1rem',
+                  background: '#1A1A1A',
+                  border: '2px solid #2D2D40',
+                  borderRadius: '8px',
+                  color: '#D9D9E3'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
+                onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3', fontWeight: '500' }}>
+                Project Type
+              </label>
+              <select
+                value={completionType}
+                onChange={(e) => setCompletionType(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  fontSize: '1rem',
+                  background: '#1A1A1A',
+                  border: '2px solid #2D2D40',
+                  borderRadius: '8px',
+                  color: '#D9D9E3'
+                }}
+              >
+                <option value="milestone">📍 Milestone (One-time goal)</option>
+                <option value="habit_formation">🔁 Habit Formation (Build a routine)</option>
+                <option value="ongoing">⏳ Ongoing (Continuous improvement)</option>
+              </select>
+            </div>
+
+            <div style={{
+              background: '#1A1A1A',
+              padding: '1rem',
+              borderRadius: '8px',
+              border: '1px solid #2D2D40'
+            }}>
+              <label style={{ display: 'block', marginBottom: '1rem', color: '#D9D9E3', fontWeight: '500' }}>
+                AI Coach Preferences
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', color: '#aaa', fontSize: '0.9rem' }}>
+                    Tone
+                  </label>
+                  <select
+                    value={preferences.tone}
+                    onChange={(e) => setPreferences({...preferences, tone: e.target.value})}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      fontSize: '0.9rem',
+                      background: '#0D0D0D',
+                      border: '1px solid #333',
+                      borderRadius: '4px',
+                      color: '#D9D9E3'
+                    }}
+                  >
+                    <option value="friendly">Friendly</option>
+                    <option value="direct">Direct</option>
+                    <option value="professional">Professional</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', color: '#aaa', fontSize: '0.9rem' }}>
+                    Verbosity
+                  </label>
+                  <select
+                    value={preferences.verbosity}
+                    onChange={(e) => setPreferences({...preferences, verbosity: e.target.value})}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      fontSize: '0.9rem',
+                      background: '#0D0D0D',
+                      border: '1px solid #333',
+                      borderRadius: '4px',
+                      color: '#D9D9E3'
+                    }}
+                  >
+                    <option value="concise">Concise</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="detailed">Detailed</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.emoji}
+                    onChange={(e) => setPreferences({...preferences, emoji: e.target.checked})}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <label style={{ color: '#aaa', fontSize: '0.9rem', cursor: 'pointer' }}>
+                    Use Emoji
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!preferences.platitudes}
+                    onChange={(e) => setPreferences({...preferences, platitudes: !e.target.checked})}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <label style={{ color: '#aaa', fontSize: '0.9rem', cursor: 'pointer' }}>
+                    Skip Platitudes
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                style={{
+                  flex: 1,
+                  padding: '0.875rem',
+                  fontSize: '1rem',
+                  backgroundColor: '#2D2D40',
+                  color: '#D9D9E3',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                ← Back
+              </button>
+              <button
+                type="submit"
+                disabled={!title.trim()}
+                style={{
+                  flex: 2,
+                  padding: '0.875rem',
+                  fontSize: '1rem',
+                  backgroundColor: title.trim() ? '#5D4B8C' : '#333',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: title.trim() ? 'pointer' : 'not-allowed',
+                  fontWeight: '500'
+                }}
+              >
+                Create Project & AI Coach
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </main>
   );

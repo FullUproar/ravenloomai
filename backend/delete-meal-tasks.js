@@ -1,3 +1,0 @@
-[dotenv@17.0.0] injecting env (3) from .env – 🔐 encrypt with dotenvx: https://dotenvx.com
-🗑️ Deleting meal recording tasks...
-✅ Deleted tasks 12, 13, 14 (meal recording tasks)

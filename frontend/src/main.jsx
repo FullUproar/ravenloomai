@@ -13,8 +13,20 @@ import {
 const client = new ApolloClient({
   uri: process.env.NODE_ENV === 'production'
     ? '/api/graphql'  // Uses same domain in production (Vercel)
-    : 'http://localhost:3000/api/graphql', // Vercel dev server
-  cache: new InMemoryCache()
+    : 'http://localhost:4013/graphql', // Local backend server
+  cache: new InMemoryCache({
+    typePolicies: {
+      Conversation: {
+        fields: {
+          messages: {
+            merge(existing = [], incoming) {
+              return incoming; // Replace with new messages
+            }
+          }
+        }
+      }
+    }
+  })
 });
 
 ReactDOM.createRoot(document.getElementById('root')).render(

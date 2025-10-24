@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RavenLoom Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0D0D0D;
+            color: #D9D9E3;
+        }
+        button {
+            background: #5D4B8C;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #1A1A1A;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #FF6B6B; }
+    </style>
+</head>
+<body>
+    <h1>🔧 RavenLoom Connection Test</h1>
+
+    <p>Click the button below to test the connection to the backend:</p>
+
+    <button onclick="testBackend()">Test Backend Connection</button>
+
+    <div id="result"></div>
+
+    <script>
+        async function testBackend() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing connection...';
+
+            try {
+                // Test 1: Health endpoint
+                resultDiv.innerHTML += '\n\n1️⃣ Testing health endpoint...';
+                const healthResponse = await fetch('http://localhost:4013/health');
+                const healthData = await healthResponse.json();
+                resultDiv.innerHTML += '\n✅ Health check: ' + JSON.stringify(healthData, null, 2);
+
+                // Test 2: GraphQL endpoint
+                resultDiv.innerHTML += '\n\n2️⃣ Testing GraphQL endpoint...';
+                const graphqlResponse = await fetch('http://localhost:4013/graphql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: '{ __typename }'
+                    })
+                });
+                const graphqlData = await graphqlResponse.json();
+                resultDiv.innerHTML += '\n✅ GraphQL: ' + JSON.stringify(graphqlData, null, 2);
+
+                // Test 3: Get projects query
+                resultDiv.innerHTML += '\n\n3️⃣ Testing getProjects query...';
+                const projectsResponse = await fetch('http://localhost:4013/graphql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: `
+                            query GetProjects($userId: String!) {
+                                getProjects(userId: $userId) {
+                                    id
+                                    title
+                                }
+                            }
+                        `,
+                        variables: {
+                            userId: 'test-user-123'
+                        }
+                    })
+                });
+                const projectsData = await projectsResponse.json();
+                resultDiv.innerHTML += '\n✅ Projects: ' + JSON.stringify(projectsData, null, 2);
+
+                resultDiv.innerHTML += '\n\n🎉 All tests passed! Backend is working correctly.';
+                resultDiv.className = 'success';
+
+            } catch (error) {
+                resultDiv.innerHTML += '\n\n❌ Error: ' + error.message;
+                resultDiv.innerHTML += '\n\nThis usually means:';
+                resultDiv.innerHTML += '\n- Backend server is not running';
+                resultDiv.innerHTML += '\n- Port 4013 is blocked';
+                resultDiv.innerHTML += '\n- CORS issue';
+                resultDiv.className = 'error';
+            }
+        }
+    </script>
+</body>
+</html>
