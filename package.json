@@ -2,6 +2,7 @@
   "name": "ravenloom",
   "version": "1.0.0",
   "description": "AI-powered project management",
+  "type": "module",
   "scripts": {
     "dev": "vercel dev",
     "install:all": "npm install && cd frontend && npm install",
@@ -12,8 +13,11 @@
   "dependencies": {
     "@apollo/server": "^4.12.2",
     "@as-integrations/next": "^3.2.0",
+    "dotenv": "^17.0.0",
     "graphql": "^16.11.0",
+    "graphql-scalars": "^1.25.0",
     "graphql-tag": "^2.12.6",
+    "graphql-type-json": "^0.3.2",
     "openai": "^5.8.2",
     "pg": "^8.16.3"
   },
