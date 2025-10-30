@@ -12,7 +12,7 @@ An AI-powered project management system with **intelligent personas** that adapt
 
 ## 🚀 Live Demo
 
-**Coming Soon**: [ravenloomai.vercel.app](https://ravenloomai.vercel.app)
+[ravenloom-shawns-projects-b61cab3a.vercel.app](https://ravenloom-shawns-projects-b61cab3a.vercel.app)
 
 ## 📚 Documentation
 
