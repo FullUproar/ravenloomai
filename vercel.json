@@ -1,7 +1,7 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
+  "buildCommand": "npm install --prefix frontend && npm run build --prefix frontend",
   "installCommand": "npm install",
+  "outputDirectory": "frontend/dist",
   "rewrites": [
     {
       "source": "/api/graphql",
