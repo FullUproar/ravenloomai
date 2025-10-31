@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e
+
 echo "Current directory: $(pwd)"
 echo "Contents of current directory:"
 ls -la
@@ -9,6 +11,8 @@ if [ -d "frontend" ]; then
   cd frontend
   echo "Installing frontend dependencies..."
   npm install
+  echo "Adding node_modules/.bin to PATH..."
+  export PATH="$PWD/node_modules/.bin:$PATH"
   echo "Building frontend..."
   npm run build
   echo "Build complete!"
@@ -19,6 +23,7 @@ else
     echo "Found frontend in parent!"
     cd ../frontend
     npm install
+    export PATH="$PWD/node_modules/.bin:$PATH"
     npm run build
   else
     echo "Frontend directory not found anywhere!"
