@@ -11,10 +11,13 @@ if [ -d "frontend" ]; then
   cd frontend
   echo "Installing frontend dependencies..."
   npm install
-  echo "Adding node_modules/.bin to PATH..."
-  export PATH="$PWD/node_modules/.bin:$PATH"
-  echo "Building frontend..."
-  npm run build
+  echo "Current directory after cd: $(pwd)"
+  echo "Checking for vite binary..."
+  ls -la node_modules/.bin/vite || echo "vite binary not found!"
+  echo "Checking if vite is in node_modules..."
+  ls -la node_modules/vite/ || echo "vite package not found in node_modules!"
+  echo "Building frontend with direct vite path..."
+  ./node_modules/.bin/vite build
   echo "Build complete!"
 else
   echo "ERROR: Frontend directory not found!"
