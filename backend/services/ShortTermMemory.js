@@ -33,7 +33,7 @@ class ShortTermMemory {
     // Get recent messages (last 10)
     const messagesResult = await db.query(
       `SELECT id, content, sender_name, sender_type, created_at
-       FROM messages
+       FROM conversation_messages
        WHERE conversation_id = $1
        ORDER BY created_at DESC
        LIMIT $2`,
@@ -88,7 +88,7 @@ class ShortTermMemory {
 
     // Count total messages
     const countResult = await db.query(
-      'SELECT COUNT(*) as count FROM messages WHERE conversation_id = $1',
+      'SELECT COUNT(*) as count FROM conversation_messages WHERE conversation_id = $1',
       [conversationId]
     );
 
@@ -118,7 +118,7 @@ class ShortTermMemory {
     // Get messages to summarize (all except the most recent 10)
     const messagesToSummarize = await db.query(
       `SELECT content, sender_name, sender_type, created_at
-       FROM messages
+       FROM conversation_messages
        WHERE conversation_id = $1
        ORDER BY created_at ASC
        OFFSET $2`,
@@ -129,7 +129,7 @@ class ShortTermMemory {
 
     // Keep the most recent messages out of the summary
     const totalMessages = await db.query(
-      'SELECT COUNT(*) as count FROM messages WHERE conversation_id = $1',
+      'SELECT COUNT(*) as count FROM conversation_messages WHERE conversation_id = $1',
       [conversationId]
     );
 
