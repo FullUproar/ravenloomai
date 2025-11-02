@@ -58,10 +58,37 @@ const createContext = async (req) => {
   };
 };
 
-// Create and export the handler for Vercel
-const handler = startServerAndCreateNextHandler(server, {
+// Create the base handler
+const baseHandler = startServerAndCreateNextHandler(server, {
   context: createContext,
 });
+
+// Wrap with CORS headers for native app support
+const handler = async (req, res) => {
+  // Set CORS headers
+  const allowedOrigins = [
+    'https://localhost', // Capacitor native apps
+    'capacitor://localhost',
+    'https://ravenloom-ai-site.vercel.app',
+  ];
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin) || origin?.endsWith('.vercel.app')) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Apollo-Require-Preflight');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  return baseHandler(req, res);
+};
 
 export default handler;
 

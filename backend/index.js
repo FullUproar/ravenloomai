@@ -21,8 +21,18 @@ if (!process.env.OPENAI_API_KEY) {
 
 const app = express();
 
-// Global middleware
-app.use(cors());
+// Global middleware - Allow CORS from web, PWA, and native apps
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://localhost', // Capacitor native apps
+    'capacitor://localhost', // Capacitor alternative protocol
+    'https://ravenloom-ai-site.vercel.app', // Production web
+    /\.vercel\.app$/ // All Vercel preview deployments
+  ],
+  credentials: true
+}));
 app.use(bodyParser.json());
 
 const server = new ApolloServer({
