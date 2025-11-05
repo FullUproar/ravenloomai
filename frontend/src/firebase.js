@@ -1,20 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
-// Determine authDomain based on current host
-// For production (ravenloom.ai), use the custom domain
-// For localhost, use the Firebase domain (works in incognito mode)
-const isProduction = window.location.hostname === 'ravenloom.ai' ||
-                     window.location.hostname.includes('vercel.app');
-const authDomain = isProduction
-  ? 'ravenloom.ai'
-  : 'ravenloom-c964d.firebaseapp.com';
-
-console.log('🔥 Firebase authDomain:', authDomain, 'for hostname:', window.location.hostname);
-
+// Firebase authDomain must always be the Firebase-provided domain
+// This is where the OAuth callback handlers (/__/auth/*) are hosted
+// It works across all domains (localhost, ravenloom.ai, etc.) because
+// Firebase handles the redirect internally
 const firebaseConfig = {
     apiKey: "AIzaSyBhgspBIOWtsdYCdIidOf7s9t0ZZoSS8LY",
-    authDomain: authDomain,
+    authDomain: "ravenloom-c964d.firebaseapp.com",
     projectId: "ravenloom-c964d",
     storageBucket: "ravenloom-c964d.firebasestorage.app",
     messagingSenderId: "2999880743",

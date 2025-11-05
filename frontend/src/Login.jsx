@@ -88,30 +88,17 @@ function Login({ onLogin, onSignInStart }) {
         prompt: 'select_account'
       });
 
-      // Use popup for web, redirect for mobile
+      // Use redirect for native, popup for web
+      // Popup works better for web because it doesn't have cross-domain redirect issues
       if (isNativeApp) {
         console.log('Using signInWithRedirect for native app');
         sessionStorage.setItem('googleRedirectInitiated', new Date().toISOString());
         await signInWithRedirect(auth, provider);
       } else {
-        // Try popup first for web (better UX)
         console.log('Using signInWithPopup for web');
-        try {
-          const result = await signInWithPopup(auth, provider);
-          console.log('✅ Popup auth successful:', result.user);
-          // Don't call onLogin - onAuthStateChanged will handle it
-        } catch (popupError) {
-          console.error('Popup auth failed:', popupError);
-
-          // If popup fails with unauthorized domain, try redirect as fallback
-          if (popupError.code === 'auth/unauthorized-domain' || popupError.code === 'auth/unauthorized-continue-uri') {
-            console.log('📱 Popup blocked by unauthorized domain, trying redirect...');
-            sessionStorage.setItem('googleRedirectInitiated', new Date().toISOString());
-            await signInWithRedirect(auth, provider);
-          } else {
-            throw popupError; // Re-throw other errors
-          }
-        }
+        const result = await signInWithPopup(auth, provider);
+        console.log('✅ Popup auth successful:', result.user);
+        // Don't call onLogin - onAuthStateChanged will handle it
       }
     } catch (err) {
       console.error('=== Google sign-in error ===');
