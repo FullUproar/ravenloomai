@@ -32,3 +32,4 @@ frontend/dist/
 # Local settings
 .claude/settings.local.json
 .vercel
+backend/firebase-service-account.json

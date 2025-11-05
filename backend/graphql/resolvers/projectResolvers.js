@@ -142,6 +142,21 @@ export default {
     },
 
     /**
+     * Resolve goals relationship
+     */
+    goals: async (project) => {
+      const query = `
+        SELECT * FROM goals
+        WHERE project_id = $1
+        ORDER BY priority DESC, created_at DESC
+      `;
+
+      const result = await db.query(query, [project.id]);
+
+      return result.rows.map(row => mapGoalFromDb(row));
+    },
+
+    /**
      * Resolve tasks relationship
      */
     tasks: async (project) => {
@@ -222,17 +237,50 @@ function mapTaskFromDb(row) {
       ? JSON.parse(row.depends_on)
       : row.depends_on,
     blockedBy: row.blocked_by,
-    dueDate: row.due_date,
+    dueDate: row.due_datetime,
     scheduledFor: row.scheduled_for,
     completedAt: row.completed_at,
     autoScheduled: row.auto_scheduled,
     createdBy: row.created_by,
+    isRecurring: row.is_recurring,
+    parentTaskId: row.parent_task_id,
+    recurrenceType: row.recurrence_type,
+    recurrenceInterval: row.recurrence_interval,
+    recurrenceDays: typeof row.recurrence_days === 'string'
+      ? JSON.parse(row.recurrence_days)
+      : row.recurrence_days,
+    recurrenceEndType: row.recurrence_end_type,
+    recurrenceEndDate: row.recurrence_end_date,
+    recurrenceEndCount: row.recurrence_end_count,
+    recurrenceInstancesGenerated: row.recurrence_instances_generated,
+    lastInstanceGeneratedAt: row.last_instance_generated_at,
+    recurrencePaused: row.recurrence_paused,
     config: typeof row.config === 'string'
       ? JSON.parse(row.config)
       : row.config,
     result: typeof row.result === 'string'
       ? JSON.parse(row.result)
       : row.result,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+/**
+ * Map database row to Goal object
+ */
+function mapGoalFromDb(row) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    description: row.description,
+    targetValue: row.target_value,
+    currentValue: row.current_value,
+    unit: row.unit,
+    priority: row.priority,
+    status: row.status,
+    targetDate: row.target_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -257,4 +305,4 @@ function mapMetricFromDb(row) {
   };
 }
 
-export { mapProjectFromDb, mapTaskFromDb, mapMetricFromDb };
+export { mapProjectFromDb, mapTaskFromDb, mapGoalFromDb, mapMetricFromDb };

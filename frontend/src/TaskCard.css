@@ -1,0 +1,231 @@
+/**
+ * TaskCard Component Styles
+ */
+
+.task-card {
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  max-width: 400px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+}
+
+.task-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.task-card.overdue {
+  border-left: 4px solid #EF4444;
+}
+
+.task-card.loading,
+.task-card.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+  background: #F9FAFB;
+}
+
+/* Header */
+.task-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.task-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.priority-badge,
+.status-badge,
+.context-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+}
+
+.context-badge {
+  background: #6B7280;
+}
+
+/* Actions */
+.task-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.action-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 16px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.action-button:hover {
+  opacity: 1;
+}
+
+/* Title */
+.task-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+/* Description */
+.task-description {
+  font-size: 14px;
+  color: #6B7280;
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+/* Footer */
+.task-card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: #6B7280;
+  border-top: 1px solid #E5E7EB;
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.due-date,
+.completed-date,
+.blocker-reason {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.due-date.overdue {
+  color: #EF4444;
+  font-weight: 600;
+}
+
+.overdue-label {
+  font-weight: 700;
+}
+
+.blocker-reason {
+  color: #EF4444;
+  background: #FEF2F2;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+/* Status control */
+.status-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-control label {
+  font-weight: 600;
+  color: #374151;
+}
+
+.status-dropdown {
+  padding: 6px 10px;
+  border: 1px solid #D1D5DB;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.status-dropdown:hover {
+  border-color: #9CA3AF;
+}
+
+.status-dropdown:focus {
+  outline: none;
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Loading spinner */
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #E5E7EB;
+  border-top-color: #3B82F6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Error state */
+.error-message {
+  color: #EF4444;
+  font-weight: 600;
+}
+
+/* Status-specific styles */
+.task-card.done {
+  opacity: 0.7;
+}
+
+.task-card.done .task-title {
+  text-decoration: line-through;
+  color: #6B7280;
+}
+
+.task-card.cancelled {
+  opacity: 0.6;
+  background: #F9FAFB;
+}
+
+.task-card.cancelled .task-title {
+  text-decoration: line-through;
+}
+
+.task-card.blocked {
+  border-left: 4px solid #EF4444;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .task-card {
+    max-width: 100%;
+  }
+
+  .task-badges {
+    flex-direction: column;
+  }
+
+  .task-title {
+    font-size: 16px;
+  }
+
+  .task-description {
+    font-size: 13px;
+  }
+}

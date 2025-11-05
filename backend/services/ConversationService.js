@@ -8,9 +8,11 @@
 import db from '../db.js';
 import PersonaService from './PersonaService.js';
 import PersonaPromptBuilder from './PersonaPromptBuilder.js';
-import { generateChatCompletion, buildMessageHistory } from '../utils/llm.js';
+import { generateChatCompletion, generateChatCompletionWithFunctions, buildMessageHistory } from '../utils/llm.js';
 import ShortTermMemory from './ShortTermMemory.js';
 import MediumTermMemory from './MediumTermMemory.js';
+import AI_FUNCTIONS from '../config/aiFunctions.js';
+import AIFunctionExecutor from './AIFunctionExecutor.js';
 
 class ConversationService {
   constructor() {
@@ -170,26 +172,68 @@ class ConversationService {
     );
 
     try {
-      // Generate AI response
-      const aiResponse = await generateChatCompletion(messages, {
+      // Generate AI response with function calling
+      const aiResponse = await generateChatCompletionWithFunctions(messages, AI_FUNCTIONS, {
         model: 'gpt-4',
         temperature: 0.7,
-        maxTokens: 1000
+        maxTokens: 1500
       });
+
+      const functionsExecuted = [];
+      let finalContent = aiResponse.content || '';
+
+      // Execute any function calls
+      if (aiResponse.toolCalls && aiResponse.toolCalls.length > 0) {
+        console.log(`🤖 [AI] Calling ${aiResponse.toolCalls.length} function(s)`);
+
+        for (const toolCall of aiResponse.toolCalls) {
+          const { name, arguments: args } = toolCall.function;
+
+          try {
+            const result = await AIFunctionExecutor.execute(name, args, projectId);
+            functionsExecuted.push({
+              name,
+              arguments: args,
+              result
+            });
+
+            // Append confirmation to response
+            if (result.message) {
+              finalContent += `\n\n✓ ${result.message}`;
+            }
+          } catch (error) {
+            console.error(`❌ [AI Function] Failed to execute ${name}:`, error);
+            finalContent += `\n\n✗ Error: Could not ${name.replace(/([A-Z])/g, ' $1').toLowerCase()}`;
+          }
+        }
+      }
+
+      // If AI didn't provide text content, add a default message
+      if (!finalContent || finalContent.trim() === '') {
+        if (functionsExecuted.length > 0) {
+          finalContent = "Done! I've updated that for you.";
+        } else {
+          finalContent = "I understand. How else can I help?";
+        }
+      }
 
       // Add persona response to conversation
       const personaMessage = await this.addPersonaMessage(
         conversation.id,
         persona.id,
         persona.displayName,
-        aiResponse,
-        { intent: 'response' }
+        finalContent.trim(),
+        {
+          intent: 'response',
+          functionsExecuted: functionsExecuted.length > 0 ? functionsExecuted : undefined
+        }
       );
 
       return {
         message: personaMessage,
         conversation: conversation,
-        persona: persona
+        persona: persona,
+        functionsExecuted
       };
     } catch (error) {
       console.error('Error generating persona response:', error);

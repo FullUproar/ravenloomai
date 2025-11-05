@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "2999880743",
+    "project_id": "ravenloom-c964d",
+    "storage_bucket": "ravenloom-c964d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:2999880743:android:befb7af42225c8a65d9202",
+        "android_client_info": {
+          "package_name": "com.ravenloom.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "2999880743-h8o1lhug2csr26h87k60p23ejh0uvdcf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC4650ERw_AkQOijpZLQKLtCdh3hSzNJTM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "2999880743-h8o1lhug2csr26h87k60p23ejh0uvdcf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

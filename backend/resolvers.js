@@ -243,7 +243,7 @@ export default {
     goalId: (parent) => parent.goal_id,
     assignedTo: (parent) => parent.assigned_to,
     requiresApproval: (parent) => parent.requires_approval,
-    dueDate: (parent) => parent.due_date,
+    dueDate: (parent) => parent.due_datetime,
     completedAt: (parent) => parent.completed_at,
     createdAt: (parent) => parent.created_at,
     updatedAt: (parent) => parent.updated_at,
@@ -337,7 +337,7 @@ export default {
     createTask: async (_, { projectId, input }) => {
       const { goalId, title, description, type, priority, assignedTo, requiresApproval, dueDate, config } = input;
       const result = await db.query(
-        `INSERT INTO tasks (project_id, goal_id, title, description, type, priority, assigned_to, requires_approval, due_date, config)
+        `INSERT INTO tasks (project_id, goal_id, title, description, type, priority, assigned_to, requires_approval, due_datetime, config)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
         [projectId, goalId, title, description, type, priority || 2, assignedTo || 'ai', requiresApproval || false, dueDate, config || {}]
       );
@@ -347,8 +347,8 @@ export default {
     updateTask: async (_, { taskId, input }) => {
       const { goalId, title, description, type, priority, assignedTo, requiresApproval, dueDate, config } = input;
       const result = await db.query(
-        `UPDATE tasks SET 
-         goal_id = $2, title = $3, description = $4, type = $5, priority = $6, assigned_to = $7, requires_approval = $8, due_date = $9, config = $10, updated_at = CURRENT_TIMESTAMP
+        `UPDATE tasks SET
+         goal_id = $2, title = $3, description = $4, type = $5, priority = $6, assigned_to = $7, requires_approval = $8, due_datetime = $9, config = $10, updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 RETURNING *`,
         [taskId, goalId, title, description, type, priority, assignedTo, requiresApproval, dueDate, config]
       );

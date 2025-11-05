@@ -98,9 +98,17 @@ const UPDATE_TASK_STATUS = gql`
   }
 `;
 
+const DELETE_PROJECT = gql`
+  mutation DeleteProject($projectId: ID!) {
+    deleteProject(projectId: $projectId)
+  }
+`;
+
 function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCreateProject, onSignOut }) {
   const [message, setMessage] = useState('');
   const [selectedContext, setSelectedContext] = useState('all');
+  const [showTasksSidebar, setShowTasksSidebar] = useState(false);
+  const [currentView, setCurrentView] = useState('chat'); // 'chat', 'tasks', 'project'
   const messagesEndRef = useRef(null);
 
   const { loading: projectLoading, data: projectData } = useQuery(GET_PROJECT, {
@@ -126,6 +134,8 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
   const [createTask] = useMutation(CREATE_TASK, {
     refetchQueries: ['GetProject', 'GetConversation']
   });
+
+  const [deleteProject] = useMutation(DELETE_PROJECT);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -223,15 +233,43 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
     }
   };
 
+  const handleDeleteProject = async () => {
+    if (!confirm(`Are you sure you want to delete "${project?.title}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deleteProject({
+        variables: { projectId: parseInt(projectId) }
+      });
+
+      // After deleting, switch to another project or trigger project list refresh
+      // If there are other projects, switch to the first one
+      const remainingProjects = projects.filter(p => p.id !== projectId);
+      if (remainingProjects.length > 0) {
+        onProjectChange(remainingProjects[0].id);
+      } else {
+        // No projects left, trigger create new project flow
+        onCreateProject();
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      alert('Failed to delete project: ' + error.message);
+    }
+  };
+
   const contexts = ['all', '@home', '@office', '@computer', '@errands', '@phone', '@anywhere'];
 
+  // Mobile-first: Single view at a time
   return (
     <div style={{
       display: 'flex',
+      flexDirection: 'column',
       height: '100vh',
       backgroundColor: '#0D0D0D',
       color: '#D9D9E3',
-      fontFamily: "'Inter', sans-serif"
+      fontFamily: "'Inter', sans-serif",
+      overflow: 'hidden'
     }}>
       {/* Main Chat Area */}
       <div style={{
@@ -244,16 +282,18 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
       }}>
         {/* Header */}
         <header style={{
-          padding: '1.5rem 2rem',
+          padding: '1rem',
           borderBottom: '1px solid #2D2D40',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.5rem'
         }}>
-          <div>
+          <div style={{ flex: '1 1 auto', minWidth: '150px' }}>
             <h1 style={{
               margin: 0,
-              fontSize: '1.5rem',
+              fontSize: 'clamp(1.1rem, 4vw, 1.5rem)',
               color: '#5D4B8C',
               fontWeight: '600'
             }}>
@@ -262,14 +302,30 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
             {project?.persona && (
               <p style={{
                 margin: '0.25rem 0 0 0',
-                fontSize: '0.9rem',
+                fontSize: 'clamp(0.8rem, 3vw, 0.9rem)',
                 color: '#9D8BCC'
               }}>
                 with {project.persona.displayName}
               </p>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowTasksSidebar(!showTasksSidebar)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#5D4B8C',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                display: 'none'
+              }}
+              className="mobile-tasks-toggle"
+            >
+              {showTasksSidebar ? 'Hide Tasks' : 'Tasks'} ({tasks.filter(t => t.status !== 'completed').length})
+            </button>
             <select
               value={projectId}
               onChange={(e) => onProjectChange(e.target.value)}
@@ -280,13 +336,28 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
                 border: '1px solid #2D2D40',
                 borderRadius: '6px',
                 cursor: 'pointer',
-                fontSize: '0.9rem'
+                fontSize: '0.85rem'
               }}
             >
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.title}</option>
               ))}
             </select>
+            <button
+              onClick={handleDeleteProject}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#4A2222',
+                color: '#FF6B6B',
+                border: '1px solid #6B2222',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.85rem'
+              }}
+              title="Delete this project"
+            >
+              Delete
+            </button>
             <button
               onClick={onSignOut}
               style={{
@@ -296,7 +367,7 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
                 border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
-                fontSize: '0.9rem'
+                fontSize: '0.85rem'
               }}
             >
               Sign Out
@@ -308,7 +379,7 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
         <div style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '2rem',
+          padding: 'clamp(1rem, 3vw, 2rem)',
           display: 'flex',
           flexDirection: 'column',
           gap: '1rem'
@@ -355,11 +426,11 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
 
         {/* Message Input */}
         <form onSubmit={handleSendMessage} style={{
-          padding: '1.5rem 2rem',
+          padding: 'clamp(0.75rem, 3vw, 1.5rem)',
           borderTop: '1px solid #2D2D40',
           backgroundColor: '#0D0D0D'
         }}>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -368,7 +439,7 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
               style={{
                 flex: 1,
                 padding: '0.875rem 1rem',
-                fontSize: '1rem',
+                fontSize: 'clamp(0.9rem, 3vw, 1rem)',
                 backgroundColor: '#1A1A1A',
                 border: '2px solid #2D2D40',
                 borderRadius: '12px',
@@ -392,8 +463,8 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
               type="submit"
               disabled={!message.trim() || sending}
               style={{
-                padding: '0.875rem 2rem',
-                fontSize: '1rem',
+                padding: 'clamp(0.75rem, 3vw, 0.875rem) clamp(1rem, 4vw, 2rem)',
+                fontSize: 'clamp(0.9rem, 3vw, 1rem)',
                 backgroundColor: (message.trim() && !sending) ? '#5D4B8C' : '#333',
                 color: '#fff',
                 border: 'none',
@@ -410,13 +481,18 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
       </div>
 
       {/* Tasks Sidebar */}
-      <aside style={{
-        width: '320px',
-        borderLeft: '1px solid #2D2D40',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#0A0A0A'
-      }}>
+      <aside
+        className={showTasksSidebar ? 'tasks-sidebar tasks-sidebar-open' : 'tasks-sidebar'}
+        style={{
+          width: '320px',
+          borderLeft: '1px solid #2D2D40',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#0A0A0A',
+          position: 'relative',
+          zIndex: 10
+        }}
+      >
         <div style={{
           padding: '1.5rem 1.25rem',
           borderBottom: '1px solid #2D2D40'
@@ -582,13 +658,16 @@ function MessageBubble({ message, persona, onAcceptTask, onAcceptMilestone }) {
   };
 
   return (
-    <div style={{
-      alignSelf: isUser ? 'flex-end' : 'flex-start',
-      maxWidth: '80%',
-      display: 'flex',
-      gap: '0.75rem',
-      flexDirection: isUser ? 'row-reverse' : 'row'
-    }}>
+    <div
+      className="message-bubble"
+      style={{
+        alignSelf: isUser ? 'flex-end' : 'flex-start',
+        maxWidth: '80%',
+        display: 'flex',
+        gap: '0.75rem',
+        flexDirection: isUser ? 'row-reverse' : 'row'
+      }}
+    >
       {/* Avatar */}
       <div style={{
         width: '36px',

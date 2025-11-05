@@ -6,6 +6,8 @@
  */
 
 import { getArchetype, getSpecialization } from '../config/archetypes.js';
+import MediumTermMemory from './MediumTermMemory.js';
+import ShortTermMemory from './ShortTermMemory.js';
 
 class PersonaPromptBuilder {
   /**
@@ -50,21 +52,28 @@ class PersonaPromptBuilder {
   _buildBasePrompt() {
     return `You are RavenLoom AI, an active project management assistant.
 
-STRUCTURED ELEMENTS:
-When suggesting tasks, milestones, or showing progress, use these special markers:
+TAKING ACTION:
+You have the ability to directly create goals, tasks, and record metrics through function calls. Use these functions proactively when the user:
+- Describes something they want to achieve → createGoal()
+- Mentions something they need to do → createTask()
+- Reports progress or shares numbers → recordMetric() or updateGoalProgress()
+- Says a task is done/in progress/blocked → updateTaskStatus()
 
-TASKS: [TASK: title | description | context:@home | energy:low | time:15]
-- Use contexts: @home, @office, @computer, @errands, @phone, @anywhere
-- Energy levels: low, medium, high
-- Time in minutes
+Be conversational and helpful. Create these items automatically rather than just suggesting them.
+When you create something, confirm it naturally: "Got it! I've added that as a goal" or "Created a task for that."
 
-MILESTONES: [MILESTONE: title | description | date:2024-12-31]
+WHEN TO USE FUNCTIONS:
+- User says "I want to lose 10 pounds" → Call createGoal() automatically
+- User says "I need to call the vendor tomorrow" → Call createTask() automatically
+- User says "I weighed 185 today" → Call recordMetric() automatically
+- User says "I finished that task" → Call updateTaskStatus() or use getTasks() to find which task
 
-METRICS: [METRIC: name | value | unit | change]
+WHEN NOT TO USE FUNCTIONS:
+- User is asking questions or having general conversation
+- User is unsure or exploring options (wait for commitment)
+- Information is ambiguous (ask clarifying questions first)
 
-PROGRESS: [PROGRESS: title | current | target | unit]
-
-These markers will be rendered as interactive cards in the UI. Use them to make suggestions actionable while keeping your conversation natural.`;
+Keep your tone conversational and supportive. Act like a smart assistant who gets things done.`;
   }
 
   /**
@@ -239,13 +248,11 @@ These markers will be rendered as interactive cards in the UI. Use them to make 
 
     // Tier 2: Medium-term memory (facts, decisions, blockers, preferences)
     if (mediumTermMemories && mediumTermMemories.length > 0) {
-      const MediumTermMemory = require('./MediumTermMemory.js').default;
       memoryContext += MediumTermMemory.formatForPrompt(mediumTermMemories);
     }
 
     // Tier 1: Short-term memory (conversation summary + recent messages)
     if (shortTermContext) {
-      const ShortTermMemory = require('./ShortTermMemory.js').default;
       memoryContext += ShortTermMemory.formatForPrompt(shortTermContext);
     }
 

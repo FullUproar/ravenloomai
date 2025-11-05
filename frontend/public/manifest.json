@@ -1,0 +1,40 @@
+{
+  "name": "RavenLoom - AI Project Management",
+  "short_name": "RavenLoom",
+  "description": "PM in a box. Just add any human. AI-powered project management with personalized AI coaches.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0D0D0D",
+  "theme_color": "#5D4B8C",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/raven-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/raven-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "View Projects",
+      "short_name": "Projects",
+      "description": "View all your projects",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/raven-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

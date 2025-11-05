@@ -63,6 +63,111 @@ export async function generateChatCompletion(messages, options = {}) {
 }
 
 /**
+ * Generate streaming chat completion
+ *
+ * @param {Array} messages - Array of {role, content} objects
+ * @param {Object} options - Additional options (model, temperature, etc.)
+ * @returns {AsyncIterable} - Stream of completion chunks
+ */
+export async function* generateStreamingChatCompletion(messages, options = {}) {
+  const client = getLLMClient();
+
+  const {
+    model = 'gpt-4',
+    temperature = 0.7,
+    maxTokens = 1000,
+    ...otherOptions
+  } = options;
+
+  try {
+    const stream = await client.chat.completions.create({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+      ...otherOptions
+    });
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        yield delta;
+      }
+    }
+  } catch (error) {
+    console.error('OpenAI streaming API error:', error);
+    throw new Error(`Failed to generate streaming completion: ${error.message}`);
+  }
+}
+
+/**
+ * Generate chat completion with function calling support
+ *
+ * @param {Array} messages - Array of {role, content} objects
+ * @param {Array} functions - Array of function definitions
+ * @param {Object} options - Additional options (model, temperature, etc.)
+ * @returns {Promise<Object>} - Response with content and/or function calls
+ */
+export async function generateChatCompletionWithFunctions(messages, functions, options = {}) {
+  const client = getLLMClient();
+
+  const {
+    model = 'gpt-4',
+    temperature = 0.7,
+    maxTokens = 1500,
+    toolChoice = 'auto',
+    ...otherOptions
+  } = options;
+
+  try {
+    const tools = functions.map(func => ({
+      type: 'function',
+      function: func
+    }));
+
+    const completion = await client.chat.completions.create({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      tools,
+      tool_choice: toolChoice,
+      ...otherOptions
+    });
+
+    const choice = completion.choices[0];
+    const message = choice.message;
+
+    // Check if AI wants to call functions
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      return {
+        content: message.content,
+        toolCalls: message.tool_calls.map(tc => ({
+          id: tc.id,
+          type: tc.type,
+          function: {
+            name: tc.function.name,
+            arguments: JSON.parse(tc.function.arguments)
+          }
+        })),
+        finishReason: choice.finish_reason
+      };
+    }
+
+    // Regular text response
+    return {
+      content: message.content,
+      toolCalls: null,
+      finishReason: choice.finish_reason
+    };
+  } catch (error) {
+    console.error('OpenAI function calling error:', error);
+    throw new Error(`Failed to generate completion with functions: ${error.message}`);
+  }
+}
+
+/**
  * Generate structured output using JSON mode
  *
  * @param {Array} messages - Array of {role, content} objects
@@ -183,6 +288,7 @@ export default {
   initializeLLM,
   getLLMClient,
   generateChatCompletion,
+  generateChatCompletionWithFunctions,
   generateStructuredOutput,
   generateSimpleResponse,
   buildMessageHistory,

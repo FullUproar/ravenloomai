@@ -24,6 +24,8 @@ export default gql`
     communicationPreferences: CommunicationPreferences
     context: JSON
     active: Boolean!
+    color: String
+    shape: String
     createdAt: DateTime!
     lastActiveAt: DateTime!
   }
@@ -127,6 +129,7 @@ export default gql`
 
     # Relationships
     persona: Persona
+    goals: [Goal!]!
     tasks: [Task!]!
     metrics: [Metric!]!
 
@@ -167,6 +170,19 @@ export default gql`
     autoScheduled: Boolean
     createdBy: String
 
+    # Recurring task fields
+    isRecurring: Boolean
+    parentTaskId: ID
+    recurrenceType: String
+    recurrenceInterval: Int
+    recurrenceDays: [Int!]
+    recurrenceEndType: String
+    recurrenceEndDate: DateTime
+    recurrenceEndCount: Int
+    recurrenceInstancesGenerated: Int
+    lastInstanceGeneratedAt: DateTime
+    recurrencePaused: Boolean
+
     config: JSON
     result: JSON
     createdAt: DateTime!
@@ -187,6 +203,26 @@ export default gql`
     recordedAt: DateTime!
     source: String!
     metadata: JSON
+  }
+
+  # ============================================================================
+  # GOAL TYPES
+  # ============================================================================
+
+  type Goal {
+    id: ID!
+    projectId: ID!
+    title: String!
+    description: String
+    targetValue: Float
+    currentValue: Float
+    unit: String
+    priority: Int!
+    status: String!
+    targetDate: DateTime
+    metrics: [Metric!]!
+    createdAt: DateTime!
+    updatedAt: DateTime!
   }
 
   # ============================================================================
@@ -247,6 +283,35 @@ export default gql`
     energyLevel: String
     timeEstimate: Int
     config: JSON
+
+    # Recurring task fields
+    isRecurring: Boolean
+    recurrenceType: String
+    recurrenceInterval: Int
+    recurrenceDays: [Int!]
+    recurrenceEndType: String
+    recurrenceEndDate: DateTime
+    recurrenceEndCount: Int
+  }
+
+  input RecurringTaskInput {
+    recurrenceType: String!
+    recurrenceInterval: Int
+    recurrenceDays: [Int!]
+    recurrenceEndType: String
+    recurrenceEndDate: DateTime
+    recurrenceEndCount: Int
+  }
+
+  input GoalInput {
+    title: String!
+    description: String
+    targetValue: Float
+    currentValue: Float
+    unit: String
+    priority: Int
+    status: String
+    targetDate: DateTime
   }
 
   input MetricInput {
@@ -267,6 +332,68 @@ export default gql`
   }
 
   # ============================================================================
+  # PERSONA NAMING TYPES
+  # ============================================================================
+
+  type AvailableName {
+    id: ID!
+    name: String!
+    popularityRank: Int
+    timesClaimed: Int!
+    isAvailable: Boolean!
+  }
+
+  type PersonaName {
+    id: ID!
+    name: String!
+    archetype: String!
+    userId: ID!
+    personaId: ID
+    claimedAt: DateTime!
+  }
+
+  # ============================================================================
+  # SHARING & CONNECTIONS TYPES
+  # ============================================================================
+
+  type UserConnection {
+    id: ID!
+    requesterId: String!
+    recipientId: String!
+    status: String!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  type ProjectShare {
+    id: ID!
+    projectId: ID!
+    ownerId: String!
+    sharedWithId: String!
+    permissionLevel: String!
+    project: Project
+    createdAt: DateTime!
+  }
+
+  type UserMessage {
+    id: ID!
+    senderId: String!
+    recipientId: String!
+    content: String!
+    read: Boolean!
+    createdAt: DateTime!
+  }
+
+  type MessageThread {
+    id: ID!
+    otherUserId: String!
+    lastMessageContent: String
+    lastMessageSender: String
+    lastMessageAt: DateTime!
+    createdAt: DateTime!
+  }
+
+  # ============================================================================
   # QUERIES
   # ============================================================================
 
@@ -280,12 +407,21 @@ export default gql`
     getActivePersona(projectId: ID!): Persona
     suggestPersona(userGoal: String!): PersonaSuggestion!
 
+    # Persona Names
+    getAvailableNames(archetype: String!): [AvailableName!]!
+    checkNameAvailability(name: String!, archetype: String!): Boolean!
+    getUserPersonaNames(userId: String!): [PersonaName!]!
+
     # Conversations
     getConversation(projectId: ID!, userId: String!): Conversation
     getConversationHistory(conversationId: ID!, limit: Int): [Message!]!
 
     # Tasks
     getTasks(projectId: ID!, status: String): [Task!]!
+
+    # Goals
+    getGoals(projectId: ID!): [Goal!]!
+    getGoal(goalId: ID!): Goal
 
     # Metrics
     getMetrics(projectId: ID!, goalId: ID, dateFrom: DateTime, dateTo: DateTime): [Metric!]!
@@ -295,6 +431,12 @@ export default gql`
     getMemoriesByType(projectId: ID!, memoryType: String!): [ProjectMemory!]!
     getMemoryStats(projectId: ID!): MemoryStats!
     getConversationSummary(conversationId: ID!): ConversationSummary
+
+    # Sharing & Connections
+    getConnections(userId: String!, status: String): [UserConnection!]!
+    getSharedProjects(userId: String!): [ProjectShare!]!
+    getMessages(userId: String!, otherUserId: String!, limit: Int): [UserMessage!]!
+    getMessageThreads(userId: String!): [MessageThread!]!
   }
 
   # ============================================================================
@@ -313,6 +455,10 @@ export default gql`
     updatePersonaCommunication(personaId: ID!, preferences: CommunicationPreferencesInput!): Persona!
     deactivatePersona(personaId: ID!): Boolean!
 
+    # Persona Names
+    claimPersonaName(userId: String!, name: String!, archetype: String!, color: String!, shape: String!): PersonaName!
+    releasePersonaName(personaNameId: ID!): Boolean!
+
     # Conversations & Chat
     sendMessage(projectId: ID!, userId: String!, message: String!): ChatResponse!
     clearConversation(conversationId: ID!): Boolean!
@@ -323,6 +469,18 @@ export default gql`
     updateTaskStatus(taskId: ID!, status: String!, result: JSON): Task!
     deleteTask(taskId: ID!): Boolean!
 
+    # Recurring Tasks
+    generateRecurringTaskInstances(taskId: ID!): [Task!]!
+    updateRecurringTask(taskId: ID!, input: RecurringTaskInput!): Task!
+    pauseRecurringTask(taskId: ID!): Task!
+    resumeRecurringTask(taskId: ID!): Task!
+
+    # Goals
+    createGoal(projectId: ID!, input: GoalInput!): Goal!
+    updateGoal(goalId: ID!, input: GoalInput!): Goal!
+    updateGoalProgress(goalId: ID!, currentValue: Float!): Goal!
+    deleteGoal(goalId: ID!): Boolean!
+
     # Metrics
     recordMetric(projectId: ID!, input: MetricInput!): Metric!
 
@@ -331,5 +489,13 @@ export default gql`
     removeProjectMemory(projectId: ID!, key: String!): Boolean!
     updateMemoryImportance(projectId: ID!, key: String!, importance: Int!): ProjectMemory!
     createConversationSummary(conversationId: ID!): ConversationSummary!
+
+    # Sharing & Connections
+    sendConnectionRequest(requesterId: String!, recipientId: String!): UserConnection!
+    respondToConnection(connectionId: ID!, status: String!): UserConnection!
+    shareProject(projectId: ID!, ownerId: String!, sharedWithId: String!, permissionLevel: String): ProjectShare!
+    unshareProject(projectId: ID!, sharedWithId: String!): Boolean!
+    sendUserMessage(senderId: String!, recipientId: String!, content: String!): UserMessage!
+    markMessageRead(messageId: ID!): Boolean!
   }
 `;

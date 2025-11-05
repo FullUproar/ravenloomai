@@ -2,14 +2,49 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/raven-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/raven-16x16.png" />
     <link rel="icon" type="image/png" href="/raven.png" />
+
+    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500&family=Inter:wght@400;500&display=swap"
       rel="stylesheet" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="PM in a box. Just add any human. AI-powered project management with personalized AI coaches." />
+    <meta name="theme-color" content="#5D4B8C" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RavenLoom" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/raven-180x180.png" />
+    <link rel="apple-touch-icon" href="/raven-192x192.png" />
+    <link rel="manifest" href="/manifest.json" />
+
     <title>RavenLoom - AI Project Management</title>
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Immediately unregister service worker before anything else -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          for (const registration of registrations) {
+            registration.unregister().then(() => {
+              console.log('Service worker unregistered, reloading...');
+              // Reload once after unregistering to clear the cache
+              if (!sessionStorage.getItem('sw_unregistered')) {
+                sessionStorage.setItem('sw_unregistered', 'true');
+                window.location.reload();
+              }
+            });
+          }
+        });
+      }
+    </script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

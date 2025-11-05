@@ -66,3 +66,58 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Mobile-responsive styles */
+@media (max-width: 768px) {
+  /* Hide tasks sidebar by default on mobile */
+  .tasks-sidebar {
+    position: fixed !important;
+    right: -100%;
+    top: 0;
+    height: 100vh;
+    width: 85vw !important;
+    max-width: 320px;
+    transition: right 0.3s ease-in-out;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Show tasks sidebar when open */
+  .tasks-sidebar-open {
+    right: 0 !important;
+  }
+
+  /* Show mobile tasks toggle button */
+  .mobile-tasks-toggle {
+    display: inline-block !important;
+  }
+
+  /* Adjust message bubble max width for mobile */
+  .message-bubble {
+    max-width: 90% !important;
+  }
+}
+
+/* Mobile viewport height fix */
+@supports (-webkit-touch-callout: none) {
+  /* iOS Safari viewport height fix */
+  body {
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* Prevent text size adjustment on iOS */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Pulse animation for thinking indicator */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}

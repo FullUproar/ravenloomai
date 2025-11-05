@@ -1,9 +1,12 @@
 import { gql, useQuery, useMutation } from '@apollo/client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import Login from './Login.jsx';
-import ProjectDashboard from './ProjectDashboard.jsx';
+import Header from './Header.jsx';
+import Footer from './Footer.jsx';
+import ProjectDashboardMobile from './ProjectDashboardMobile.jsx';
 
 // GraphQL queries/mutations for persona-based system
 const GET_PROJECTS = gql`
@@ -67,40 +70,252 @@ const CREATE_PERSONA_FROM_GOAL = gql`
   }
 `;
 
-function App() {
-  const [user, setUser] = useState(null);
+function App({ apolloClient }) {
+  const [user, setUser] = useState(undefined); // undefined = loading, null = logged out
+  const [isTestUser, setIsTestUser] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false); // Track active sign-in
+
+  // Use ref to track test user status across renders
+  const isTestUserRef = useRef(isTestUser);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    isTestUserRef.current = isTestUser;
+  }, [isTestUser]);
+
+  // Custom login handler that supports test users
+  const handleLogin = (userData) => {
+    console.log('handleLogin called with:', userData);
+    if (userData?.uid === 'test-user-123') {
+      setIsTestUser(true);
+      console.log('Setting test user flag');
+    } else {
+      setIsTestUser(false);
+    }
+    setUser(userData);
+    setAuthLoading(false);
+  };
+
+  // Custom sign-out handler that supports test users
+  const handleSignOut = async () => {
+    console.log('=== SIGN OUT STARTED ===');
+    console.log('isTestUser:', isTestUser);
+    console.log('isTestUserRef.current:', isTestUserRef.current);
+    console.log('Current user:', user);
+
+    // Clear Apollo cache first
+    if (apolloClient) {
+      try {
+        await apolloClient.clearStore();
+        console.log('✓ Apollo cache cleared');
+      } catch (error) {
+        console.error('✗ Error clearing Apollo cache:', error);
+      }
+    }
+
+    if (isTestUser) {
+      console.log('Processing TEST USER sign out');
+      // For test user, just clear state
+      setUser(null);
+      setIsTestUser(false);
+      setSelectedProjectId(null);
+      setShowCreateProject(false);
+      console.log('✓ Test user state cleared');
+      console.log('=== SIGN OUT COMPLETE (TEST USER) ===');
+    } else {
+      console.log('Processing FIREBASE USER sign out');
+      // For real users, use Firebase sign out
+      try {
+        console.log('Calling Firebase signOut()...');
+
+        // Sign out from Firebase - this will trigger onAuthStateChanged
+        // which will set user to null
+        await signOut(auth);
+        console.log('✓ Firebase signOut() completed');
+
+        // Clear Apollo cache to remove any cached user data
+        if (apolloClient) {
+          await apolloClient.clearStore();
+          console.log('✓ Apollo cache cleared');
+        }
+
+        // Clear local state
+        setSelectedProjectId(null);
+        setShowCreateProject(false);
+
+        // Force clear any remaining Firebase auth state from localStorage
+        // This ensures a clean slate for the next login
+        try {
+          const authKey = `firebase:authUser:${auth.config.apiKey}:[DEFAULT]`;
+          localStorage.removeItem(authKey);
+          // Also clear any other Firebase keys
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('firebase:')) {
+              localStorage.removeItem(key);
+            }
+          });
+          console.log('✓ Firebase localStorage cleared');
+        } catch (e) {
+          console.warn('Could not clear localStorage:', e);
+        }
+
+        console.log('✓ Local state cleared');
+        console.log('=== SIGN OUT COMPLETE (FIREBASE USER) ===');
+      } catch (err) {
+        console.error('✗ Sign out error:', err);
+        alert('Error signing out: ' + err.message);
+      }
+    }
+  };
 
   const { loading: projectsLoading, error: projectsError, data: projectsData } = useQuery(GET_PROJECTS, {
-    variables: { userId: user?.uid || "test-user-123" },
-    skip: !user
+    variables: { userId: user?.uid || "" },
+    skip: !user || !user?.uid, // Skip query if no user or no uid
+    fetchPolicy: 'network-only', // Always fetch fresh data from server
+    onCompleted: (data) => {
+      console.log('Projects query completed for user:', user?.uid);
+      console.log('Projects returned:', data?.getProjects?.map(p => ({
+        id: p.id,
+        title: p.title,
+        userId: user?.uid
+      })));
+    },
+    onError: (error) => {
+      console.error('GraphQL Query Error:', error);
+      console.error('Network Error:', error.networkError);
+      console.error('GraphQL Errors:', error.graphQLErrors);
+    }
   });
 
-  const [createProject] = useMutation(CREATE_PROJECT);
+  const [createProject] = useMutation(CREATE_PROJECT, {
+    refetchQueries: ['GetProjects']
+  });
   const [createPersona] = useMutation(CREATE_PERSONA_FROM_GOAL, {
     refetchQueries: ['GetProjects']
   });
 
+  // Handle auth state changes from Firebase
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      // Don't override test user with Firebase auth state
+      // Use ref to get current value without depending on state
+      if (isTestUserRef.current) {
+        console.log('Ignoring Firebase auth change - test user is active');
+        setAuthLoading(false);
+        return;
+      }
+
+      console.log('Firebase auth state changed:', {
+        previousUser: user?.uid,
+        newUser: u?.uid,
+        userEmail: u?.email,
+        userDisplayName: u?.displayName,
+        isSigningIn,
+        authLoading
+      });
+
+      // When user changes, update state first, then clear cache
+      // This prevents race conditions with active queries
+      const userChanged = u?.uid !== user?.uid && user?.uid !== undefined;
+      console.log('User changed?', userChanged);
+
+      // Always update user state - this handles login, logout, and session restoration
+      console.log('Setting user to:', u ? { uid: u.uid, email: u.email } : null);
+      setUser(u);
+
+      // Clear signing-in flag when we get a user (successful sign-in)
+      if (u && isSigningIn) {
+        console.log('✅ Sign-in successful - clearing isSigningIn flag');
+        setIsSigningIn(false);
+      }
+
+      // Only mark auth as loaded after first check completes
+      if (authLoading) {
+        console.log('Marking auth as loaded (authLoading: true -> false)');
+        setAuthLoading(false);
+      }
+
+      // Clear cache AFTER setting new user to prevent query conflicts
+      if (userChanged && apolloClient) {
+        console.log('User changed - resetting Apollo cache');
+        try {
+          // Use resetStore instead of clearStore to avoid query conflicts
+          await apolloClient.resetStore();
+          console.log('Apollo cache reset complete');
+        } catch (error) {
+          console.error('Error resetting Apollo cache:', error);
+        }
+      }
+    });
     return () => unsub();
+  }, [user?.uid, apolloClient]);
+
+  // Handle user state changes (including manual test login)
+  useEffect(() => {
+    console.log('User state updated:', {
+      uid: user?.uid,
+      email: user?.email,
+      hasUser: !!user
+    });
+  }, [user]);
+
+  // Setup reset callback for Login component
+  useEffect(() => {
+    window.resetSigningIn = () => setIsSigningIn(false);
+    return () => {
+      delete window.resetSigningIn;
+    };
   }, []);
 
-  // Auto-select first project if none selected
-  useEffect(() => {
-    if (projectsData?.getProjects?.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projectsData.getProjects[0].id);
-    }
-  }, [projectsData, selectedProjectId]);
+  // Show loading screen while auth is initializing OR during active sign-in
+  if (authLoading || isSigningIn) {
+    console.log('📋 Rendering loading screen:', { authLoading, isSigningIn, user: user?.uid });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0D0D0D', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: '#5D4B8C', fontSize: '1.2rem' }}>
+          {isSigningIn ? 'Signing in...' : 'Loading...'}
+        </p>
+      </div>
+    );
+  }
 
-  // Show login if no user
-  if (!user) return <Login onLogin={setUser} />;
+  // Show login if no user (after auth has loaded and not actively signing in)
+  if (!user) {
+    console.log('📋 Rendering login screen:', { user, authLoading, isSigningIn });
+    return <Login onLogin={handleLogin} onSignInStart={() => {
+      console.log('🚀 onSignInStart called - setting isSigningIn to true');
+      setIsSigningIn(true);
+    }} />;
+  }
 
-  if (projectsLoading) return <p style={{ color: '#ccc' }}>Loading projects...</p>;
+  console.log('📋 Rendering main app for user:', user.uid);
+
+  // SPA Layout wrapper for loading and error states
+  if (projectsLoading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0D0D0D' }}>
+        <Header user={user} onSignOut={handleSignOut} />
+        <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <p style={{ color: '#ccc' }}>Loading projects...</p>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   if (projectsError) {
-    return <p style={{ color: '#f88' }}>Error loading projects: {projectsError.message}</p>;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0D0D0D' }}>
+        <Header user={user} onSignOut={handleSignOut} />
+        <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <p style={{ color: '#f88' }}>Error loading projects: {projectsError.message}</p>
+        </main>
+        <Footer />
+      </div>
+    );
   }
 
   const projects = projectsData?.getProjects || [];
@@ -153,48 +368,61 @@ function App() {
 
   if (showCreateProject) {
     return (
-      <CreateProjectForm
-        onSubmit={handleCreateProject}
-        onCancel={() => setShowCreateProject(false)}
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0D0D0D' }}>
+        <Header user={user} onSignOut={handleSignOut} />
+        <main style={{ flex: 1 }}>
+          <CreateProjectForm
+            onSubmit={handleCreateProject}
+            onCancel={() => setShowCreateProject(false)}
+          />
+        </main>
+        <Footer />
+      </div>
     );
   }
 
   if (selectedProjectId) {
     return (
-      <ProjectDashboard
-        userId={user?.uid || "test-user-123"}
-        projectId={selectedProjectId}
-        projects={projects}
-        onProjectChange={setSelectedProjectId}
-        onCreateProject={() => setShowCreateProject(true)}
-        onSignOut={() => signOut(auth)}
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0D0D0D' }}>
+        <Header user={user} onSignOut={handleSignOut} />
+        <main style={{ flex: 1 }}>
+          <ProjectDashboardMobile
+            userId={user?.uid || "test-user-123"}
+            projectId={selectedProjectId}
+            projects={projects}
+            onProjectChange={setSelectedProjectId}
+            onCreateProject={() => setShowCreateProject(true)}
+            onSignOut={handleSignOut}
+          />
+        </main>
+        <Footer />
+      </div>
     );
   }
 
   return (
-    <main style={{
-      backgroundColor: '#0D0D0D',
-      color: '#D9D9E3',
-      minHeight: '100vh',
-      padding: '2rem',
-      fontFamily: "'Inter', sans-serif",
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center'
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0D0D0D' }}>
+      <Header user={user} onSignOut={handleSignOut} />
+      <main style={{
+        flex: 1,
+        color: '#D9D9E3',
+        padding: 'clamp(1rem, 3vw, 2rem)',
+        fontFamily: "'Inter', sans-serif",
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center'
+      }}>
       <div style={{ maxWidth: 700, width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <h1 style={{
             fontFamily: "'Cinzel', serif",
-            fontSize: '2.5rem',
+            fontSize: 'clamp(1.8rem, 5vw, 2.5rem)',
             color: '#5D4B8C',
             marginTop: '1rem',
           }}>
             🪶 RavenLoom
           </h1>
-          <p style={{ color: '#aaa', marginTop: '0.5rem' }}>PM in a box. Just add any human.</p>
+          <p style={{ color: '#aaa', marginTop: '0.5rem', fontSize: 'clamp(0.9rem, 3vw, 1rem)' }}>PM in a box. Just add any human.</p>
         </div>
 
         {projects.length === 0 ? (
@@ -312,22 +540,9 @@ function App() {
           </div>
         )}
       </div>
-      <button
-        onClick={() => signOut(auth)}
-        style={{
-          marginTop: '3rem',
-          color: '#666',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          fontSize: '0.9rem'
-        }}
-        onMouseEnter={(e) => e.target.style.color = '#888'}
-        onMouseLeave={(e) => e.target.style.color = '#666'}
-      >
-        Sign Out
-      </button>
     </main>
+    <Footer />
+    </div>
   );
 }
 
@@ -368,7 +583,7 @@ function CreateProjectForm({ onSubmit, onCancel }) {
       backgroundColor: '#0D0D0D',
       color: '#D9D9E3',
       minHeight: '100vh',
-      padding: '2rem',
+      padding: 'clamp(1rem, 3vw, 2rem)',
       fontFamily: "'Inter', sans-serif",
       display: 'flex',
       flexDirection: 'column',
