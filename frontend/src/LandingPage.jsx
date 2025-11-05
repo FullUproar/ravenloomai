@@ -67,7 +67,7 @@ function LandingPage({ onGetStarted }) {
           {/* Hero */}
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
             <div style={{ marginBottom: '2rem' }}>
-              <img src="/web-app-manifest-192x192.png" alt="RavenLoom Logo" style={{ width: '120px', height: '120px' }} />
+              <img src="/web-app-manifest-192x192.png" alt="RavenLoom Logo" style={{ width: '180px', height: '180px' }} />
             </div>
             <h1 style={{
               fontFamily: "'Cinzel', serif",
