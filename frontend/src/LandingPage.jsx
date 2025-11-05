@@ -139,7 +139,7 @@ function LandingPage({ onGetStarted }) {
               gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
               gap: '2rem'
             }}>
-              <Step number="1" title="Sign In" description="Use your Google account to get started quickly and securely" />
+              <Step number="1" title="Sign In" description="Create an account with email or sign in with Google" />
               <Step number="2" title="Create Projects" description="Set up your projects and describe your goals" />
               <Step number="3" title="Get AI Assistance" description="Work with personalized AI coaches to achieve your objectives" />
             </div>
@@ -158,11 +158,12 @@ function LandingPage({ onGetStarted }) {
               fontSize: '1.5rem',
               marginTop: 0
             }}>
-              How We Use Your Google Data
+              How We Use Your Data
             </h2>
             <p style={{ color: '#aaa', lineHeight: '1.6' }}>
-              RavenLoom uses Google Sign-In to authenticate users securely. We only request access to your basic profile information
-              (name and email address) to create and maintain your account. We do not access, store, or share any other Google data.
+              RavenLoom collects only the information needed to provide our service. When you sign in with Google, we only access
+              your basic profile information (name and email address) to create and maintain your account. When you sign up with
+              email, we store your email and encrypted password. We do not access, store, or share any other data from third-party services.
             </p>
             <p style={{ color: '#aaa', lineHeight: '1.6', marginBottom: 0 }}>
               Your project data, tasks, and AI interactions are stored securely and are never shared with third parties.
