@@ -420,8 +420,13 @@ function App({ apolloClient }) {
             fontSize: 'clamp(1.8rem, 5vw, 2.5rem)',
             color: '#5D4B8C',
             marginTop: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.75rem'
           }}>
-            🪶 RavenLoom
+            <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: 'clamp(40px, 7vw, 60px)', height: 'clamp(40px, 7vw, 60px)' }} />
+            RavenLoom
           </h1>
           <p style={{ color: '#aaa', marginTop: '0.5rem', fontSize: 'clamp(0.9rem, 3vw, 1rem)' }}>{strings.app.tagline}</p>
         </div>

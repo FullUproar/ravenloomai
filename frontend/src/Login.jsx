@@ -207,9 +207,14 @@ function Login({ onLogin, onSignInStart }) {
           textAlign: 'center',
           color: '#5D4B8C',
           fontFamily: 'Cinzel, serif',
-          marginBottom: '2rem'
+          marginBottom: '2rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.75rem'
         }}>
-          🪶 RavenLoom
+          <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: '48px', height: '48px' }} />
+          RavenLoom
         </h1>
 
         <div style={{

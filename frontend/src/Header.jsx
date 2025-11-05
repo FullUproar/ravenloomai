@@ -48,9 +48,13 @@ function Header({ user, onSignOut }) {
           margin: 0,
           fontSize: '1.5rem',
           color: '#5D4B8C',
-          fontFamily: 'Cinzel, serif'
+          fontFamily: 'Cinzel, serif',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
         }}>
-          🪶 RavenLoom
+          <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: '32px', height: '32px' }} />
+          RavenLoom
         </h1>
       </div>
 
