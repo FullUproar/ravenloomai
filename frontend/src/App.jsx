@@ -423,7 +423,7 @@ function App({ apolloClient }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '0.5rem'
+            gap: '0.25rem'
           }}>
             <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: 'clamp(75px, 12vw, 100px)', height: 'clamp(75px, 12vw, 100px)' }} />
             RavenLoom

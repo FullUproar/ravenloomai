@@ -51,7 +51,7 @@ function Header({ user, onSignOut }) {
           fontFamily: 'Cinzel, serif',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.35rem'
+          gap: '0.2rem'
         }}>
           <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: '60px', height: '60px' }} />
           RavenLoom
