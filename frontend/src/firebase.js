@@ -3,7 +3,7 @@ import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
     apiKey: "AIzaSyBhgspBIOWtsdYCdIidOf7s9t0ZZoSS8LY",
-    authDomain: "ravenloom-c964d.firebaseapp.com",
+    authDomain: "ravenloom.ai",
     projectId: "ravenloom-c964d",
     storageBucket: "ravenloom-c964d.firebasestorage.app",
     messagingSenderId: "2999880743",
