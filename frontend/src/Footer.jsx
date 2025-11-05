@@ -77,7 +77,7 @@ function Footer() {
         </div>
 
         <div style={{ color: '#666' }}>
-          © {currentYear} RavenLoom. PM in a box. Just add any human.
+          © {currentYear} Full Uproar Games, Inc. Making productivity more human with AI.
         </div>
       </div>
     </footer>
