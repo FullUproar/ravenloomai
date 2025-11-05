@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-do
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import Login from './Login.jsx';
+import LandingPage from './LandingPage.jsx';
 import Header from './Header.jsx';
 import Footer from './Footer.jsx';
 import ProjectDashboardMobile from './ProjectDashboardMobile.jsx';
@@ -78,6 +79,7 @@ function App({ apolloClient }) {
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false); // Track active sign-in
+  const [showLogin, setShowLogin] = useState(false); // Toggle between landing page and login
 
   // Use ref to track test user status across renders
   const isTestUserRef = useRef(isTestUser);
@@ -283,13 +285,18 @@ function App({ apolloClient }) {
     );
   }
 
-  // Show login if no user (after auth has loaded and not actively signing in)
+  // Show landing page or login if no user (after auth has loaded and not actively signing in)
   if (!user) {
-    console.log('📋 Rendering login screen:', { user, authLoading, isSigningIn });
-    return <Login onLogin={handleLogin} onSignInStart={() => {
-      console.log('🚀 onSignInStart called - setting isSigningIn to true');
-      setIsSigningIn(true);
-    }} />;
+    console.log('📋 Rendering landing/login screen:', { user, authLoading, isSigningIn, showLogin });
+
+    if (showLogin) {
+      return <Login onLogin={handleLogin} onSignInStart={() => {
+        console.log('🚀 onSignInStart called - setting isSigningIn to true');
+        setIsSigningIn(true);
+      }} />;
+    }
+
+    return <LandingPage onGetStarted={() => setShowLogin(true)} />;
   }
 
   console.log('📋 Rendering main app for user:', user.uid);
