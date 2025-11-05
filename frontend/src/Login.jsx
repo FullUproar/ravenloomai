@@ -213,7 +213,7 @@ function Login({ onLogin, onSignInStart }) {
           justifyContent: 'center',
           gap: '0.25rem'
         }}>
-          <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: '80px', height: '80px' }} />
+          <img src="/web-app-manifest-192x192.png" alt="RavenLoom Logo" style={{ width: '80px', height: '80px' }} />
           RavenLoom
         </h1>
 

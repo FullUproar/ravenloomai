@@ -425,7 +425,7 @@ function App({ apolloClient }) {
             justifyContent: 'center',
             gap: '0.25rem'
           }}>
-            <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: 'clamp(75px, 12vw, 100px)', height: 'clamp(75px, 12vw, 100px)' }} />
+            <img src="/web-app-manifest-192x192.png" alt="RavenLoom Logo" style={{ width: 'clamp(75px, 12vw, 100px)', height: 'clamp(75px, 12vw, 100px)' }} />
             RavenLoom
           </h1>
           <p style={{ color: '#aaa', marginTop: '0.5rem', fontSize: 'clamp(0.9rem, 3vw, 1rem)' }}>{strings.app.tagline}</p>
