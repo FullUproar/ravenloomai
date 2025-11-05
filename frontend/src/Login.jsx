@@ -16,16 +16,34 @@ function Login({ onLogin, onSignInStart }) {
   const [error, setError] = useState('');
 
   // Detect if running in a native app (Capacitor)
-  const isNativeApp = window.Capacitor !== undefined;
+  // Note: window.Capacitor exists in web too due to imports, so we need to check isNativePlatform()
+  const isNativeApp = window.Capacitor?.isNativePlatform?.() || false;
 
   // Check for redirect result on mount (for both mobile and web auth)
   useEffect(() => {
+    // Display persistent debug logs
+    const debugLogs = sessionStorage.getItem('authDebugLogs');
+    if (debugLogs) {
+      console.log('📋 PERSISTENT DEBUG LOGS FROM PREVIOUS SESSION:');
+      JSON.parse(debugLogs).forEach(log => console.log(log));
+    }
+
     console.log('=== Checking for redirect result ===');
     console.log('Current URL:', window.location.href);
     console.log('URL params:', window.location.search);
+    console.log('isNativeApp:', isNativeApp);
 
     // Check if we initiated a redirect in a previous session
     const redirectInitiated = sessionStorage.getItem('googleRedirectInitiated');
+
+    // If we're on web (not native) and there's a redirect flag, clear it
+    // because we use popup auth on web now
+    if (!isNativeApp && redirectInitiated) {
+      console.log('⚠️ Found old redirect flag from previous session, clearing it (we use popup auth on web now)');
+      sessionStorage.removeItem('googleRedirectInitiated');
+      return; // Don't check for redirect result
+    }
+
     if (redirectInitiated) {
       console.log('🔄 We initiated a redirect at:', redirectInitiated);
       console.log('Now checking for the result...');
@@ -71,13 +89,21 @@ function Login({ onLogin, onSignInStart }) {
   const handleGoogleSignIn = async (e) => {
     e?.preventDefault(); // Prevent any default behavior
     setError('');
-    console.log('=== Google Sign-In Started ===');
-    console.log('isNativeApp:', isNativeApp);
+
+    // Log to sessionStorage so we can see what happened even after redirects
+    const logToSession = (msg) => {
+      const logs = JSON.parse(sessionStorage.getItem('authDebugLogs') || '[]');
+      logs.push(`${new Date().toISOString()}: ${msg}`);
+      sessionStorage.setItem('authDebugLogs', JSON.stringify(logs));
+      console.log(msg);
+    };
+
+    logToSession('=== Google Sign-In Started ===');
+    logToSession(`isNativeApp: ${isNativeApp}`);
+    logToSession(`window.Capacitor: ${window.Capacitor}`);
 
     // Notify parent that sign-in is starting
-    console.log('Calling onSignInStart...');
     onSignInStart?.();
-    console.log('onSignInStart called');
 
     try {
       const provider = new GoogleAuthProvider();
@@ -91,28 +117,22 @@ function Login({ onLogin, onSignInStart }) {
       // Use redirect for native, popup for web
       // Popup works better for web because it doesn't have cross-domain redirect issues
       if (isNativeApp) {
-        console.log('Using signInWithRedirect for native app');
+        logToSession('USING REDIRECT AUTH (native app detected)');
         sessionStorage.setItem('googleRedirectInitiated', new Date().toISOString());
         await signInWithRedirect(auth, provider);
       } else {
-        console.log('🔐 Attempting popup auth...');
-        console.log('Current URL:', window.location.href);
-        console.log('Auth domain:', auth.config.authDomain);
+        logToSession('USING POPUP AUTH (web browser)');
+        logToSession(`Current URL: ${window.location.href}`);
+        logToSession(`Auth domain: ${auth.config.authDomain}`);
 
         try {
-          console.log('Opening popup...');
+          logToSession('Opening popup window...');
           const result = await signInWithPopup(auth, provider);
-          console.log('✅ Popup auth successful!');
-          console.log('User:', {
-            uid: result.user.uid,
-            email: result.user.email,
-            displayName: result.user.displayName
-          });
+          logToSession('✅ Popup auth successful!');
+          logToSession(`User: ${result.user.email}`);
           // Don't call onLogin - onAuthStateChanged will handle it
         } catch (popupError) {
-          console.error('❌ Popup auth failed with error:', popupError);
-          console.error('Error code:', popupError.code);
-          console.error('Error message:', popupError.message);
+          logToSession(`❌ Popup auth failed: ${popupError.code} - ${popupError.message}`);
 
           // Check for specific popup errors
           if (popupError.code === 'auth/popup-blocked') {
@@ -120,9 +140,7 @@ function Login({ onLogin, onSignInStart }) {
           } else if (popupError.code === 'auth/popup-closed-by-user') {
             throw new Error('Sign-in cancelled.');
           } else if (popupError.code === 'auth/unauthorized-domain') {
-            console.error('🚨 UNAUTHORIZED DOMAIN ERROR');
-            console.error('This means ravenloom.ai is not authorized in Firebase Console');
-            console.error('Check: https://console.firebase.google.com/project/ravenloom-c964d/authentication/settings');
+            logToSession('🚨 UNAUTHORIZED DOMAIN ERROR');
             throw new Error('Domain not authorized. Please check Firebase Console settings.');
           }
 
