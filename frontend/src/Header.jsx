@@ -53,7 +53,7 @@ function Header({ user, onSignOut }) {
           alignItems: 'center',
           gap: '0.5rem'
         }}>
-          <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: '32px', height: '32px' }} />
+          <img src="/favicon.svg" alt="RavenLoom Logo" style={{ width: '48px', height: '48px' }} />
           RavenLoom
         </h1>
       </div>
