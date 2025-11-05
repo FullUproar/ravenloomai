@@ -953,6 +953,15 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
         </button>
       </nav>
 
+      {/* Share Project Modal */}
+      {showShareModal && (
+        <ShareProjectModal
+          projectId={projectId}
+          userId={userId}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
+
       {/* Create Task Modal */}
       {showCreateTask && (
         <div style={{
@@ -1543,15 +1552,6 @@ function MessageBubble({ message, persona, onAcceptTask, onAcceptMilestone }) {
           return null;
         })}
       </div>
-
-      {/* Share Project Modal */}
-      {showShareModal && (
-        <ShareProjectModal
-          projectId={projectId}
-          userId={userId}
-          onClose={() => setShowShareModal(false)}
-        />
-      )}
     </div>
   );
 }
