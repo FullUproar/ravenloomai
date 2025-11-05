@@ -95,10 +95,40 @@ function Login({ onLogin, onSignInStart }) {
         sessionStorage.setItem('googleRedirectInitiated', new Date().toISOString());
         await signInWithRedirect(auth, provider);
       } else {
-        console.log('Using signInWithPopup for web');
-        const result = await signInWithPopup(auth, provider);
-        console.log('✅ Popup auth successful:', result.user);
-        // Don't call onLogin - onAuthStateChanged will handle it
+        console.log('🔐 Attempting popup auth...');
+        console.log('Current URL:', window.location.href);
+        console.log('Auth domain:', auth.config.authDomain);
+
+        try {
+          console.log('Opening popup...');
+          const result = await signInWithPopup(auth, provider);
+          console.log('✅ Popup auth successful!');
+          console.log('User:', {
+            uid: result.user.uid,
+            email: result.user.email,
+            displayName: result.user.displayName
+          });
+          // Don't call onLogin - onAuthStateChanged will handle it
+        } catch (popupError) {
+          console.error('❌ Popup auth failed with error:', popupError);
+          console.error('Error code:', popupError.code);
+          console.error('Error message:', popupError.message);
+
+          // Check for specific popup errors
+          if (popupError.code === 'auth/popup-blocked') {
+            throw new Error('Popup was blocked by your browser. Please allow popups for this site.');
+          } else if (popupError.code === 'auth/popup-closed-by-user') {
+            throw new Error('Sign-in cancelled.');
+          } else if (popupError.code === 'auth/unauthorized-domain') {
+            console.error('🚨 UNAUTHORIZED DOMAIN ERROR');
+            console.error('This means ravenloom.ai is not authorized in Firebase Console');
+            console.error('Check: https://console.firebase.google.com/project/ravenloom-c964d/authentication/settings');
+            throw new Error('Domain not authorized. Please check Firebase Console settings.');
+          }
+
+          // Re-throw the error to be caught by outer catch
+          throw popupError;
+        }
       }
     } catch (err) {
       console.error('=== Google sign-in error ===');
