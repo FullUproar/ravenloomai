@@ -145,7 +145,7 @@ function LandingPage({ onGetStarted }) {
             </div>
           </div>
 
-          {/* Data Usage */}
+          {/* Privacy & Security */}
           <div style={{
             background: '#1A1A1A',
             border: '2px solid #2D2D40',
@@ -158,16 +158,17 @@ function LandingPage({ onGetStarted }) {
               fontSize: '1.5rem',
               marginTop: 0
             }}>
-              How We Use Your Data
+              Privacy & Security First
             </h2>
-            <p style={{ color: '#aaa', lineHeight: '1.6' }}>
-              RavenLoom collects only the information needed to provide our service. When you sign in with Google, we only access
-              your basic profile information (name and email address) to create and maintain your account. When you sign up with
-              email, we store your email and encrypted password. We do not access, store, or share any other data from third-party services.
+            <p style={{ color: '#aaa', lineHeight: '1.6', fontSize: '0.95rem' }}>
+              We believe your data belongs to you. RavenLoom is built with privacy at its core, collecting only what's essential
+              to deliver our service. Whether you sign in with Google (accessing only your name and email) or create an account
+              with email and password (stored encrypted), we never access unnecessary data or share your information with third parties.
             </p>
-            <p style={{ color: '#aaa', lineHeight: '1.6', marginBottom: 0 }}>
-              Your project data, tasks, and AI interactions are stored securely and are never shared with third parties.
-              See our <a href="/privacy" style={{ color: '#5D4B8C', textDecoration: 'underline' }}>Privacy Policy</a> for complete details.
+            <p style={{ color: '#aaa', lineHeight: '1.6', fontSize: '0.95rem', marginBottom: 0 }}>
+              Your projects, tasks, and AI conversations are encrypted and stored securely, complying with industry-standard security
+              practices and data protection regulations.
+              Learn more in our <a href="/privacy" style={{ color: '#5D4B8C', textDecoration: 'underline' }}>Privacy Policy</a>.
             </p>
           </div>
         </div>
