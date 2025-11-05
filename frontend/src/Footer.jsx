@@ -1,3 +1,5 @@
+import strings from './strings.js';
+
 function Footer() {
   const currentYear = new Date().getFullYear();
 
@@ -60,7 +62,7 @@ function Footer() {
             onMouseEnter={(e) => e.target.style.color = '#5D4B8C'}
             onMouseLeave={(e) => e.target.style.color = '#888'}
           >
-            Privacy
+            {strings.footer.privacyLink}
           </a>
           <a
             href="/terms"
@@ -72,12 +74,12 @@ function Footer() {
             onMouseEnter={(e) => e.target.style.color = '#5D4B8C'}
             onMouseLeave={(e) => e.target.style.color = '#888'}
           >
-            Terms
+            {strings.footer.termsLink}
           </a>
         </div>
 
         <div style={{ color: '#666' }}>
-          © {currentYear} Full Uproar Games, Inc. Making productivity more human with AI.
+          {strings.footer.copyright(currentYear)}
         </div>
       </div>
     </footer>

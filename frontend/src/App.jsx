@@ -7,6 +7,7 @@ import Login from './Login.jsx';
 import Header from './Header.jsx';
 import Footer from './Footer.jsx';
 import ProjectDashboardMobile from './ProjectDashboardMobile.jsx';
+import strings from './strings.js';
 
 // GraphQL queries/mutations for persona-based system
 const GET_PROJECTS = gql`
@@ -422,7 +423,7 @@ function App({ apolloClient }) {
           }}>
             🪶 RavenLoom
           </h1>
-          <p style={{ color: '#aaa', marginTop: '0.5rem', fontSize: 'clamp(0.9rem, 3vw, 1rem)' }}>Making productivity more human with AI</p>
+          <p style={{ color: '#aaa', marginTop: '0.5rem', fontSize: 'clamp(0.9rem, 3vw, 1rem)' }}>{strings.app.tagline}</p>
         </div>
 
         {projects.length === 0 ? (
