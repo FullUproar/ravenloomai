@@ -355,6 +355,19 @@ export default {
     createdAt: (parent) => parent.created_at,
   },
 
+  Message: {
+    conversationId: (parent) => parent.conversation_id,
+    senderId: (parent) => parent.sender_id,
+    senderType: (parent) => parent.sender_type,
+    senderName: (parent) => parent.sender_name,
+    senderAvatar: (parent) => parent.sender_avatar,
+    addressedTo: (parent) => parent.addressed_to || [],
+    inReplyTo: (parent) => parent.in_reply_to,
+    isDebugMessage: (parent) => parent.is_debug_message || false,
+    debugData: (parent) => parent.debug_data,
+    createdAt: (parent) => parent.created_at,
+  },
+
   Mutation: {
     createProject: async (_, { userId, input }) => {
       const { title, description, domain, config, metadata } = input;
