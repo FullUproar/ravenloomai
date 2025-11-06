@@ -514,6 +514,8 @@ class ConversationService {
       inReplyTo: row.in_reply_to,
       intent: row.intent,
       confidence: row.confidence,
+      isDebugMessage: row.is_debug_message || false,
+      debugData: row.debug_data,
       createdAt: row.created_at
     };
   }
