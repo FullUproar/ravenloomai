@@ -21,28 +21,33 @@ class MemoryService {
    * @returns {Promise<boolean>} - Should trigger
    */
   async shouldTriggerEpisodeSummarization(conversationId) {
-    // Get config (with defaults)
-    const config = await this._getMemoryConfig(conversationId);
+    try {
+      // Get config (with defaults)
+      const config = await this._getMemoryConfig(conversationId);
 
-    // Count messages since last episode
-    const lastEpisodeQuery = `
-      SELECT end_message_id FROM conversation_episodes
-      WHERE conversation_id = $1
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    const lastEpisodeResult = await db.query(lastEpisodeQuery, [conversationId]);
+      // Count messages since last episode
+      const lastEpisodeQuery = `
+        SELECT end_message_id FROM conversation_episodes
+        WHERE conversation_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      const lastEpisodeResult = await db.query(lastEpisodeQuery, [conversationId]);
 
-    const afterMessageId = lastEpisodeResult.rows[0]?.end_message_id || 0;
+      const afterMessageId = lastEpisodeResult.rows[0]?.end_message_id || 0;
 
-    const countQuery = `
-      SELECT COUNT(*) as count FROM conversation_messages
-      WHERE conversation_id = $1 AND id > $2
-    `;
-    const countResult = await db.query(countQuery, [conversationId, afterMessageId]);
-    const messageCount = parseInt(countResult.rows[0].count);
+      const countQuery = `
+        SELECT COUNT(*) as count FROM conversation_messages
+        WHERE conversation_id = $1 AND id > $2
+      `;
+      const countResult = await db.query(countQuery, [conversationId, afterMessageId]);
+      const messageCount = parseInt(countResult.rows[0].count);
 
-    return messageCount >= config.episode_message_threshold;
+      return messageCount >= config.episode_message_threshold;
+    } catch (error) {
+      console.error('[MemoryService] Error checking episode trigger:', error);
+      return false; // Don't trigger if there's an error
+    }
   }
 
   /**
@@ -92,17 +97,14 @@ class MemoryService {
     // Generate summary using GPT
     const summary = await this._generateEpisodeSummary(messages);
 
-    // Generate embedding for the summary
-    const embedding = await this._generateEmbedding(summary.summary);
-
-    // Store episode
+    // Store episode (without embedding for now - pgvector not installed)
     const insertQuery = `
       INSERT INTO conversation_episodes (
         conversation_id, project_id, user_id,
         start_message_id, end_message_id, message_count,
         topic, summary, key_points, decisions_made,
-        emotions_detected, user_state, embedding
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        emotions_detected, user_state
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *
     `;
 
@@ -118,8 +120,7 @@ class MemoryService {
       JSON.stringify(summary.keyPoints),
       JSON.stringify(summary.decisions),
       summary.emotions,
-      summary.userState,
-      `[${embedding.join(',')}]` // PostgreSQL vector format
+      summary.userState
     ];
 
     const result = await db.query(insertQuery, values);
@@ -162,33 +163,40 @@ class MemoryService {
     // Extract facts using GPT
     const extractedFacts = await this._extractFactsFromMessages(messages, episode);
 
-    // Store each fact with embedding
+    // Store each fact (without embedding - pgvector not installed)
     const knowledgeNodes = [];
 
     for (const fact of extractedFacts) {
-      // Generate embedding for the fact label
-      const embedding = await this._generateEmbedding(fact.label);
-
-      // Check if similar fact already exists
-      const existingNode = await this._findSimilarKnowledgeNode(
+      // Check if similar fact already exists (text-based match)
+      const existingNodeQuery = `
+        SELECT * FROM knowledge_nodes
+        WHERE user_id = $1
+          AND (project_id = $2 OR project_id IS NULL)
+          AND node_type = $3
+          AND LOWER(label) = LOWER($4)
+          AND is_active = true
+        LIMIT 1
+      `;
+      const existingResult = await db.query(existingNodeQuery, [
         episode.user_id,
         episode.project_id,
-        embedding,
-        fact.nodeType
-      );
+        fact.nodeType,
+        fact.label
+      ]);
 
-      if (existingNode) {
+      if (existingResult.rows.length > 0) {
         // Reinforce existing fact
+        const existingNode = this._mapKnowledgeNodeFromDb(existingResult.rows[0]);
         await this._reinforceKnowledgeNode(existingNode.id);
         knowledgeNodes.push(existingNode);
         console.log(`[MemoryService] Reinforced existing fact: ${fact.label}`);
       } else {
-        // Create new fact
+        // Create new fact (without embedding)
         const insertQuery = `
           INSERT INTO knowledge_nodes (
             user_id, project_id, node_type, label, properties,
-            source_episode_id, confidence, embedding
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            source_episode_id, confidence
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING *
         `;
 
@@ -199,8 +207,7 @@ class MemoryService {
           fact.label,
           JSON.stringify(fact.properties || {}),
           episodeId,
-          fact.confidence || 0.8,
-          `[${embedding.join(',')}]`
+          fact.confidence || 0.8
         ];
 
         const result = await db.query(insertQuery, values);
@@ -231,53 +238,22 @@ class MemoryService {
     const recentEpisodesResult = await db.query(recentEpisodesQuery, [userId, projectId]);
     const recentEpisodes = recentEpisodesResult.rows.map(row => this._mapEpisodeFromDb(row));
 
-    // Get relevant facts
-    let relevantFacts = [];
-    let blockers = [];
-    let strengths = [];
+    // Get relevant facts (without vector search - pgvector not installed)
+    // Retrieve top facts by confidence and recency
+    const topFactsQuery = `
+      SELECT * FROM knowledge_nodes
+      WHERE user_id = $1
+        AND (project_id = $2 OR project_id IS NULL)
+        AND is_active = true
+      ORDER BY confidence DESC, last_reinforced_at DESC
+      LIMIT 10
+    `;
+    const topFactsResult = await db.query(topFactsQuery, [userId, projectId]);
+    const relevantFacts = topFactsResult.rows.map(row => this._mapKnowledgeNodeFromDb(row));
 
-    if (currentContext) {
-      // Use vector similarity search
-      const embedding = await this._generateEmbedding(currentContext);
-
-      // Get similar facts
-      const similarFactsQuery = `
-        SELECT *, 1 - (embedding <=> $1::vector) as similarity
-        FROM knowledge_nodes
-        WHERE user_id = $2
-          AND (project_id = $3 OR project_id IS NULL)
-          AND is_active = true
-          AND 1 - (embedding <=> $1::vector) >= 0.7
-        ORDER BY embedding <=> $1::vector
-        LIMIT 10
-      `;
-      const similarFactsResult = await db.query(similarFactsQuery, [
-        `[${embedding.join(',')}]`,
-        userId,
-        projectId
-      ]);
-
-      relevantFacts = similarFactsResult.rows.map(row => this._mapKnowledgeNodeFromDb(row));
-
-      // Filter by type
-      blockers = relevantFacts.filter(f => f.nodeType === 'blocker' || f.nodeType === 'struggle');
-      strengths = relevantFacts.filter(f => f.nodeType === 'strength' || f.nodeType === 'success_pattern');
-    } else {
-      // No context - get top facts by confidence and recency
-      const topFactsQuery = `
-        SELECT * FROM knowledge_nodes
-        WHERE user_id = $1
-          AND (project_id = $2 OR project_id IS NULL)
-          AND is_active = true
-        ORDER BY confidence DESC, last_reinforced_at DESC
-        LIMIT 10
-      `;
-      const topFactsResult = await db.query(topFactsQuery, [userId, projectId]);
-      relevantFacts = topFactsResult.rows.map(row => this._mapKnowledgeNodeFromDb(row));
-
-      blockers = relevantFacts.filter(f => f.nodeType === 'blocker' || f.nodeType === 'struggle');
-      strengths = relevantFacts.filter(f => f.nodeType === 'strength' || f.nodeType === 'success_pattern');
-    }
+    // Filter by type
+    const blockers = relevantFacts.filter(f => f.nodeType === 'blocker' || f.nodeType === 'struggle');
+    const strengths = relevantFacts.filter(f => f.nodeType === 'strength' || f.nodeType === 'success_pattern');
 
     return {
       recentEpisodes,
@@ -438,37 +414,40 @@ Only extract facts that are clearly stated or strongly implied. Be selective - q
     return parsed.facts || parsed.nodes || [];
   }
 
-  async _generateEmbedding(text) {
-    const response = await openai.embeddings.create({
-      model: 'text-embedding-ada-002',
-      input: text
-    });
+  // NOTE: Vector embedding methods commented out - pgvector extension not installed
+  // Uncomment these if pgvector becomes available in the future
 
-    return response.data[0].embedding;
-  }
+  // async _generateEmbedding(text) {
+  //   const response = await openai.embeddings.create({
+  //     model: 'text-embedding-ada-002',
+  //     input: text
+  //   });
+  //
+  //   return response.data[0].embedding;
+  // }
 
-  async _findSimilarKnowledgeNode(userId, projectId, embedding, nodeType) {
-    const query = `
-      SELECT *, 1 - (embedding <=> $1::vector) as similarity
-      FROM knowledge_nodes
-      WHERE user_id = $2
-        AND (project_id = $3 OR project_id IS NULL)
-        AND node_type = $4
-        AND is_active = true
-        AND 1 - (embedding <=> $1::vector) >= 0.9
-      ORDER BY embedding <=> $1::vector
-      LIMIT 1
-    `;
-
-    const result = await db.query(query, [
-      `[${embedding.join(',')}]`,
-      userId,
-      projectId,
-      nodeType
-    ]);
-
-    return result.rows[0] ? this._mapKnowledgeNodeFromDb(result.rows[0]) : null;
-  }
+  // async _findSimilarKnowledgeNode(userId, projectId, embedding, nodeType) {
+  //   const query = `
+  //     SELECT *, 1 - (embedding <=> $1::vector) as similarity
+  //     FROM knowledge_nodes
+  //     WHERE user_id = $2
+  //       AND (project_id = $3 OR project_id IS NULL)
+  //       AND node_type = $4
+  //       AND is_active = true
+  //       AND 1 - (embedding <=> $1::vector) >= 0.9
+  //     ORDER BY embedding <=> $1::vector
+  //     LIMIT 1
+  //   `;
+  //
+  //   const result = await db.query(query, [
+  //     `[${embedding.join(',')}]`,
+  //     userId,
+  //     projectId,
+  //     nodeType
+  //   ]);
+  //
+  //   return result.rows[0] ? this._mapKnowledgeNodeFromDb(result.rows[0]) : null;
+  // }
 
   async _reinforceKnowledgeNode(nodeId) {
     const query = `
