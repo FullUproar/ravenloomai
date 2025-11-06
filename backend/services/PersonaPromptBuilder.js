@@ -224,16 +224,17 @@ Keep your tone conversational and supportive. Act like a smart assistant who get
   }
 
   /**
-   * Build messages array with 3-tier memory system
+   * Build messages array with 4-tier memory system
    *
    * @param {Object} persona - Persona object
    * @param {Object} project - Project object
    * @param {Object} shortTermContext - Tier 1 memory (recent messages + summary)
    * @param {Array} mediumTermMemories - Tier 2 memory (tactical scratchpad)
    * @param {string} userMessage - Current user message
+   * @param {string} longTermMemory - Tier 3 memory (episodic + semantic)
    * @returns {Array} - Messages array for OpenAI API
    */
-  buildChatMessagesWithMemory(persona, project, shortTermContext, mediumTermMemories, userMessage) {
+  buildChatMessagesWithMemory(persona, project, shortTermContext, mediumTermMemories, userMessage, longTermMemory = null) {
     const messages = [];
 
     // System prompt
@@ -245,6 +246,11 @@ Keep your tone conversational and supportive. Act like a smart assistant who get
 
     // Add memory context as a user message (so AI sees it as current context)
     let memoryContext = '';
+
+    // Tier 3: Long-term memory (episodic summaries + semantic facts)
+    if (longTermMemory) {
+      memoryContext += longTermMemory;
+    }
 
     // Tier 2: Medium-term memory (facts, decisions, blockers, preferences)
     if (mediumTermMemories && mediumTermMemories.length > 0) {

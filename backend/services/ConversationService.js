@@ -11,6 +11,7 @@ import PersonaPromptBuilder from './PersonaPromptBuilder.js';
 import { generateChatCompletion, generateChatCompletionWithFunctions, buildMessageHistory } from '../utils/llm.js';
 import ShortTermMemory from './ShortTermMemory.js';
 import MediumTermMemory from './MediumTermMemory.js';
+import MemoryService from './MemoryService.js';
 import AI_FUNCTIONS from '../config/aiFunctions.js';
 import AIFunctionExecutor from './AIFunctionExecutor.js';
 
@@ -159,8 +160,22 @@ class ConversationService {
     // Tier 2: Get medium-term memory (tactical scratchpad)
     const mediumTermMemories = await MediumTermMemory.getMemories(projectId);
 
+    // Tier 3: Get episodic & semantic memory (long-term context)
+    const longTermMemoryContext = await MemoryService.getMemoryContext(userId, projectId, userMessage);
+    const longTermMemoryText = MemoryService.formatMemoryContextForPrompt(longTermMemoryContext);
+
     // Check if we need to update conversation summary
     await ShortTermMemory.updateSummaryIfNeeded(conversation.id);
+
+    // Check if we should create episode summary
+    const shouldSummarize = await MemoryService.shouldTriggerEpisodeSummarization(conversation.id);
+    if (shouldSummarize) {
+      console.log('[ConversationService] Triggering episode summarization in background');
+      // Don't await - run in background
+      this._triggerEpisodeSummarizationAsync(conversation.id).catch(err =>
+        console.error('[ConversationService] Episode summarization failed:', err)
+      );
+    }
 
     // Build prompt with memory context
     const messages = this.promptBuilder.buildChatMessagesWithMemory(
@@ -168,7 +183,8 @@ class ConversationService {
       project,
       shortTermContext,
       mediumTermMemories,
-      userMessage
+      userMessage,
+      longTermMemoryText
     );
 
     try {
@@ -350,6 +366,30 @@ class ConversationService {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
+  }
+
+  /**
+   * Trigger episode summarization and fact extraction in background
+   *
+   * @private
+   * @param {number} conversationId - Conversation ID
+   * @returns {Promise<void>}
+   */
+  async _triggerEpisodeSummarizationAsync(conversationId) {
+    try {
+      const episode = await MemoryService.createEpisodeSummary(conversationId);
+
+      if (episode) {
+        console.log(`[ConversationService] Created episode ${episode.id}: ${episode.topic}`);
+
+        // Extract facts from the episode
+        const facts = await MemoryService.extractKnowledgeFacts(conversationId, episode.id);
+        console.log(`[ConversationService] Extracted ${facts.length} facts from episode`);
+      }
+    } catch (error) {
+      console.error('[ConversationService] Episode summarization error:', error);
+      // Don't throw - this is a background task
+    }
   }
 
   /**

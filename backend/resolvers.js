@@ -174,12 +174,84 @@ export default {
 
     getChatMessages: async (_, { userId, projectId }) => {
       const result = await db.query(
-        `SELECT * FROM chat_messages 
-         WHERE user_id = $1 AND project_id = $2 
+        `SELECT * FROM chat_messages
+         WHERE user_id = $1 AND project_id = $2
          ORDER BY created_at ASC`,
         [userId, projectId]
       );
       return result.rows;
+    },
+
+    // Memory - Episodic & Semantic
+    getMemoryContext: async (_, { userId, projectId, currentContext }) => {
+      const MemoryService = (await import('./services/MemoryService.js')).default;
+      return await MemoryService.getMemoryContext(userId, projectId, currentContext);
+    },
+
+    getConversationEpisodes: async (_, { projectId, limit = 10 }) => {
+      const result = await db.query(
+        `SELECT * FROM conversation_episodes
+         WHERE project_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [projectId, limit]
+      );
+      return result.rows.map(row => ({
+        id: row.id,
+        conversationId: row.conversation_id,
+        projectId: row.project_id,
+        userId: row.user_id,
+        startMessageId: row.start_message_id,
+        endMessageId: row.end_message_id,
+        messageCount: row.message_count,
+        topic: row.topic,
+        summary: row.summary,
+        keyPoints: typeof row.key_points === 'string' ? JSON.parse(row.key_points) : row.key_points,
+        decisionsMade: row.decisions_made,
+        emotionsDetected: row.emotions_detected,
+        userState: row.user_state,
+        createdAt: row.created_at
+      }));
+    },
+
+    getKnowledgeNodes: async (_, { userId, projectId, nodeTypes }) => {
+      let query = `
+        SELECT * FROM knowledge_nodes
+        WHERE user_id = $1
+          AND (project_id = $2 OR project_id IS NULL)
+          AND is_active = true
+      `;
+      const params = [userId, projectId];
+
+      if (nodeTypes && nodeTypes.length > 0) {
+        query += ` AND node_type = ANY($3)`;
+        params.push(nodeTypes);
+      }
+
+      query += ` ORDER BY confidence DESC, last_reinforced_at DESC LIMIT 20`;
+
+      const result = await db.query(query, params);
+      return result.rows.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        projectId: row.project_id,
+        nodeType: row.node_type,
+        label: row.label,
+        properties: row.properties,
+        sourceEpisodeId: row.source_episode_id,
+        sourceMessageId: row.source_message_id,
+        confidence: parseFloat(row.confidence),
+        lastReinforcedAt: row.last_reinforced_at,
+        timesMentioned: row.times_mentioned,
+        contradictedBy: row.contradicted_by,
+        isActive: row.is_active,
+        createdAt: row.created_at
+      }));
+    },
+
+    searchMemory: async (_, { userId, projectId, query }) => {
+      const MemoryService = (await import('./services/MemoryService.js')).default;
+      return await MemoryService.getMemoryContext(userId, projectId, query);
     }
   },
 
@@ -697,6 +769,26 @@ export default {
         [userId, projectId]
       );
       return true;
+    },
+
+    // Memory - Episodic & Semantic
+    triggerEpisodeSummarization: async (_, { conversationId }) => {
+      const MemoryService = (await import('./services/MemoryService.js')).default;
+      const episode = await MemoryService.createEpisodeSummary(conversationId);
+
+      if (!episode) {
+        throw new Error('No new messages to summarize');
+      }
+
+      // Automatically extract facts from episode
+      await MemoryService.extractKnowledgeFacts(conversationId, episode.id);
+
+      return episode;
+    },
+
+    extractKnowledgeFacts: async (_, { conversationId, episodeId }) => {
+      const MemoryService = (await import('./services/MemoryService.js')).default;
+      return await MemoryService.extractKnowledgeFacts(conversationId, episodeId);
     }
   }
 };

@@ -226,9 +226,54 @@ export default gql`
   }
 
   # ============================================================================
-  # MEMORY TYPES (3-Tier System)
+  # MEMORY TYPES (Enhanced - Episodic + Semantic Memory)
   # ============================================================================
 
+  # Episodic Memory - Conversation summaries
+  type ConversationEpisode {
+    id: ID!
+    conversationId: ID!
+    projectId: ID!
+    userId: String!
+    startMessageId: ID
+    endMessageId: ID
+    messageCount: Int!
+    topic: String
+    summary: String!
+    keyPoints: [String!]!
+    decisionsMade: JSON
+    emotionsDetected: String
+    userState: String
+    createdAt: DateTime!
+  }
+
+  # Semantic Memory - Knowledge Graph nodes (facts about user/project)
+  type KnowledgeNode {
+    id: ID!
+    userId: String!
+    projectId: ID
+    nodeType: String!
+    label: String!
+    properties: JSON
+    sourceEpisodeId: ID
+    sourceMessageId: ID
+    confidence: Float!
+    lastReinforcedAt: DateTime!
+    timesMentioned: Int!
+    contradictedBy: ID
+    isActive: Boolean!
+    createdAt: DateTime!
+  }
+
+  # Memory retrieval results with context
+  type MemoryContext {
+    recentEpisodes: [ConversationEpisode!]!
+    relevantFacts: [KnowledgeNode!]!
+    blockers: [KnowledgeNode!]!
+    strengths: [KnowledgeNode!]!
+  }
+
+  # Legacy ProjectMemory (keep for backward compatibility)
   type ProjectMemory {
     id: ID!
     projectId: ID!
@@ -249,6 +294,8 @@ export default gql`
     preferences: Int!
     insights: Int!
     avgImportance: Float!
+    episodeCount: Int!
+    knowledgeNodeCount: Int!
   }
 
   type ConversationSummary {
@@ -426,11 +473,17 @@ export default gql`
     # Metrics
     getMetrics(projectId: ID!, goalId: ID, dateFrom: DateTime, dateTo: DateTime): [Metric!]!
 
-    # Memory
+    # Memory - Legacy
     getProjectMemories(projectId: ID!): [ProjectMemory!]!
     getMemoriesByType(projectId: ID!, memoryType: String!): [ProjectMemory!]!
     getMemoryStats(projectId: ID!): MemoryStats!
     getConversationSummary(conversationId: ID!): ConversationSummary
+
+    # Memory - Episodic & Semantic
+    getMemoryContext(userId: String!, projectId: ID!, currentContext: String): MemoryContext!
+    getConversationEpisodes(projectId: ID!, limit: Int): [ConversationEpisode!]!
+    getKnowledgeNodes(userId: String!, projectId: ID, nodeTypes: [String!]): [KnowledgeNode!]!
+    searchMemory(userId: String!, projectId: ID, query: String!): MemoryContext!
 
     # Sharing & Connections
     getConnections(userId: String!, status: String): [UserConnection!]!
@@ -484,11 +537,15 @@ export default gql`
     # Metrics
     recordMetric(projectId: ID!, input: MetricInput!): Metric!
 
-    # Memory
+    # Memory - Legacy
     setProjectMemory(projectId: ID!, input: MemoryInput!): ProjectMemory!
     removeProjectMemory(projectId: ID!, key: String!): Boolean!
     updateMemoryImportance(projectId: ID!, key: String!, importance: Int!): ProjectMemory!
     createConversationSummary(conversationId: ID!): ConversationSummary!
+
+    # Memory - Episodic & Semantic (Automatic - no manual creation needed)
+    triggerEpisodeSummarization(conversationId: ID!): ConversationEpisode!
+    extractKnowledgeFacts(conversationId: ID!, episodeId: ID!): [KnowledgeNode!]!
 
     # Sharing & Connections
     sendConnectionRequest(requesterId: String!, recipientId: String!): UserConnection!
