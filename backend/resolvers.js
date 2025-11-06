@@ -259,7 +259,9 @@ export default {
     createdAt: (parent) => parent.created_at,
     updatedAt: (parent) => parent.updated_at,
     userId: (parent) => parent.user_id,
-    
+    debugModeEnabled: (parent) => parent.debug_mode_enabled || false,
+    debugModeActivatedAt: (parent) => parent.debug_mode_activated_at,
+
     goals: async (parent) => {
       const result = await db.query(
         'SELECT * FROM goals WHERE project_id = $1 ORDER BY priority ASC',
@@ -378,6 +380,47 @@ export default {
     deleteProject: async (_, { projectId }) => {
       await db.query('DELETE FROM projects WHERE id = $1', [projectId]);
       return true;
+    },
+
+    enableDebugMode: async (_, { projectId, passcode }) => {
+      // Check passcode (simple check - can be enhanced)
+      const validPasscode = process.env.DEBUG_MODE_PASSCODE || 'RAVENLOOM_DEBUG_2025';
+
+      if (passcode !== validPasscode) {
+        throw new Error('Invalid passcode');
+      }
+
+      const result = await db.query(
+        `UPDATE projects
+         SET debug_mode_enabled = true, debug_mode_activated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [projectId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error('Project not found');
+      }
+
+      console.log(`🐛 [Debug Mode] Enabled for project ${projectId}`);
+      return result.rows[0];
+    },
+
+    disableDebugMode: async (_, { projectId }) => {
+      const result = await db.query(
+        `UPDATE projects
+         SET debug_mode_enabled = false
+         WHERE id = $1
+         RETURNING *`,
+        [projectId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error('Project not found');
+      }
+
+      console.log(`🐛 [Debug Mode] Disabled for project ${projectId}`);
+      return result.rows[0];
     },
 
     createGoal: async (_, { projectId, input }) => {

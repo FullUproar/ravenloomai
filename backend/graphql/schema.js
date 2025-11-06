@@ -93,6 +93,8 @@ export default gql`
     inReplyTo: ID
     intent: String
     confidence: Float
+    isDebugMessage: Boolean!
+    debugData: JSON
     createdAt: DateTime!
   }
 
@@ -126,6 +128,10 @@ export default gql`
 
     # Recurring goals
     recurringGoal: JSON
+
+    # Debug mode
+    debugModeEnabled: Boolean!
+    debugModeActivatedAt: DateTime
 
     # Relationships
     persona: Persona
@@ -501,6 +507,8 @@ export default gql`
     createProject(userId: String!, input: ProjectInput!): Project!
     updateProject(projectId: ID!, input: ProjectInput!): Project!
     deleteProject(projectId: ID!): Boolean!
+    enableDebugMode(projectId: ID!, passcode: String!): Project!
+    disableDebugMode(projectId: ID!): Project!
 
     # Personas
     createPersona(projectId: ID!, userId: String!, input: PersonaInput!): Persona!

@@ -23,6 +23,8 @@ const GET_PROJECT = gql`
       status
       completionType
       outcome
+      debugModeEnabled
+      debugModeActivatedAt
       persona {
         id
         displayName
@@ -68,6 +70,8 @@ const GET_CONVERSATION = gql`
         content
         senderName
         senderType
+        isDebugMessage
+        debugData
         createdAt
       }
     }
@@ -128,6 +132,25 @@ const DELETE_PROJECT = gql`
   }
 `;
 
+const ENABLE_DEBUG_MODE = gql`
+  mutation EnableDebugMode($projectId: ID!, $passcode: String!) {
+    enableDebugMode(projectId: $projectId, passcode: $passcode) {
+      id
+      debugModeEnabled
+      debugModeActivatedAt
+    }
+  }
+`;
+
+const DISABLE_DEBUG_MODE = gql`
+  mutation DisableDebugMode($projectId: ID!) {
+    disableDebugMode(projectId: $projectId) {
+      id
+      debugModeEnabled
+    }
+  }
+`;
+
 function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, onCreateProject, onSignOut }) {
   const [message, setMessage] = useState('');
   const [selectedContext, setSelectedContext] = useState('all');
@@ -177,6 +200,18 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
   });
 
   const [deleteProject] = useMutation(DELETE_PROJECT);
+
+  const [enableDebugMode] = useMutation(ENABLE_DEBUG_MODE, {
+    refetchQueries: ['GetProject']
+  });
+
+  const [disableDebugMode] = useMutation(DISABLE_DEBUG_MODE, {
+    refetchQueries: ['GetProject']
+  });
+
+  // Debug mode state
+  const [showDebugPasscodeModal, setShowDebugPasscodeModal] = useState(false);
+  const [debugPasscode, setDebugPasscode] = useState('');
 
   useEffect(() => {
     if (currentView === 'chat') {
@@ -423,6 +458,43 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
     } catch (error) {
       console.error('Error creating task:', error);
       alert('Failed to create task: ' + error.message);
+    }
+  };
+
+  const handleToggleDebugMode = async () => {
+    if (project?.debugModeEnabled) {
+      // Disable debug mode
+      if (!confirm('Disable debug mode?')) return;
+
+      try {
+        await disableDebugMode({
+          variables: { projectId: parseInt(projectId) }
+        });
+      } catch (error) {
+        console.error('Error disabling debug mode:', error);
+        alert('Failed to disable debug mode: ' + error.message);
+      }
+    } else {
+      // Show passcode modal
+      setShowDebugPasscodeModal(true);
+    }
+  };
+
+  const handleSubmitDebugPasscode = async () => {
+    try {
+      await enableDebugMode({
+        variables: {
+          projectId: parseInt(projectId),
+          passcode: debugPasscode
+        }
+      });
+
+      setShowDebugPasscodeModal(false);
+      setDebugPasscode('');
+      alert('🐛 Debug mode enabled! You\'ll now see memory system activity in red.');
+    } catch (error) {
+      console.error('Error enabling debug mode:', error);
+      alert('Invalid passcode or error: ' + error.message);
     }
   };
 
@@ -681,6 +753,78 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
               <div style={{ fontSize: '1.5rem', fontWeight: '600', color: '#5D4B8C' }}>
                 {tasks.filter(t => t.status === 'completed').length} / {tasks.length} tasks
               </div>
+            </div>
+
+            {/* Debug Mode */}
+            <div style={{
+              backgroundColor: '#1A1A1A',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              marginBottom: '1rem'
+            }}>
+              <h3 style={{
+                margin: '0 0 1rem 0',
+                fontSize: '1.1rem',
+                color: '#9D8BCC'
+              }}>
+                🐛 Debug Mode
+              </h3>
+              <p style={{
+                color: '#888',
+                fontSize: '0.9rem',
+                marginBottom: '1rem',
+                lineHeight: '1.5'
+              }}>
+                See memory system activity in real-time
+              </p>
+              {project?.debugModeEnabled ? (
+                <div>
+                  <div style={{
+                    padding: '1rem',
+                    backgroundColor: '#2A1515',
+                    borderRadius: '8px',
+                    color: '#FF6B6B',
+                    fontSize: '0.95rem',
+                    textAlign: 'center',
+                    marginBottom: '0.75rem'
+                  }}>
+                    ✓ Debug Mode Active
+                  </div>
+                  <button
+                    onClick={handleToggleDebugMode}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      backgroundColor: '#6B2222',
+                      color: '#FF6B6B',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: '500'
+                    }}
+                  >
+                    Disable Debug Mode
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleToggleDebugMode}
+                  style={{
+                    width: '100%',
+                    padding: '1rem',
+                    backgroundColor: '#5D4B8C',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    fontWeight: '500'
+                  }}
+                >
+                  Enable Debug Mode
+                </button>
+              )}
             </div>
 
             {/* Ravens (Notifications) */}
@@ -1437,12 +1581,119 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
           </div>
         </div>
       )}
+
+      {/* Debug Passcode Modal */}
+      {showDebugPasscodeModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1001,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: '#1A1A1A',
+            borderRadius: '16px',
+            padding: '1.5rem',
+            maxWidth: '400px',
+            width: '100%'
+          }}>
+            <h2 style={{
+              margin: '0 0 1rem 0',
+              fontSize: '1.3rem',
+              color: '#9D8BCC',
+              fontWeight: '600'
+            }}>
+              Enable Debug Mode
+            </h2>
+            <p style={{
+              color: '#888',
+              fontSize: '0.9rem',
+              marginBottom: '1rem',
+              lineHeight: '1.5'
+            }}>
+              Enter the debug passcode to enable memory system visibility:
+            </p>
+            <input
+              type="text"
+              value={debugPasscode}
+              onChange={(e) => setDebugPasscode(e.target.value)}
+              placeholder="Enter passcode"
+              style={{
+                width: '100%',
+                padding: '0.875rem',
+                backgroundColor: '#0D0D0D',
+                border: '2px solid #2D2D40',
+                borderRadius: '12px',
+                color: '#D9D9E3',
+                fontSize: '1rem',
+                fontFamily: 'monospace',
+                marginBottom: '1rem'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
+              onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleSubmitDebugPasscode();
+                }
+              }}
+            />
+            <div style={{
+              display: 'flex',
+              gap: '0.75rem'
+            }}>
+              <button
+                onClick={() => {
+                  setShowDebugPasscodeModal(false);
+                  setDebugPasscode('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  backgroundColor: '#2D2D40',
+                  color: '#D9D9E3',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitDebugPasscode}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  backgroundColor: '#5D4B8C',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: '500'
+                }}
+              >
+                Enable
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function MessageBubble({ message, persona, onAcceptTask, onAcceptMilestone }) {
   const isUser = message.senderType === 'user';
+  const isDebug = message.isDebugMessage;
 
   const { cleanedContent, elements } = isUser
     ? { cleanedContent: message.content, elements: [] }
@@ -1451,6 +1702,49 @@ function MessageBubble({ message, persona, onAcceptTask, onAcceptMilestone }) {
   const handleDismiss = () => {
     console.log('Dismissed');
   };
+
+  // Debug messages have special styling
+  if (isDebug) {
+    return (
+      <div style={{
+        padding: '0.75rem 1rem',
+        backgroundColor: '#2A1515',
+        border: '1px solid #6B2222',
+        borderRadius: '8px',
+        marginBottom: '0.5rem'
+      }}>
+        <div style={{
+          fontSize: '0.85rem',
+          color: '#FF6B6B',
+          fontFamily: 'monospace',
+          lineHeight: '1.4'
+        }}>
+          {message.content}
+        </div>
+        {message.debugData && (
+          <details style={{ marginTop: '0.5rem' }}>
+            <summary style={{
+              fontSize: '0.75rem',
+              color: '#FF8C8C',
+              cursor: 'pointer',
+              userSelect: 'none'
+            }}>
+              Debug Data
+            </summary>
+            <pre style={{
+              fontSize: '0.7rem',
+              color: '#FFA5A5',
+              marginTop: '0.5rem',
+              overflow: 'auto',
+              maxHeight: '200px'
+            }}>
+              {JSON.stringify(message.debugData, null, 2)}
+            </pre>
+          </details>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{

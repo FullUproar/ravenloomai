@@ -66,5 +66,18 @@ export default {
       // Otherwise fetch them
       return await ConversationService.getConversationHistory(conversation.id);
     }
+  },
+
+  Message: {
+    conversationId: (parent) => parent.conversationId || parent.conversation_id,
+    senderId: (parent) => parent.senderId || parent.sender_id,
+    senderType: (parent) => parent.senderType || parent.sender_type,
+    senderName: (parent) => parent.senderName || parent.sender_name,
+    senderAvatar: (parent) => parent.senderAvatar || parent.sender_avatar,
+    addressedTo: (parent) => parent.addressedTo || parent.addressed_to || [],
+    inReplyTo: (parent) => parent.inReplyTo || parent.in_reply_to,
+    isDebugMessage: (parent) => parent.isDebugMessage || parent.is_debug_message || false,
+    debugData: (parent) => parent.debugData || parent.debug_data,
+    createdAt: (parent) => parent.createdAt || parent.created_at
   }
 };

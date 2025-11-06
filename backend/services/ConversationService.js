@@ -171,8 +171,21 @@ class ConversationService {
     const shouldSummarize = await MemoryService.shouldTriggerEpisodeSummarization(conversation.id);
     if (shouldSummarize) {
       console.log('[ConversationService] Triggering episode summarization in background');
+
+      // If debug mode, inject debug message
+      if (project.debug_mode_enabled) {
+        await this._addDebugMessage(
+          conversation.id,
+          '🧠 Memory System: Creating episode summary',
+          {
+            action: 'episode_summarization',
+            messageCount: 'approximately 15 messages'
+          }
+        );
+      }
+
       // Don't await - run in background
-      this._triggerEpisodeSummarizationAsync(conversation.id).catch(err =>
+      this._triggerEpisodeSummarizationAsync(conversation.id, project.debug_mode_enabled).catch(err =>
         console.error('[ConversationService] Episode summarization failed:', err)
       );
     }
@@ -373,23 +386,90 @@ class ConversationService {
    *
    * @private
    * @param {number} conversationId - Conversation ID
+   * @param {boolean} debugMode - Whether to inject debug messages
    * @returns {Promise<void>}
    */
-  async _triggerEpisodeSummarizationAsync(conversationId) {
+  async _triggerEpisodeSummarizationAsync(conversationId, debugMode = false) {
     try {
       const episode = await MemoryService.createEpisodeSummary(conversationId);
 
       if (episode) {
         console.log(`[ConversationService] Created episode ${episode.id}: ${episode.topic}`);
 
+        if (debugMode) {
+          await this._addDebugMessage(
+            conversationId,
+            `✅ Episode Summary Created: "${episode.topic}"`,
+            {
+              episodeId: episode.id,
+              summary: episode.summary,
+              keyPoints: episode.keyPoints,
+              emotions: episode.emotionsDetected,
+              userState: episode.userState
+            }
+          );
+        }
+
         // Extract facts from the episode
         const facts = await MemoryService.extractKnowledgeFacts(conversationId, episode.id);
         console.log(`[ConversationService] Extracted ${facts.length} facts from episode`);
+
+        if (debugMode && facts.length > 0) {
+          const factLabels = facts.map(f => `${f.nodeType}: ${f.label}`).join('\n- ');
+          await this._addDebugMessage(
+            conversationId,
+            `💡 Extracted ${facts.length} Knowledge Facts`,
+            {
+              facts: facts.map(f => ({
+                type: f.nodeType,
+                fact: f.label,
+                confidence: f.confidence
+              }))
+            }
+          );
+        }
       }
     } catch (error) {
       console.error('[ConversationService] Episode summarization error:', error);
+      if (debugMode) {
+        await this._addDebugMessage(
+          conversationId,
+          `❌ Memory System Error: ${error.message}`,
+          { error: error.message }
+        );
+      }
       // Don't throw - this is a background task
     }
+  }
+
+  /**
+   * Add debug message to conversation
+   *
+   * @private
+   * @param {number} conversationId - Conversation ID
+   * @param {string} content - Debug message content
+   * @param {Object} debugData - Additional debug data
+   * @returns {Promise<void>}
+   */
+  async _addDebugMessage(conversationId, content, debugData = {}) {
+    const query = `
+      INSERT INTO conversation_messages (
+        conversation_id, sender_id, sender_type, sender_name, content,
+        is_debug_message, debug_data
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `;
+
+    const values = [
+      conversationId,
+      'system',
+      'system',
+      'Debug System',
+      content,
+      true,
+      JSON.stringify(debugData)
+    ];
+
+    await db.query(query, values);
   }
 
   /**
