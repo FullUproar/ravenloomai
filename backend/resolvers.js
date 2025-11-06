@@ -396,27 +396,41 @@ export default {
     },
 
     enableDebugMode: async (_, { projectId, passcode }) => {
-      // Check passcode (simple check - can be enhanced)
-      const validPasscode = process.env.DEBUG_MODE_PASSCODE || 'RAVENLOOM_DEBUG_2025';
+      try {
+        // Check passcode (simple check - can be enhanced)
+        const validPasscode = process.env.DEBUG_MODE_PASSCODE || 'RAVENLOOM_DEBUG_2025';
 
-      if (passcode !== validPasscode) {
-        throw new Error('Invalid passcode');
+        console.log(`🐛 [Debug Mode] Attempting to enable for project ${projectId}`);
+        console.log(`🐛 [Debug Mode] Passcode check: ${passcode === validPasscode ? 'VALID' : 'INVALID'}`);
+
+        if (passcode !== validPasscode) {
+          throw new Error('Invalid passcode');
+        }
+
+        const result = await db.query(
+          `UPDATE projects
+           SET debug_mode_enabled = true, debug_mode_activated_at = CURRENT_TIMESTAMP
+           WHERE id = $1
+           RETURNING *`,
+          [projectId]
+        );
+
+        if (result.rows.length === 0) {
+          throw new Error('Project not found');
+        }
+
+        const project = result.rows[0];
+        console.log(`🐛 [Debug Mode] Enabled successfully`, {
+          id: project.id,
+          debug_mode_enabled: project.debug_mode_enabled,
+          debug_mode_activated_at: project.debug_mode_activated_at
+        });
+
+        return project;
+      } catch (error) {
+        console.error('🐛 [Debug Mode] Error:', error);
+        throw error;
       }
-
-      const result = await db.query(
-        `UPDATE projects
-         SET debug_mode_enabled = true, debug_mode_activated_at = CURRENT_TIMESTAMP
-         WHERE id = $1
-         RETURNING *`,
-        [projectId]
-      );
-
-      if (result.rows.length === 0) {
-        throw new Error('Project not found');
-      }
-
-      console.log(`🐛 [Debug Mode] Enabled for project ${projectId}`);
-      return result.rows[0];
     },
 
     disableDebugMode: async (_, { projectId }) => {
