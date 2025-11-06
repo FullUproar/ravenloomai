@@ -397,13 +397,19 @@ export default {
 
     enableDebugMode: async (_, { projectId, passcode }) => {
       try {
-        // Check passcode (simple check - can be enhanced)
-        const validPasscode = process.env.DEBUG_MODE_PASSCODE || 'RAVENLOOM_DEBUG_2025';
+        // Use simpler passcode
+        const validPasscode = process.env.DEBUG_MODE_PASSCODE || '0000';
+
+        // Normalize both strings to avoid whitespace/encoding issues
+        const normalizedPasscode = String(passcode).trim();
+        const normalizedValidPasscode = String(validPasscode).trim();
 
         console.log(`🐛 [Debug Mode] Attempting to enable for project ${projectId}`);
-        console.log(`🐛 [Debug Mode] Passcode check: ${passcode === validPasscode ? 'VALID' : 'INVALID'}`);
+        console.log(`🐛 [Debug Mode] Received passcode: "${normalizedPasscode}" (length: ${normalizedPasscode.length})`);
+        console.log(`🐛 [Debug Mode] Expected passcode: "${normalizedValidPasscode}" (length: ${normalizedValidPasscode.length})`);
+        console.log(`🐛 [Debug Mode] Match: ${normalizedPasscode === normalizedValidPasscode}`);
 
-        if (passcode !== validPasscode) {
+        if (normalizedPasscode !== normalizedValidPasscode) {
           throw new Error('Invalid passcode');
         }
 
