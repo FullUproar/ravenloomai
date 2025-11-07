@@ -376,6 +376,8 @@ class ConversationService {
       recurringGoal: typeof row.recurring_goal === 'string'
         ? JSON.parse(row.recurring_goal)
         : row.recurring_goal,
+      debug_mode_enabled: row.debug_mode_enabled || false,
+      debug_mode_activated_at: row.debug_mode_activated_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
