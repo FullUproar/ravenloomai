@@ -189,12 +189,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
     pollInterval: isGenerating ? 2000 : 5000, // Poll faster while generating
   });
 
-  const [sendMessage] = useMutation(SEND_MESSAGE, {
-    onCompleted: () => {
-      // Clear optimistic messages immediately when mutation completes
-      setOptimisticMessages([]);
-    }
-  });
+  const [sendMessage] = useMutation(SEND_MESSAGE);
 
   const [updateTaskStatus] = useMutation(UPDATE_TASK_STATUS, {
     refetchQueries: ['GetProject']
@@ -263,7 +258,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
     setIsGenerating(true);
 
     try {
-      // Send message to backend (onCompleted will clear optimistic messages)
+      // Send message to backend
       await sendMessage({
         variables: {
           projectId: parseInt(projectId),
@@ -274,6 +269,10 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
 
       // Refetch to get the complete response
       await refetchChat();
+
+      // Clear optimistic messages AFTER refetch completes
+      // This ensures the real message is already in the list before we remove the optimistic one
+      setOptimisticMessages([]);
     } catch (error) {
       console.error('Error sending message:', error);
       alert('Failed to send message: ' + error.message);
