@@ -256,7 +256,17 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', proje
   const project = projectData?.getProject;
   const conversation = chatData?.getConversation;
   const serverMessages = conversation?.messages || [];
-  const messages = [...serverMessages, ...optimisticMessages];
+
+  // Filter out optimistic messages that match real messages (by content and sender)
+  const uniqueOptimisticMessages = optimisticMessages.filter(optMsg =>
+    !serverMessages.some(serverMsg =>
+      serverMsg.content === optMsg.content &&
+      serverMsg.senderType === optMsg.senderType &&
+      Math.abs(new Date(serverMsg.createdAt) - new Date(optMsg.createdAt)) < 5000 // Within 5 seconds
+    )
+  );
+
+  const messages = [...serverMessages, ...uniqueOptimisticMessages];
   const tasks = project?.tasks || [];
 
   const filteredTasks = selectedContext === 'all'
