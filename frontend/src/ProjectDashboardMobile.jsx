@@ -1,5 +1,6 @@
 import { gql, useQuery, useMutation } from '@apollo/client';
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   TaskSuggestion,
@@ -151,11 +152,27 @@ const DISABLE_DEBUG_MODE = gql`
   }
 `;
 
-function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, onCreateProject, onSignOut }) {
+function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', projects, onProjectChange, onCreateProject, onSignOut }) {
+  const navigate = useNavigate();
+  const { view: urlView } = useParams();
+
   const [message, setMessage] = useState('');
   const [selectedContext, setSelectedContext] = useState('all');
-  const [currentView, setCurrentView] = useState('chat'); // 'chat', 'tasks', 'goals', 'connections', 'project'
+  const [currentView, setCurrentView] = useState(urlView || initialView); // 'chat', 'tasks', 'goals', 'connections', 'project'
   const [ravensEnabled, setRavensEnabled] = useState(false);
+
+  // Sync currentView with URL
+  useEffect(() => {
+    if (urlView && urlView !== currentView) {
+      setCurrentView(urlView);
+    }
+  }, [urlView]);
+
+  // Helper to change view and update URL
+  const changeView = (newView) => {
+    setCurrentView(newView);
+    navigate(`/project/${projectId}/${newView}`);
+  };
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -180,8 +197,9 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
 
   const messagesEndRef = useRef(null);
 
-  const { loading: projectLoading, data: projectData } = useQuery(GET_PROJECT, {
+  const { loading: projectLoading, data: projectData, refetch: refetchProject } = useQuery(GET_PROJECT, {
     variables: { userId, projectId },
+    fetchPolicy: 'cache-and-network', // Always check network for fresh data
   });
 
   const { loading: chatLoading, data: chatData, refetch: refetchChat } = useQuery(GET_CONVERSATION, {
@@ -223,6 +241,13 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
   useEffect(() => {
     checkRavenPermissions().then(setRavensEnabled).catch(() => setRavensEnabled(false));
   }, []);
+
+  // Refetch project data when switching to tasks view
+  useEffect(() => {
+    if (currentView === 'tasks') {
+      refetchProject();
+    }
+  }, [currentView]);
 
   if (projectLoading) {
     return <div style={{ color: '#ccc', padding: '2rem' }}>Loading project...</div>;
@@ -693,9 +718,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
           <TaskManager
             tasks={tasks}
             onCreateTask={() => setShowCreateTask(true)}
-            refetchTasks={() => {
-              // Refetch is handled automatically by Apollo
-            }}
+            refetchTasks={() => refetchProject()}
           />
         )}
 
@@ -983,7 +1006,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
         justifyContent: 'space-around'
       }}>
         <button
-          onClick={() => setCurrentView('chat')}
+          onClick={() => changeView('chat')}
           style={{
             flex: 1,
             padding: '0.75rem',
@@ -1003,7 +1026,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
           Chat
         </button>
         <button
-          onClick={() => setCurrentView('tasks')}
+          onClick={() => changeView('tasks')}
           style={{
             flex: 1,
             padding: '0.75rem',
@@ -1039,7 +1062,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
           )}
         </button>
         <button
-          onClick={() => setCurrentView('goals')}
+          onClick={() => changeView('goals')}
           style={{
             flex: 1,
             padding: '0.75rem',
@@ -1059,7 +1082,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
           Goals
         </button>
         <button
-          onClick={() => setCurrentView('connections')}
+          onClick={() => changeView('connections')}
           style={{
             flex: 1,
             padding: '0.75rem',
@@ -1079,7 +1102,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
           Connect
         </button>
         <button
-          onClick={() => setCurrentView('project')}
+          onClick={() => changeView('project')}
           style={{
             flex: 1,
             padding: '0.75rem',

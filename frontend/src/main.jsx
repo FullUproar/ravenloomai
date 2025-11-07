@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import App from './App.jsx';
 import './styles.css';
 
@@ -49,7 +49,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <ApolloProvider client={client}>
-        <App apolloClient={client} />
+        <Routes>
+          <Route path="/project/:projectId/:view" element={<App apolloClient={client} />} />
+          <Route path="/project/:projectId" element={<App apolloClient={client} />} />
+          <Route path="*" element={<App apolloClient={client} />} />
+        </Routes>
       </ApolloProvider>
     </BrowserRouter>
   </React.StrictMode>

@@ -73,13 +73,18 @@ const CREATE_PERSONA_FROM_GOAL = gql`
 `;
 
 function App({ apolloClient }) {
+  const navigate = useNavigate();
+  const { projectId: urlProjectId, view: urlView } = useParams();
+
   const [user, setUser] = useState(undefined); // undefined = loading, null = logged out
   const [isTestUser, setIsTestUser] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false); // Track active sign-in
   const [showLogin, setShowLogin] = useState(false); // Toggle between landing page and login
+
+  // Get project ID from URL or state
+  const selectedProjectId = urlProjectId || null;
 
   // Use ref to track test user status across renders
   const isTestUserRef = useRef(isTestUser);
@@ -365,8 +370,8 @@ function App({ apolloClient }) {
 
       console.log('Persona created:', personaResult.data.createPersonaFromGoal);
 
-      // Select the new project
-      setSelectedProjectId(projectId);
+      // Navigate to the new project
+      navigate(`/project/${projectId}/chat`);
       setShowCreateProject(false);
     } catch (error) {
       console.error('Error creating project:', error);
@@ -389,6 +394,7 @@ function App({ apolloClient }) {
     );
   }
 
+  // Render project dashboard if we have a project ID in URL
   if (selectedProjectId) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0D0D0D' }}>
@@ -397,8 +403,9 @@ function App({ apolloClient }) {
           <ProjectDashboardMobile
             userId={user?.uid || "test-user-123"}
             projectId={selectedProjectId}
+            initialView={urlView || 'chat'}
             projects={projects}
-            onProjectChange={setSelectedProjectId}
+            onProjectChange={(newProjectId) => navigate(`/project/${newProjectId}/chat`)}
             onCreateProject={() => setShowCreateProject(true)}
             onSignOut={handleSignOut}
           />
@@ -469,7 +476,7 @@ function App({ apolloClient }) {
               {projects.map(project => (
                 <div
                   key={project.id}
-                  onClick={() => setSelectedProjectId(project.id)}
+                  onClick={() => navigate(`/project/${project.id}/chat`)}
                   style={{
                     background: '#1A1A1A',
                     padding: '1.5rem',
