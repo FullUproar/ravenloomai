@@ -259,7 +259,7 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
 
     try {
       // Send message to backend
-      await sendMessage({
+      const result = await sendMessage({
         variables: {
           projectId: parseInt(projectId),
           userId,
@@ -267,8 +267,12 @@ function ProjectDashboardMobile({ userId, projectId, projects, onProjectChange, 
         }
       });
 
-      // Clear optimistic messages and refetch to get real data
+      // Clear optimistic messages FIRST, then refetch
       setOptimisticMessages([]);
+
+      // Small delay to ensure state update completes before refetch
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       await refetchChat();
     } catch (error) {
       console.error('Error sending message:', error);
