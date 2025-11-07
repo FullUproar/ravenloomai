@@ -137,35 +137,49 @@ class ConversationService {
    * @returns {Promise<Object>} - Response with message and optional suggestions
    */
   async generatePersonaResponse(projectId, userId, userMessage) {
+    console.log('[ConversationService] generatePersonaResponse started', { projectId, userId });
+
     // Get persona for project
     const persona = await PersonaService.getActivePersona(projectId);
     if (!persona) {
       throw new Error('No active persona found for this project');
     }
+    console.log('[ConversationService] Persona loaded:', persona.id);
 
     // Get project info
     const project = await this._getProject(projectId);
+    console.log('[ConversationService] Project loaded:', project.id);
 
     // Get or create conversation
     const conversation = await this.getOrCreateConversation(projectId, userId);
+    console.log('[ConversationService] Conversation ready:', conversation.id);
 
     // Add user message
     await this.addUserMessage(conversation.id, userId, userMessage);
+    console.log('[ConversationService] User message added');
 
     // === MEMORY SYSTEM INTEGRATION ===
 
     // Tier 1: Get short-term memory (recent messages + summary)
+    console.log('[ConversationService] Getting short-term memory...');
     const shortTermContext = await ShortTermMemory.getContext(conversation.id);
+    console.log('[ConversationService] Short-term memory loaded');
 
     // Tier 2: Get medium-term memory (tactical scratchpad)
+    console.log('[ConversationService] Getting medium-term memory...');
     const mediumTermMemories = await MediumTermMemory.getMemories(projectId);
+    console.log('[ConversationService] Medium-term memory loaded:', mediumTermMemories.length);
 
     // Tier 3: Get episodic & semantic memory (long-term context)
+    console.log('[ConversationService] Getting long-term memory...');
     const longTermMemoryContext = await MemoryService.getMemoryContext(userId, projectId, userMessage);
     const longTermMemoryText = MemoryService.formatMemoryContextForPrompt(longTermMemoryContext);
+    console.log('[ConversationService] Long-term memory loaded');
 
     // Check if we need to update conversation summary
+    console.log('[ConversationService] Updating summary if needed...');
     await ShortTermMemory.updateSummaryIfNeeded(conversation.id);
+    console.log('[ConversationService] Summary check complete');
 
     // Check if we should create episode summary
     const shouldSummarize = await MemoryService.shouldTriggerEpisodeSummarization(conversation.id);
