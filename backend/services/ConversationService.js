@@ -413,15 +413,23 @@ class ConversationService {
         console.log(`[ConversationService] Created episode ${episode.id}: ${episode.topic}`);
 
         if (debugMode) {
+          // Create detailed message about what was saved
+          const keyPointsList = episode.keyPoints && episode.keyPoints.length > 0
+            ? '\n• ' + episode.keyPoints.join('\n• ')
+            : '';
+
           await this._addDebugMessage(
             conversationId,
-            `✅ Episode Summary Created: "${episode.topic}"`,
+            `✅ Episode Memory Saved\n\nTopic: "${episode.topic}"\n\nSummary: ${episode.summary}${keyPointsList ? '\n\nKey Points:' + keyPointsList : ''}`,
             {
+              what_was_saved: 'Conversation episode summary',
               episodeId: episode.id,
+              topic: episode.topic,
               summary: episode.summary,
               keyPoints: episode.keyPoints,
               emotions: episode.emotionsDetected,
-              userState: episode.userState
+              userState: episode.userState,
+              how_it_works: 'This conversation was summarized and stored as an episode. The AI can recall this information in future conversations.'
             }
           );
         }
@@ -431,16 +439,21 @@ class ConversationService {
         console.log(`[ConversationService] Extracted ${facts.length} facts from episode`);
 
         if (debugMode && facts.length > 0) {
-          const factLabels = facts.map(f => `${f.nodeType}: ${f.label}`).join('\n- ');
+          const factsList = facts.map(f => `\n• [${f.nodeType}] ${f.label} (confidence: ${Math.round(f.confidence * 100)}%)`).join('');
+
           await this._addDebugMessage(
             conversationId,
-            `💡 Extracted ${facts.length} Knowledge Facts`,
+            `💡 Knowledge Facts Extracted and Saved${factsList}`,
             {
+              what_was_saved: 'Knowledge facts from conversation',
+              count: facts.length,
               facts: facts.map(f => ({
                 type: f.nodeType,
                 fact: f.label,
-                confidence: f.confidence
-              }))
+                confidence: Math.round(f.confidence * 100) + '%',
+                description: this._getFactTypeDescription(f.nodeType)
+              })),
+              how_it_works: 'These facts were extracted and saved to the knowledge graph. The AI will remember these facts and use them to personalize future conversations.'
             }
           );
         }
@@ -506,6 +519,26 @@ class ConversationService {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
+  }
+
+  /**
+   * Get description for fact type
+   *
+   * @private
+   * @param {string} nodeType - Type of knowledge node
+   * @returns {string}
+   */
+  _getFactTypeDescription(nodeType) {
+    const descriptions = {
+      preference: 'User preferences and likes/dislikes',
+      work_pattern: 'Work habits and patterns',
+      blocker: 'Obstacles or challenges',
+      strength: 'Skills and strengths',
+      goal: 'Aspirations and objectives',
+      belief: 'Values and beliefs',
+      success_pattern: 'What works well for the user'
+    };
+    return descriptions[nodeType] || 'General knowledge';
   }
 
   /**
