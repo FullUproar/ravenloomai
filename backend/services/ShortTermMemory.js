@@ -112,6 +112,11 @@ class ShortTermMemory {
       [conversationId]
     );
 
+    if (conversation.rows.length === 0) {
+      console.error('[ShortTermMemory] Conversation not found:', conversationId);
+      return;
+    }
+
     const { summary: existingSummary, message_count_at_summary } = conversation.rows[0];
     const lastSummaryCount = message_count_at_summary || 0;
 
@@ -155,6 +160,11 @@ class ShortTermMemory {
       temperature: 0.3,
       maxTokens: 500
     });
+
+    if (!summaryResponse || !summaryResponse.choices || summaryResponse.choices.length === 0) {
+      console.error('[ShortTermMemory] Invalid LLM response for summary');
+      return;
+    }
 
     const newSummary = summaryResponse.choices[0].message.content;
 
