@@ -130,6 +130,73 @@ export default {
       const result = await db.query(query, [projectId]);
 
       return result.rowCount > 0;
+    },
+
+    /**
+     * Enable debug mode for project
+     */
+    enableDebugMode: async (_, { projectId, passcode }) => {
+      try {
+        // Use simpler passcode
+        const validPasscode = process.env.DEBUG_MODE_PASSCODE || '0000';
+
+        // Normalize both strings to avoid whitespace/encoding issues
+        const normalizedPasscode = String(passcode).trim();
+        const normalizedValidPasscode = String(validPasscode).trim();
+
+        console.log(`🐛 [Debug Mode] Attempting to enable for project ${projectId}`);
+        console.log(`🐛 [Debug Mode] Received passcode: "${normalizedPasscode}" (length: ${normalizedPasscode.length})`);
+        console.log(`🐛 [Debug Mode] Expected passcode: "${normalizedValidPasscode}" (length: ${normalizedValidPasscode.length})`);
+        console.log(`🐛 [Debug Mode] Match: ${normalizedPasscode === normalizedValidPasscode}`);
+
+        if (normalizedPasscode !== normalizedValidPasscode) {
+          throw new Error('Invalid passcode');
+        }
+
+        const result = await db.query(
+          `UPDATE projects
+           SET debug_mode_enabled = true, debug_mode_activated_at = CURRENT_TIMESTAMP
+           WHERE id = $1
+           RETURNING *`,
+          [projectId]
+        );
+
+        if (result.rows.length === 0) {
+          throw new Error('Project not found');
+        }
+
+        const project = result.rows[0];
+        console.log(`🐛 [Debug Mode] Enabled successfully`, {
+          id: project.id,
+          debug_mode_enabled: project.debug_mode_enabled,
+          debug_mode_activated_at: project.debug_mode_activated_at
+        });
+
+        return mapProjectFromDb(project);
+      } catch (error) {
+        console.error('🐛 [Debug Mode] Error:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Disable debug mode for project
+     */
+    disableDebugMode: async (_, { projectId }) => {
+      const result = await db.query(
+        `UPDATE projects
+         SET debug_mode_enabled = false
+         WHERE id = $1
+         RETURNING *`,
+        [projectId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error('Project not found');
+      }
+
+      console.log(`🐛 [Debug Mode] Disabled for project ${projectId}`);
+      return mapProjectFromDb(result.rows[0]);
     }
   },
 
@@ -209,6 +276,8 @@ function mapProjectFromDb(row) {
     recurringGoal: typeof row.recurring_goal === 'string'
       ? JSON.parse(row.recurring_goal)
       : row.recurring_goal,
+    debugModeEnabled: row.debug_mode_enabled || false,
+    debugModeActivatedAt: row.debug_mode_activated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
