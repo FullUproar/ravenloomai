@@ -219,6 +219,7 @@ export function TaskManager({ tasks = [], onCreateTask, refetchTasks }) {
       description: taskData.description,
       dueDate: taskData.dueDate,
       priority: taskData.priority,
+      status: taskData.status || 'not_started',
       context: taskData.context,
       gtdType: taskData.gtdType || 'next_action',
       energyLevel: taskData.energyLevel || 'medium',
@@ -876,6 +877,30 @@ export function TaskManager({ tasks = [], onCreateTask, refetchTasks }) {
                 <option value="@errands">@errands</option>
                 <option value="@phone">@phone</option>
                 <option value="@anywhere">@anywhere</option>
+              </select>
+            </label>
+
+            <label style={{ display: 'block', marginBottom: '1rem' }}>
+              <div style={{ marginBottom: '0.5rem', color: '#888', fontSize: '0.875rem' }}>Status</div>
+              <select
+                value={editingTask.status || 'not_started'}
+                onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  backgroundColor: '#1A1A1A',
+                  border: '1px solid #2D2D40',
+                  borderRadius: '8px',
+                  color: '#D9D9E3',
+                  fontSize: '1rem'
+                }}
+              >
+                <option value="not_started">Not Started</option>
+                <option value="in_progress">In Progress</option>
+                <option value="blocked">Blocked</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="icebox">Icebox</option>
               </select>
             </label>
 

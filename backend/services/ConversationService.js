@@ -193,7 +193,7 @@ class ConversationService {
           '🧠 Memory System: Creating episode summary',
           {
             action: 'episode_summarization',
-            messageCount: 'approximately 15 messages'
+            messageCount: 'approximately 10 messages'
           }
         );
       }

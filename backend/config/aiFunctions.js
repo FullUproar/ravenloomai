@@ -153,7 +153,7 @@ export const AI_FUNCTIONS = [
   },
   {
     name: 'updateTaskStatus',
-    description: 'Update the status of a task. Use when user indicates a task is done, in progress, or blocked.',
+    description: 'Update the status of a task. Use when user says they completed/finished/closed a task, or when they mention a task is blocked, in progress, or cancelled. ALWAYS call this when user explicitly asks to close or complete a task.',
     parameters: {
       type: 'object',
       properties: {
@@ -163,8 +163,8 @@ export const AI_FUNCTIONS = [
         },
         status: {
           type: 'string',
-          description: 'New status',
-          enum: ['not_started', 'in_progress', 'blocked', 'done', 'cancelled']
+          description: 'New status: completed (done/finished), in_progress (working on it), blocked (stuck), cancelled (not doing), icebox (maybe later)',
+          enum: ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled', 'icebox']
         },
         result: {
           type: 'object',
@@ -185,14 +185,14 @@ export const AI_FUNCTIONS = [
   },
   {
     name: 'getTasks',
-    description: 'Get tasks for the current project. Use this to see what tasks exist and their statuses.',
+    description: 'Get tasks for the current project. ALWAYS call this FIRST before creating a new task to check for duplicates, and call this when you need to answer questions about existing tasks.',
     parameters: {
       type: 'object',
       properties: {
         status: {
           type: 'string',
           description: 'Filter by status (optional)',
-          enum: ['not_started', 'in_progress', 'blocked', 'done', 'cancelled']
+          enum: ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled', 'icebox']
         }
       },
       required: []

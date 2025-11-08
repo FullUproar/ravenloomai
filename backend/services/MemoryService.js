@@ -334,7 +334,7 @@ class MemoryService {
     const result = await db.query(query, [conversationId]);
 
     return result.rows[0] || {
-      episode_message_threshold: 15,
+      episode_message_threshold: 10,
       episode_inactivity_minutes: 30,
       fact_extraction_enabled: true,
       fact_confidence_threshold: 0.7,
