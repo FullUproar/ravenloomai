@@ -6,6 +6,10 @@
     {
       "source": "/api/graphql",
       "destination": "/api/graphql"
+    },
+    {
+      "source": "/((?!api).*)",
+      "destination": "/index.html"
     }
   ],
   "functions": {
