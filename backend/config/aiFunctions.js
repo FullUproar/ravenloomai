@@ -216,6 +216,30 @@ export const AI_FUNCTIONS = [
       },
       required: []
     }
+  },
+  {
+    name: 'highlightUIElement',
+    description: 'Highlight a UI element to guide the user. Use this when the user asks "how do I..." or needs help finding something in the interface. This creates a visual spotlight with a message.',
+    parameters: {
+      type: 'object',
+      properties: {
+        elementId: {
+          type: 'string',
+          description: 'The element to highlight. Options: "create-task-button" (+ button to create new task), "edit-task-button-{taskId}" (edit button for specific task), "task-{taskId}" (entire task card)',
+          enum: ['create-task-button']
+        },
+        message: {
+          type: 'string',
+          description: 'Helpful message to show next to the highlighted element (e.g., "Click here to create a new task")'
+        },
+        duration: {
+          type: 'integer',
+          description: 'How long to show the highlight in milliseconds (default: 10000)',
+          default: 10000
+        }
+      },
+      required: ['elementId', 'message']
+    }
   }
 ];
 

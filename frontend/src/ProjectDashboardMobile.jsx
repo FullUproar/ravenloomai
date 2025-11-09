@@ -14,6 +14,7 @@ import { TaskManager } from './TaskManager.jsx';
 import GoalsView from './GoalsView.jsx';
 import ConnectionsView from './ConnectionsView.jsx';
 import ShareProjectModal from './ShareProjectModal.jsx';
+import { AIHighlight, useAIHighlight } from './components/AIHighlight.jsx';
 
 const GET_PROJECT = gql`
   query GetProject($userId: String!, $projectId: ID!) {
@@ -92,6 +93,11 @@ const SEND_MESSAGE = gql`
       persona {
         displayName
         archetype
+      }
+      functionsExecuted {
+        name
+        arguments
+        result
       }
     }
   }
@@ -197,6 +203,19 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', proje
 
   const messagesEndRef = useRef(null);
 
+  // AI Highlight system
+  const { highlight, showHighlight, clearHighlight } = useAIHighlight();
+
+  // Expose highlight function globally so AI backend can trigger it
+  useEffect(() => {
+    window.aiHighlight = showHighlight;
+    window.aiClearHighlight = clearHighlight;
+    return () => {
+      delete window.aiHighlight;
+      delete window.aiClearHighlight;
+    };
+  }, [showHighlight, clearHighlight]);
+
   const { loading: projectLoading, data: projectData, refetch: refetchProject } = useQuery(GET_PROJECT, {
     variables: { userId, projectId },
     fetchPolicy: 'cache-and-network', // Always check network for fresh data
@@ -294,13 +313,25 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', proje
 
     try {
       // Send message to backend
-      await sendMessage({
+      const response = await sendMessage({
         variables: {
           projectId: parseInt(projectId),
           userId,
           message: userMessageText
         }
       });
+
+      // Check for highlight function execution
+      const functionsExecuted = response.data?.sendMessage?.functionsExecuted || [];
+      for (const func of functionsExecuted) {
+        if (func.name === 'highlightUIElement' && func.result?.highlight) {
+          const { elementId, message: highlightMessage, duration } = func.result.highlight;
+          // Trigger highlight via global function
+          if (window.aiHighlight) {
+            window.aiHighlight(`[data-aid="${elementId}"]`, highlightMessage, duration);
+          }
+        }
+      }
 
       // Refetch to get the complete response
       await refetchChat();
@@ -1882,6 +1913,16 @@ function MessageBubble({ message, persona, onAcceptTask, onAcceptMilestone }) {
           return null;
         })}
       </div>
+
+      {/* AI Highlight Overlay */}
+      {highlight && (
+        <AIHighlight
+          targetSelector={highlight.targetSelector}
+          message={highlight.message}
+          duration={highlight.duration}
+          onDismiss={clearHighlight}
+        />
+      )}
     </div>
   );
 }

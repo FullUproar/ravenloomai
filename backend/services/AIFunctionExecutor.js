@@ -37,6 +37,8 @@ class AIFunctionExecutor {
           return await this.getTasks(projectId, args);
         case 'getMetrics':
           return await this.getMetrics(projectId, args);
+        case 'highlightUIElement':
+          return await this.highlightUIElement(args);
         default:
           throw new Error(`Unknown function: ${functionName}`);
       }
@@ -301,6 +303,26 @@ class AIFunctionExecutor {
       success: true,
       metrics: result.rows,
       count: result.rows.length
+    };
+  }
+
+  /**
+   * Highlight a UI element for the user
+   * This returns metadata that the frontend will use to trigger the highlight
+   */
+  async highlightUIElement(args) {
+    console.log(`💡 [AI Function] Highlighting UI element: ${args.elementId}`);
+
+    // Return metadata that will be sent to frontend
+    // The frontend will receive this and call window.aiHighlight()
+    return {
+      success: true,
+      highlight: {
+        elementId: args.elementId,
+        message: args.message,
+        duration: args.duration || 10000
+      },
+      message: `Highlighting ${args.elementId}`
     };
   }
 }

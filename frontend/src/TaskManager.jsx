@@ -281,6 +281,7 @@ export function TaskManager({ tasks = [], onCreateTask, refetchTasks }) {
           </h2>
           <button
             onClick={onCreateTask}
+            data-aid="create-task-button"
             style={{
               width: '40px',
               height: '40px',
@@ -745,6 +746,7 @@ export function TaskManager({ tasks = [], onCreateTask, refetchTasks }) {
                     e.stopPropagation();
                     setEditingTask(task);
                   }}
+                  data-aid={`edit-task-button-${task.id}`}
                   style={{
                     color: '#666',
                     fontSize: '1.2rem',

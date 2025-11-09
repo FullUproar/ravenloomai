@@ -102,6 +102,13 @@ export default gql`
     message: Message!
     conversation: Conversation!
     persona: Persona!
+    functionsExecuted: [FunctionExecution!]
+  }
+
+  type FunctionExecution {
+    name: String!
+    arguments: JSON!
+    result: JSON!
   }
 
   # ============================================================================
