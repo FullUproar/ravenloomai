@@ -3,6 +3,66 @@
  */
 
 import db from '../../db.js';
+import { generateSimpleResponse } from '../../utils/llm.js';
+
+/**
+ * Generate AI summary for a completed work session
+ *
+ * Analyzes messages from the session period and creates a concise summary
+ */
+async function generateSessionSummary(session) {
+  try {
+    // Get messages from the session's conversation during the session time period
+    if (!session.conversation_id) {
+      console.log(`⚠️  [WorkSession] No conversation linked to session ${session.id}`);
+      return;
+    }
+
+    const messagesResult = await db.query(
+      `SELECT content, sender_type, created_at
+       FROM messages
+       WHERE conversation_id = $1
+         AND created_at >= $2
+         AND created_at <= $3
+       ORDER BY created_at ASC`,
+      [session.conversation_id, session.started_at, session.ended_at || new Date()]
+    );
+
+    const messages = messagesResult.rows;
+
+    if (messages.length === 0) {
+      console.log(`⚠️  [WorkSession] No messages found for session ${session.id}`);
+      return;
+    }
+
+    // Format messages for context
+    const conversationText = messages
+      .map(msg => `${msg.sender_type === 'user' ? 'User' : 'AI'}: ${msg.content}`)
+      .join('\n\n');
+
+    // Generate summary using AI
+    const systemPrompt = `You are summarizing a work session. Create a brief, actionable summary (2-3 sentences) of what was accomplished, discussed, or decided. Focus on outcomes and key points.`;
+
+    const userPrompt = `Summarize this work session:\n\n${conversationText}\n\nProvide a concise summary of the session's key accomplishments and outcomes.`;
+
+    const summary = await generateSimpleResponse(userPrompt, systemPrompt, {
+      model: 'gpt-4o-mini',
+      temperature: 0.3,
+      maxTokens: 200
+    });
+
+    // Update session with generated summary
+    await db.query(
+      'UPDATE work_sessions SET summary = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [summary.trim(), session.id]
+    );
+
+    console.log(`📝 [WorkSession] Generated summary for session ${session.id}`);
+  } catch (error) {
+    console.error(`❌ [WorkSession] Error generating summary for session ${session.id}:`, error);
+    throw error;
+  }
+}
 
 export default {
   Query: {
@@ -139,10 +199,13 @@ export default {
 
       console.log(`✅ [WorkSession] Ended session ${sessionId}, duration: ${durationMinutes} minutes`);
 
-      // TODO: Generate AI summary in background
-      // This would analyze the conversation during the session
+      // Generate AI summary in background
+      const completedSession = result.rows[0];
+      generateSessionSummary(completedSession).catch(err => {
+        console.error(`Failed to generate summary for session ${sessionId}:`, err);
+      });
 
-      return result.rows[0];
+      return completedSession;
     },
 
     /**

@@ -1,5 +1,5 @@
 import { gql, useQuery, useMutation } from '@apollo/client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -13,6 +13,7 @@ import { initializeRavens, checkRavenPermissions } from './native-ravens.js';
 import { TaskManager } from './TaskManager.jsx';
 import { ProjectOverview } from './ProjectOverview.jsx';
 import { SessionsList } from './SessionsList.jsx';
+import { SessionBoundary } from './SessionBoundary.jsx';
 import GoalsView from './GoalsView.jsx';
 import ConnectionsView from './ConnectionsView.jsx';
 import ShareProjectModal from './ShareProjectModal.jsx';
@@ -378,10 +379,76 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
 
   const messages = [...serverMessages, ...uniqueOptimisticMessages];
   const tasks = project?.tasks || [];
+  const sessions = sessionsData?.getWorkSessions || [];
 
   const filteredTasks = selectedContext === 'all'
     ? tasks
     : tasks.filter(t => t.context === selectedContext);
+
+  // Interleave messages with session boundaries
+  const messagesWithBoundaries = useMemo(() => {
+    if (!messages || messages.length === 0 || !sessions || sessions.length === 0) {
+      return messages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${idx}` }));
+    }
+
+    const items = [];
+    let currentSessionIndex = -1;
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      const msgTime = new Date(msg.createdAt);
+
+      // Check if we need to insert a session boundary before this message
+      for (let j = currentSessionIndex + 1; j < sessions.length; j++) {
+        const session = sessions[j];
+        const sessionStart = new Date(session.startedAt);
+        const sessionEnd = session.endedAt ? new Date(session.endedAt) : null;
+
+        // If message is after session start and we haven't shown this session yet
+        if (msgTime >= sessionStart) {
+          // Insert session start boundary
+          items.push({
+            type: 'session-start',
+            data: session,
+            key: `session-start-${session.id}`
+          });
+          currentSessionIndex = j;
+
+          // Check if session has ended before this message
+          if (sessionEnd && msgTime > sessionEnd) {
+            items.push({
+              type: 'session-end',
+              data: session,
+              key: `session-end-${session.id}`
+            });
+          }
+          break;
+        }
+      }
+
+      // Add the message
+      items.push({ type: 'message', data: msg, key: `msg-${msg.id}` });
+    }
+
+    // Check if the last session needs an end boundary
+    if (currentSessionIndex >= 0 && currentSessionIndex < sessions.length) {
+      const lastSession = sessions[currentSessionIndex];
+      if (lastSession.endedAt) {
+        const lastSessionEnd = new Date(lastSession.endedAt);
+        const lastMsgTime = messages.length > 0 ? new Date(messages[messages.length - 1].createdAt) : null;
+
+        if (lastMsgTime && lastSessionEnd > lastMsgTime) {
+          items.push({
+            type: 'session-end',
+            data: lastSession,
+            key: `session-end-${lastSession.id}`
+          });
+        }
+      }
+    }
+
+    return items;
+  }, [messages, sessions]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -852,15 +919,26 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
                 </div>
               )}
 
-              {messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  persona={project?.persona}
-                  onAcceptTask={handleAcceptTask}
-                  onAcceptMilestone={handleAcceptMilestone}
-                />
-              ))}
+              {messagesWithBoundaries.map((item) => {
+                if (item.type === 'session-start') {
+                  return <SessionBoundary key={item.key} session={item.data} type="start" />;
+                }
+                if (item.type === 'session-end') {
+                  return <SessionBoundary key={item.key} session={item.data} type="end" />;
+                }
+                if (item.type === 'message') {
+                  return (
+                    <MessageBubble
+                      key={item.key}
+                      message={item.data}
+                      persona={project?.persona}
+                      onAcceptTask={handleAcceptTask}
+                      onAcceptMilestone={handleAcceptMilestone}
+                    />
+                  );
+                }
+                return null;
+              })}
 
               {isGenerating && (
                 <div style={{
