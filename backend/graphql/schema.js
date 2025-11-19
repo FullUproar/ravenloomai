@@ -286,6 +286,44 @@ export default gql`
     strengths: [KnowledgeNode!]!
   }
 
+  # ============================================================================
+  # WORK SESSIONS
+  # ============================================================================
+
+  type WorkSession {
+    id: ID!
+    projectId: ID!
+    userId: String!
+    conversationId: ID
+    title: String
+    focusArea: String
+    startedAt: DateTime!
+    endedAt: DateTime
+    durationMinutes: Int
+    tasksCompleted: [Int!]!
+    tasksCreated: [Int!]!
+    notes: String
+    summary: String
+    mood: String
+    interruptions: Int
+    breaksTaken: Int
+    status: String!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  input WorkSessionInput {
+    title: String
+    focusArea: String
+  }
+
+  input EndWorkSessionInput {
+    notes: String
+    mood: String
+    interruptions: Int
+    breaksTaken: Int
+  }
+
   # Legacy ProjectMemory (keep for backward compatibility)
   type ProjectMemory {
     id: ID!
@@ -498,6 +536,11 @@ export default gql`
     getKnowledgeNodes(userId: String!, projectId: ID, nodeTypes: [String!]): [KnowledgeNode!]!
     searchMemory(userId: String!, projectId: ID, query: String!): MemoryContext!
 
+    # Work Sessions
+    getWorkSessions(projectId: ID!, userId: String!, limit: Int): [WorkSession!]!
+    getActiveWorkSession(projectId: ID!, userId: String!): WorkSession
+    getWorkSession(sessionId: ID!): WorkSession
+
     # Sharing & Connections
     getConnections(userId: String!, status: String): [UserConnection!]!
     getSharedProjects(userId: String!): [ProjectShare!]!
@@ -530,6 +573,11 @@ export default gql`
     # Conversations & Chat
     sendMessage(projectId: ID!, userId: String!, message: String!): ChatResponse!
     clearConversation(conversationId: ID!): Boolean!
+
+    # Work Sessions
+    startWorkSession(projectId: ID!, userId: String!, input: WorkSessionInput): WorkSession!
+    endWorkSession(sessionId: ID!, input: EndWorkSessionInput): WorkSession!
+    abandonWorkSession(sessionId: ID!): Boolean!
 
     # Tasks
     createTask(projectId: ID!, input: TaskInput!): Task!
