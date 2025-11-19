@@ -759,50 +759,6 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
             flexDirection: 'column',
             height: '100%'
           }}>
-            {/* Active Session Indicator */}
-            {activeSession && (
-              <div style={{
-                padding: '0.75rem 1rem',
-                backgroundColor: '#1A1A1A',
-                borderBottom: '1px solid #2D2D40',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  color: '#5D4B8C',
-                  fontSize: '0.9rem'
-                }}>
-                  <div style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    backgroundColor: '#5D4B8C',
-                    animation: 'pulse 2s ease-in-out infinite'
-                  }} />
-                  <span>Work session active</span>
-                </div>
-                <button
-                  onClick={() => setShowEndSessionModal(true)}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: '#2D2D40',
-                    color: '#D9D9E3',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '0.85rem',
-                    fontWeight: '500',
-                    cursor: 'pointer'
-                  }}
-                >
-                  End Session
-                </button>
-              </div>
-            )}
-
             {/* Messages */}
             <div style={{
               flex: 1,
@@ -862,10 +818,55 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Active Session Indicator - at bottom */}
+            {activeSession && (
+              <div style={{
+                padding: '0.75rem 1rem',
+                backgroundColor: '#1A1A1A',
+                borderTop: '1px solid #2D2D40',
+                borderBottom: '1px solid #2D2D40',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  color: '#5D4B8C',
+                  fontSize: '0.85rem'
+                }}>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#5D4B8C',
+                    animation: 'pulse 2s ease-in-out infinite'
+                  }} />
+                  <span>Session active</span>
+                </div>
+                <button
+                  onClick={() => setShowEndSessionModal(true)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#5D4B8C',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '0.85rem',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                  }}
+                >
+                  End Session
+                </button>
+              </div>
+            )}
+
             {/* Message Input */}
             <form onSubmit={handleSendMessage} style={{
               padding: '1rem',
-              borderTop: '1px solid #2D2D40',
+              borderTop: activeSession ? 'none' : '1px solid #2D2D40',
               backgroundColor: '#0D0D0D'
             }}>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
