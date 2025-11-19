@@ -387,7 +387,11 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
 
   // Interleave messages with session boundaries
   const messagesWithBoundaries = useMemo(() => {
-    if (!messages || messages.length === 0 || !sessions || sessions.length === 0) {
+    if (!messages || messages.length === 0) {
+      return [];
+    }
+
+    if (!sessions || sessions.length === 0) {
       return messages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${idx}` }));
     }
 
