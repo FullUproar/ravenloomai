@@ -159,6 +159,41 @@ const DISABLE_DEBUG_MODE = gql`
   }
 `;
 
+const START_WORK_SESSION = gql`
+  mutation StartWorkSession($projectId: ID!, $userId: String!, $input: WorkSessionInput) {
+    startWorkSession(projectId: $projectId, userId: $userId, input: $input) {
+      id
+      title
+      focusArea
+      startedAt
+      status
+    }
+  }
+`;
+
+const END_WORK_SESSION = gql`
+  mutation EndWorkSession($sessionId: ID!, $input: EndWorkSessionInput) {
+    endWorkSession(sessionId: $sessionId, input: $input) {
+      id
+      endedAt
+      durationMinutes
+      status
+    }
+  }
+`;
+
+const GET_ACTIVE_WORK_SESSION = gql`
+  query GetActiveWorkSession($projectId: ID!, $userId: String!) {
+    getActiveWorkSession(projectId: $projectId, userId: $userId) {
+      id
+      title
+      focusArea
+      startedAt
+      status
+    }
+  }
+`;
+
 function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', projects, onProjectChange, onCreateProject, onSignOut }) {
   const navigate = useNavigate();
   const { view: urlView } = useParams();
@@ -245,6 +280,35 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
 
   const [disableDebugMode] = useMutation(DISABLE_DEBUG_MODE, {
     refetchQueries: ['GetProject']
+  });
+
+  // Work Session state and queries
+  const [activeSession, setActiveSession] = useState(null);
+  const [showEndSessionModal, setShowEndSessionModal] = useState(false);
+  const [sessionNotes, setSessionNotes] = useState('');
+
+  const { data: sessionData } = useQuery(GET_ACTIVE_WORK_SESSION, {
+    variables: { projectId, userId },
+    onCompleted: (data) => {
+      setActiveSession(data?.getActiveWorkSession);
+    }
+  });
+
+  const [startWorkSession] = useMutation(START_WORK_SESSION, {
+    refetchQueries: ['GetActiveWorkSession'],
+    onCompleted: (data) => {
+      setActiveSession(data?.startWorkSession);
+      changeView('chat');
+    }
+  });
+
+  const [endWorkSession] = useMutation(END_WORK_SESSION, {
+    refetchQueries: ['GetActiveWorkSession'],
+    onCompleted: () => {
+      setActiveSession(null);
+      setShowEndSessionModal(false);
+      setSessionNotes('');
+    }
   });
 
   // Debug mode state
@@ -412,6 +476,41 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
     } catch (error) {
       console.error('Error creating milestone:', error);
       alert('Failed to create milestone: ' + error.message);
+    }
+  };
+
+  const handleStartWorkSession = async () => {
+    try {
+      await startWorkSession({
+        variables: {
+          projectId,
+          userId,
+          input: {
+            title: project?.title ? `Working on ${project.title}` : 'Work Session'
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error starting work session:', error);
+      alert('Failed to start work session: ' + error.message);
+    }
+  };
+
+  const handleEndWorkSession = async () => {
+    if (!activeSession) return;
+
+    try {
+      await endWorkSession({
+        variables: {
+          sessionId: activeSession.id,
+          input: {
+            notes: sessionNotes || null
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error ending work session:', error);
+      alert('Failed to end work session: ' + error.message);
     }
   };
 
@@ -584,8 +683,35 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
       <header style={{
         padding: '1rem',
         borderBottom: '1px solid #2D2D40',
-        backgroundColor: '#0D0D0D'
+        backgroundColor: '#0D0D0D',
+        position: 'relative'
       }}>
+        {/* Back button - only show when not on overview */}
+        {currentView !== 'overview' && (
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              position: 'absolute',
+              left: '1rem',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              color: '#9D8BCC',
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+              padding: '0.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'color 0.2s'
+            }}
+            onMouseEnter={(e) => e.target.style.color = '#5D4B8C'}
+            onMouseLeave={(e) => e.target.style.color = '#9D8BCC'}
+          >
+            ←
+          </button>
+        )}
+
         <div style={{
           fontSize: '1.2rem',
           fontWeight: '600',
@@ -620,7 +746,7 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
           <ProjectOverview
             project={project}
             tasks={tasks}
-            onStartSession={() => changeView('chat')}
+            onStartSession={handleStartWorkSession}
             onQuickAdd={() => setShowCreateTask(true)}
             onNavigate={(view) => changeView(view)}
           />
@@ -633,6 +759,50 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
             flexDirection: 'column',
             height: '100%'
           }}>
+            {/* Active Session Indicator */}
+            {activeSession && (
+              <div style={{
+                padding: '0.75rem 1rem',
+                backgroundColor: '#1A1A1A',
+                borderBottom: '1px solid #2D2D40',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  color: '#5D4B8C',
+                  fontSize: '0.9rem'
+                }}>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#5D4B8C',
+                    animation: 'pulse 2s ease-in-out infinite'
+                  }} />
+                  <span>Work session active</span>
+                </div>
+                <button
+                  onClick={() => setShowEndSessionModal(true)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#2D2D40',
+                    color: '#D9D9E3',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '0.85rem',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                  }}
+                >
+                  End Session
+                </button>
+              </div>
+            )}
+
             {/* Messages */}
             <div style={{
               flex: 1,
@@ -1762,6 +1932,108 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
                 }}
               >
                 Enable
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* End Work Session Modal */}
+      {showEndSessionModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000
+        }}>
+          <div style={{
+            backgroundColor: '#1A1A1A',
+            borderRadius: '16px',
+            padding: '1.5rem',
+            maxWidth: '400px',
+            width: '100%',
+            margin: '1rem'
+          }}>
+            <h2 style={{
+              margin: '0 0 1rem 0',
+              fontSize: '1.3rem',
+              color: '#9D8BCC',
+              fontWeight: '600'
+            }}>
+              End Work Session
+            </h2>
+            <p style={{
+              color: '#888',
+              fontSize: '0.9rem',
+              marginBottom: '1rem',
+              lineHeight: '1.5'
+            }}>
+              How did your work session go? Add any notes below (optional):
+            </p>
+            <textarea
+              value={sessionNotes}
+              onChange={(e) => setSessionNotes(e.target.value)}
+              placeholder="What did you accomplish? Any blockers?"
+              rows={4}
+              style={{
+                width: '100%',
+                padding: '0.875rem',
+                backgroundColor: '#0D0D0D',
+                border: '2px solid #2D2D40',
+                borderRadius: '12px',
+                color: '#D9D9E3',
+                fontSize: '1rem',
+                fontFamily: 'inherit',
+                marginBottom: '1rem',
+                resize: 'vertical'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
+              onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
+            />
+            <div style={{
+              display: 'flex',
+              gap: '0.75rem'
+            }}>
+              <button
+                onClick={() => {
+                  setShowEndSessionModal(false);
+                  setSessionNotes('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  backgroundColor: '#2D2D40',
+                  color: '#D9D9E3',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEndWorkSession}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  backgroundColor: '#5D4B8C',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: '500'
+                }}
+              >
+                End Session
               </button>
             </div>
           </div>

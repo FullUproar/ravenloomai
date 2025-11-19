@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 function Header({ user, onSignOut }) {
   const [showMenu, setShowMenu] = useState(false);
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     setShowMenu(false);
@@ -39,11 +41,15 @@ function Header({ user, onSignOut }) {
       zIndex: 100
     }}>
       {/* Logo */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem'
-      }}>
+      <div
+        onClick={() => navigate('/')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          cursor: 'pointer'
+        }}
+      >
         <h1 style={{
           margin: 0,
           fontSize: '1.5rem',
