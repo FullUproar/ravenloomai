@@ -12,6 +12,7 @@ import {
 import { initializeRavens, checkRavenPermissions } from './native-ravens.js';
 import { TaskManager } from './TaskManager.jsx';
 import { ProjectOverview } from './ProjectOverview.jsx';
+import { SessionsList } from './SessionsList.jsx';
 import GoalsView from './GoalsView.jsx';
 import ConnectionsView from './ConnectionsView.jsx';
 import ShareProjectModal from './ShareProjectModal.jsx';
@@ -194,6 +195,22 @@ const GET_ACTIVE_WORK_SESSION = gql`
   }
 `;
 
+const GET_WORK_SESSIONS = gql`
+  query GetWorkSessions($projectId: ID!, $userId: String!, $limit: Int) {
+    getWorkSessions(projectId: $projectId, userId: $userId, limit: $limit) {
+      id
+      title
+      focusArea
+      startedAt
+      endedAt
+      durationMinutes
+      summary
+      notes
+      status
+    }
+  }
+`;
+
 function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', projects, onProjectChange, onCreateProject, onSignOut }) {
   const navigate = useNavigate();
   const { view: urlView } = useParams();
@@ -217,6 +234,7 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
   };
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
+  const [showSessionsList, setShowSessionsList] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
@@ -294,16 +312,22 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
     }
   });
 
+  const { data: sessionsData } = useQuery(GET_WORK_SESSIONS, {
+    variables: { projectId, userId, limit: 50 },
+    pollInterval: 30000 // Refresh every 30 seconds
+  });
+
   const [startWorkSession] = useMutation(START_WORK_SESSION, {
-    refetchQueries: ['GetActiveWorkSession'],
+    refetchQueries: ['GetActiveWorkSession', 'GetWorkSessions'],
     onCompleted: (data) => {
       setActiveSession(data?.startWorkSession);
+      setShowSessionsList(false); // Hide sessions list when starting new session
       changeView('chat');
     }
   });
 
   const [endWorkSession] = useMutation(END_WORK_SESSION, {
-    refetchQueries: ['GetActiveWorkSession'],
+    refetchQueries: ['GetActiveWorkSession', 'GetWorkSessions'],
     onCompleted: () => {
       setActiveSession(null);
       setShowEndSessionModal(false);
@@ -761,15 +785,59 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
             flexDirection: 'column',
             height: '100%'
           }}>
-            {/* Messages */}
+            {/* Toggle button for sessions list */}
             <div style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '1rem',
+              padding: '0.75rem 1rem',
+              backgroundColor: '#1A1A1A',
+              borderBottom: '1px solid #2D2D40',
               display: 'flex',
-              flexDirection: 'column',
-              gap: '1rem'
+              justifyContent: 'space-between',
+              alignItems: 'center'
             }}>
+              <div style={{
+                fontSize: '0.9rem',
+                color: '#888'
+              }}>
+                {showSessionsList ? 'Sessions History' : (activeSession ? activeSession.title || 'Work Session' : 'Chat')}
+              </div>
+              <button
+                onClick={() => setShowSessionsList(!showSessionsList)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: showSessionsList ? '#5D4B8C' : '#2D2D40',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                {showSessionsList ? 'Back to Chat' : '📋 Sessions'}
+              </button>
+            </div>
+
+            {/* Show either sessions list or chat */}
+            {showSessionsList ? (
+              <SessionsList
+                sessions={sessionsData?.getWorkSessions || []}
+                activeSessionId={activeSession?.id}
+                onSelectSession={(session) => {
+                  setShowSessionsList(false);
+                  // Navigate to that session's messages
+                }}
+              />
+            ) : (
+              <>
+                {/* Messages */}
+                <div style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1rem'
+                }}>
               {messages.length === 0 && !chatLoading && (
                 <div style={{
                   textAlign: 'center',
@@ -954,6 +1022,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
                   Start New Session
                 </button>
               </div>
+            )}
+              </>
             )}
           </div>
         )}

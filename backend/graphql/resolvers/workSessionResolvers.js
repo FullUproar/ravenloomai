@@ -62,12 +62,26 @@ export default {
         throw new Error('You already have an active work session. Please end it before starting a new one.');
       }
 
-      // Create new session
+      // Get or create conversation for this project
+      const conversationResult = await db.query(
+        `SELECT id FROM conversations
+         WHERE project_id = $1 AND user_id = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [projectId, userId]
+      );
+
+      let conversationId = null;
+      if (conversationResult.rows.length > 0) {
+        conversationId = conversationResult.rows[0].id;
+      }
+
+      // Create new session with conversation link
       const result = await db.query(
-        `INSERT INTO work_sessions (project_id, user_id, title, focus_area, status)
-         VALUES ($1, $2, $3, $4, 'active')
+        `INSERT INTO work_sessions (project_id, user_id, conversation_id, title, focus_area, status)
+         VALUES ($1, $2, $3, $4, $5, 'active')
          RETURNING *`,
-        [projectId, userId, input.title || null, input.focusArea || null]
+        [projectId, userId, conversationId, input.title || null, input.focusArea || null]
       );
 
       console.log(`🚀 [WorkSession] Started session ${result.rows[0].id} for project ${projectId}`);
