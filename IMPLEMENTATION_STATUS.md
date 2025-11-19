@@ -10,13 +10,18 @@
   - Smart prioritization (overdue, blocked tasks highlighted)
   - "Start Working" button ready
   - Clean navigation: Overview → Work → Tasks → Settings
+  - Logo clickable to return home
+  - Back button on all views (except overview)
 
-#### 2. Work Sessions (Backend Complete)
-- **Status:** ⚠️ Backend ready
+#### 2. Work Sessions
+- **Status:** ✅ LIVE
 - **What exists:**
   - Database schema for bounded work sessions
-  - GraphQL API: startWorkSession, endWorkSession
-  - Session tracking
+  - GraphQL API: startWorkSession, endWorkSession, getActiveWorkSession
+  - Frontend integration complete
+  - Active session indicator with pulsing dot
+  - End session modal with optional notes
+  - Automatic session tracking
 
 #### 3. AI Reliability
 - **Status:** ✅ DEPLOYED
