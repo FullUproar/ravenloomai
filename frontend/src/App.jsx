@@ -371,7 +371,7 @@ function App({ apolloClient }) {
       console.log('Persona created:', personaResult.data.createPersonaFromGoal);
 
       // Navigate to the new project
-      navigate(`/project/${projectId}/chat`);
+      navigate(`/project/${projectId}/overview`);
       setShowCreateProject(false);
     } catch (error) {
       console.error('Error creating project:', error);
@@ -403,9 +403,9 @@ function App({ apolloClient }) {
           <ProjectDashboardMobile
             userId={user?.uid || "test-user-123"}
             projectId={selectedProjectId}
-            initialView={urlView || 'chat'}
+            initialView={urlView || 'overview'}
             projects={projects}
-            onProjectChange={(newProjectId) => navigate(`/project/${newProjectId}/chat`)}
+            onProjectChange={(newProjectId) => navigate(`/project/${newProjectId}/overview`)}
             onCreateProject={() => setShowCreateProject(true)}
             onSignOut={handleSignOut}
           />
@@ -476,7 +476,7 @@ function App({ apolloClient }) {
               {projects.map(project => (
                 <div
                   key={project.id}
-                  onClick={() => navigate(`/project/${project.id}/chat`)}
+                  onClick={() => navigate(`/project/${project.id}/overview`)}
                   style={{
                     background: '#1A1A1A',
                     padding: '1.5rem',

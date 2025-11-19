@@ -11,6 +11,7 @@ import {
 } from './ChatElements.jsx';
 import { initializeRavens, checkRavenPermissions } from './native-ravens.js';
 import { TaskManager } from './TaskManager.jsx';
+import { ProjectOverview } from './ProjectOverview.jsx';
 import GoalsView from './GoalsView.jsx';
 import ConnectionsView from './ConnectionsView.jsx';
 import ShareProjectModal from './ShareProjectModal.jsx';
@@ -158,13 +159,13 @@ const DISABLE_DEBUG_MODE = gql`
   }
 `;
 
-function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', projects, onProjectChange, onCreateProject, onSignOut }) {
+function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', projects, onProjectChange, onCreateProject, onSignOut }) {
   const navigate = useNavigate();
   const { view: urlView } = useParams();
 
   const [message, setMessage] = useState('');
   const [selectedContext, setSelectedContext] = useState('all');
-  const [currentView, setCurrentView] = useState(urlView || initialView); // 'chat', 'tasks', 'goals', 'connections', 'project'
+  const [currentView, setCurrentView] = useState(urlView || initialView); // 'overview', 'chat', 'tasks', 'goals', 'connections', 'project'
   const [ravensEnabled, setRavensEnabled] = useState(false);
 
   // Sync currentView with URL
@@ -591,7 +592,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', proje
           color: '#5D4B8C',
           textAlign: 'center'
         }}>
-          {currentView === 'chat' && project?.title}
+          {currentView === 'overview' && project?.title}
+          {currentView === 'chat' && 'Work Session'}
           {currentView === 'tasks' && 'Tasks'}
           {currentView === 'project' && 'Project'}
         </div>
@@ -613,6 +615,17 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', proje
         overflow: 'hidden',
         position: 'relative'
       }}>
+        {/* OVERVIEW VIEW */}
+        {currentView === 'overview' && (
+          <ProjectOverview
+            project={project}
+            tasks={tasks}
+            onStartSession={() => changeView('chat')}
+            onQuickAdd={() => setShowCreateTask(true)}
+            onNavigate={(view) => changeView(view)}
+          />
+        )}
+
         {/* CHAT VIEW */}
         {currentView === 'chat' && (
           <div style={{
@@ -1047,6 +1060,26 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', proje
         justifyContent: 'space-around'
       }}>
         <button
+          onClick={() => changeView('overview')}
+          style={{
+            flex: 1,
+            padding: '0.75rem',
+            backgroundColor: 'transparent',
+            border: 'none',
+            color: currentView === 'overview' ? '#5D4B8C' : '#666',
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '0.25rem',
+            fontSize: '0.75rem',
+            fontWeight: '500'
+          }}
+        >
+          <div style={{ fontSize: '1.5rem' }}>🏠</div>
+          Overview
+        </button>
+        <button
           onClick={() => changeView('chat')}
           style={{
             flex: 1,
@@ -1063,8 +1096,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', proje
             fontWeight: '500'
           }}
         >
-          <div style={{ fontSize: '1.5rem' }}>💬</div>
-          Chat
+          <div style={{ fontSize: '1.5rem' }}>🚀</div>
+          Work
         </button>
         <button
           onClick={() => changeView('tasks')}
@@ -1103,27 +1136,7 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'chat', proje
           )}
         </button>
         <button
-          onClick={() => changeView('goals')}
-          style={{
-            flex: 1,
-            padding: '0.75rem',
-            backgroundColor: 'transparent',
-            border: 'none',
-            color: currentView === 'goals' ? '#5D4B8C' : '#666',
-            cursor: 'pointer',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '0.25rem',
-            fontSize: '0.75rem',
-            fontWeight: '500'
-          }}
-        >
-          <div style={{ fontSize: '1.5rem' }}>🎯</div>
-          Goals
-        </button>
-        <button
-          onClick={() => changeView('connections')}
+          onClick={() => changeView('project')}
           style={{
             flex: 1,
             padding: '0.75rem',
