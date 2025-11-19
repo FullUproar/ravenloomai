@@ -308,6 +308,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
       setActiveSession(null);
       setShowEndSessionModal(false);
       setSessionNotes('');
+      // Navigate back to overview after ending session
+      changeView('overview');
     }
   });
 
@@ -818,123 +820,141 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Active Session Indicator - at bottom */}
-            {activeSession && (
-              <div style={{
-                padding: '0.75rem 1rem',
-                backgroundColor: '#1A1A1A',
+            {/* Message Input Area */}
+            {activeSession ? (
+              <form onSubmit={handleSendMessage} style={{
+                padding: '1rem',
                 borderTop: '1px solid #2D2D40',
-                borderBottom: '1px solid #2D2D40',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
+                backgroundColor: '#0D0D0D'
               }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  color: '#5D4B8C',
-                  fontSize: '0.85rem'
-                }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {/* Green session indicator */}
                   <div style={{
-                    width: '8px',
-                    height: '8px',
+                    width: '12px',
+                    height: '12px',
                     borderRadius: '50%',
-                    backgroundColor: '#5D4B8C',
-                    animation: 'pulse 2s ease-in-out infinite'
+                    backgroundColor: '#4CAF50',
+                    boxShadow: '0 0 8px rgba(76, 175, 80, 0.6)',
+                    flexShrink: 0
                   }} />
-                  <span>Session active</span>
+
+                  <input
+                    type="text"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder={`Message ${project?.persona?.displayName || 'AI'}...`}
+                    disabled={isGenerating}
+                    style={{
+                      flex: 1,
+                      padding: '0.875rem 1rem',
+                      fontSize: '1rem',
+                      backgroundColor: isGenerating ? '#0D0D0D' : '#1A1A1A',
+                      border: '2px solid #2D2D40',
+                      borderRadius: '12px',
+                      color: '#D9D9E3',
+                      fontFamily: 'inherit',
+                      opacity: isGenerating ? 0.5 : 1
+                    }}
+                    onFocus={(e) => !isGenerating && (e.target.style.borderColor = '#5D4B8C')}
+                    onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
+                  />
+
+                  {/* Button group */}
+                  {isGenerating ? (
+                    <button
+                      type="button"
+                      onClick={handleStopGeneration}
+                      style={{
+                        padding: '0.875rem 1.25rem',
+                        fontSize: '1rem',
+                        backgroundColor: '#6B2222',
+                        color: '#FF6B6B',
+                        border: 'none',
+                        borderRadius: '12px',
+                        cursor: 'pointer',
+                        fontWeight: '500',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      <span style={{ fontSize: '1.2rem' }}>■</span>
+                      Stop
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowEndSessionModal(true)}
+                        style={{
+                          padding: '0.875rem 1rem',
+                          fontSize: '0.9rem',
+                          backgroundColor: '#2D2D40',
+                          color: '#D9D9E3',
+                          border: 'none',
+                          borderRadius: '12px',
+                          cursor: 'pointer',
+                          fontWeight: '500',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        End
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={!message.trim()}
+                        style={{
+                          padding: '0.875rem 1.25rem',
+                          fontSize: '1rem',
+                          backgroundColor: message.trim() ? '#5D4B8C' : '#333',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '12px',
+                          cursor: message.trim() ? 'pointer' : 'not-allowed',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}
+                      >
+                        <span style={{ fontSize: '1.2rem' }}>↑</span>
+                        Send
+                      </button>
+                    </>
+                  )}
                 </div>
+              </form>
+            ) : (
+              <div style={{
+                padding: '1.5rem',
+                borderTop: '1px solid #2D2D40',
+                backgroundColor: '#0D0D0D',
+                textAlign: 'center'
+              }}>
+                <p style={{
+                  color: '#888',
+                  fontSize: '0.95rem',
+                  margin: '0 0 1rem 0'
+                }}>
+                  This session has ended.
+                </p>
                 <button
-                  onClick={() => setShowEndSessionModal(true)}
+                  onClick={() => changeView('overview')}
                   style={{
-                    padding: '0.5rem 1rem',
+                    padding: '0.875rem 1.5rem',
+                    fontSize: '1rem',
                     backgroundColor: '#5D4B8C',
                     color: '#fff',
                     border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '0.85rem',
-                    fontWeight: '500',
-                    cursor: 'pointer'
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontWeight: '500'
                   }}
                 >
-                  End Session
+                  Start New Session
                 </button>
               </div>
             )}
-
-            {/* Message Input */}
-            <form onSubmit={handleSendMessage} style={{
-              padding: '1rem',
-              borderTop: activeSession ? 'none' : '1px solid #2D2D40',
-              backgroundColor: '#0D0D0D'
-            }}>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  type="text"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder={`Message ${project?.persona?.displayName || 'AI'}...`}
-                  disabled={isGenerating}
-                  style={{
-                    flex: 1,
-                    padding: '0.875rem 1rem',
-                    fontSize: '1rem',
-                    backgroundColor: isGenerating ? '#0D0D0D' : '#1A1A1A',
-                    border: '2px solid #2D2D40',
-                    borderRadius: '12px',
-                    color: '#D9D9E3',
-                    fontFamily: 'inherit',
-                    opacity: isGenerating ? 0.5 : 1
-                  }}
-                  onFocus={(e) => !isGenerating && (e.target.style.borderColor = '#5D4B8C')}
-                  onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
-                />
-                {isGenerating ? (
-                  <button
-                    type="button"
-                    onClick={handleStopGeneration}
-                    style={{
-                      padding: '0.875rem 1.5rem',
-                      fontSize: '1rem',
-                      backgroundColor: '#6B2222',
-                      color: '#FF6B6B',
-                      border: 'none',
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      fontWeight: '500',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem'
-                    }}
-                  >
-                    <span style={{ fontSize: '1.2rem' }}>■</span>
-                    Stop
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={!message.trim()}
-                    style={{
-                      padding: '0.875rem 1.5rem',
-                      fontSize: '1rem',
-                      backgroundColor: message.trim() ? '#5D4B8C' : '#333',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '12px',
-                      cursor: message.trim() ? 'pointer' : 'not-allowed',
-                      fontWeight: '500',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem'
-                    }}
-                  >
-                    <span style={{ fontSize: '1.2rem' }}>↑</span>
-                    Send
-                  </button>
-                )}
-              </div>
-            </form>
           </div>
         )}
 
