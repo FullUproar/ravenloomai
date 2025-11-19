@@ -367,17 +367,6 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
   const project = projectData?.getProject;
   const conversation = chatData?.getConversation;
   const serverMessages = conversation?.messages || [];
-
-  // Filter out optimistic messages that match real messages (by content and sender)
-  const uniqueOptimisticMessages = optimisticMessages.filter(optMsg =>
-    !serverMessages.some(serverMsg =>
-      serverMsg.content === optMsg.content &&
-      serverMsg.senderType === optMsg.senderType &&
-      Math.abs(new Date(serverMsg.createdAt) - new Date(optMsg.createdAt)) < 5000 // Within 5 seconds
-    )
-  );
-
-  const messages = [...serverMessages, ...uniqueOptimisticMessages];
   const tasks = project?.tasks || [];
   const sessions = sessionsData?.getWorkSessions || [];
 
@@ -387,19 +376,31 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
 
   // Interleave messages with session boundaries
   const messagesWithBoundaries = useMemo(() => {
-    if (!messages || messages.length === 0) {
+    // Filter out optimistic messages that match real messages
+    const uniqueOptimistic = optimisticMessages.filter(optMsg =>
+      !serverMessages.some(serverMsg =>
+        serverMsg.content === optMsg.content &&
+        serverMsg.senderType === optMsg.senderType &&
+        Math.abs(new Date(serverMsg.createdAt) - new Date(optMsg.createdAt)) < 5000
+      )
+    );
+
+    // Combine messages inside useMemo to ensure consistency
+    const allMessages = [...serverMessages, ...uniqueOptimistic];
+
+    if (!allMessages || allMessages.length === 0) {
       return [];
     }
 
     if (!sessions || sessions.length === 0) {
-      return messages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${idx}` }));
+      return allMessages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${idx}` }));
     }
 
     const items = [];
     let currentSessionIndex = -1;
 
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
+    for (let i = 0; i < allMessages.length; i++) {
+      const msg = allMessages[i];
       const msgTime = new Date(msg.createdAt);
 
       // Check if we need to insert a session boundary before this message
@@ -439,7 +440,7 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
       const lastSession = sessions[currentSessionIndex];
       if (lastSession.endedAt) {
         const lastSessionEnd = new Date(lastSession.endedAt);
-        const lastMsgTime = messages.length > 0 ? new Date(messages[messages.length - 1].createdAt) : null;
+        const lastMsgTime = allMessages.length > 0 ? new Date(allMessages[allMessages.length - 1].createdAt) : null;
 
         if (lastMsgTime && lastSessionEnd > lastMsgTime) {
           items.push({
@@ -452,7 +453,7 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
     }
 
     return items;
-  }, [messages, sessions]);
+  }, [serverMessages, sessions, optimisticMessages]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
