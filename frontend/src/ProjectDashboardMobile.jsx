@@ -912,7 +912,7 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
                   flexDirection: 'column',
                   gap: '1rem'
                 }}>
-              {messages.length === 0 && !chatLoading && (
+              {messagesWithBoundaries.length === 0 && !chatLoading && (
                 <div style={{
                   textAlign: 'center',
                   padding: '3rem 1rem',
