@@ -385,18 +385,18 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
   const conversation = chatData?.getConversation;
 
   // Stabilize array references to prevent infinite useMemo recalculation
-  // Must depend on the source data objects, not intermediate variables
+  // Depend on top-level data objects to avoid creating new references in dependency array
   const serverMessages = useMemo(
     () => chatData?.getConversation?.messages || [],
-    [chatData?.getConversation?.messages]
+    [chatData]
   );
   const tasks = useMemo(
     () => projectData?.getProject?.tasks || [],
-    [projectData?.getProject?.tasks]
+    [projectData]
   );
   const sessions = useMemo(
     () => sessionsData?.getWorkSessions || [],
-    [sessionsData?.getWorkSessions]
+    [sessionsData]
   );
 
   const filteredTasks = selectedContext === 'all'
