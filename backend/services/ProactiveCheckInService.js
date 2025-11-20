@@ -5,7 +5,7 @@
  * Respects token budgets and kill switches to prevent runaway costs.
  */
 
-import pool from '../config/database.js';
+import db from '../db.js';
 import openai from '../config/openai.js';
 import ActivityTrackingService from './ActivityTrackingService.js';
 import PersonaPromptBuilder from './PersonaPromptBuilder.js';
@@ -138,7 +138,7 @@ Generate ONLY the check-in message, nothing else:`;
   async sendCheckInMessage(projectId, message, personaId) {
     try {
       // Insert check-in message as system message
-      await pool.query(
+      await db.query(
         `INSERT INTO messages (project_id, persona_id, content, sender_type, created_at)
          VALUES ($1, $2, $3, 'assistant', NOW())`,
         [projectId, personaId, message]
@@ -190,7 +190,7 @@ Generate ONLY the check-in message, nothing else:`;
       this._resetTokenBudgetIfNeeded();
 
       // Get all users with proactive features enabled
-      const usersResult = await pool.query(
+      const usersResult = await db.query(
         `SELECT firebase_uid, email
          FROM users
          WHERE proactive_features_enabled = true`
@@ -229,7 +229,7 @@ Generate ONLY the check-in message, nothing else:`;
           }
 
           // Get project's active persona
-          const personaResult = await pool.query(
+          const personaResult = await db.query(
             `SELECT p.*
              FROM personas p
              WHERE p.project_id = $1 AND p.is_active = true
