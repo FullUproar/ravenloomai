@@ -1,33 +1,15 @@
 import { test, expect } from '@playwright/test';
 
-// Test credentials - update these with actual test account
-const TEST_USER = {
-  email: process.env.TEST_EMAIL || 'test@ravenloom.ai',
-  password: process.env.TEST_PASSWORD || 'test-password'
-};
-
 test.describe('Work Sessions', () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to the app
+    // Navigate to the app - authentication state is already loaded
     await page.goto('/');
 
-    // Wait for Firebase auth to initialize
+    // Wait for app to load
     await page.waitForTimeout(2000);
   });
 
   test('should display session boundaries in chat', async ({ page }) => {
-    // Check if already logged in
-    const isLoggedIn = await page.locator('text=RavenLoom').isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (!isLoggedIn) {
-      // Login flow - adjust selectors based on your actual login UI
-      await page.fill('input[type="email"]', TEST_USER.email);
-      await page.fill('input[type="password"]', TEST_USER.password);
-      await page.click('button:has-text("Sign In")');
-
-      // Wait for login to complete
-      await page.waitForSelector('text=RavenLoom', { timeout: 10000 });
-    }
 
     // Take screenshot of home page
     await page.screenshot({ path: 'tests/screenshots/01-home.png', fullPage: true });

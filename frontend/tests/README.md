@@ -27,19 +27,26 @@ npm run test:playwright:debug        # Debug mode
 TEST_LOCAL=1 npm run test:playwright
 ```
 
-## Test Credentials
+## Authentication Setup (One-Time)
 
-Set these environment variables for authenticated tests:
-```bash
-export TEST_EMAIL="your-test-email@example.com"
-export TEST_PASSWORD="your-test-password"
-```
+Since the app uses Google OAuth, you need to authenticate once manually:
 
-Or create a `.env.test` file:
-```
-TEST_EMAIL=test@ravenloom.ai
-TEST_PASSWORD=test-password
-```
+1. Run the auth setup (it will pause for you to login):
+   ```bash
+   npm run test:playwright -- auth.setup.js --headed
+   ```
+
+2. When the browser opens:
+   - Click "Get Started"
+   - Complete Google sign-in manually
+   - **Important**: The test will pause - just wait after signing in
+   - Press "Resume" in the Playwright inspector when you see your dashboard
+
+3. Your authentication will be saved to `playwright/.auth/user.json`
+
+4. All future tests will use this saved session automatically!
+
+**Note**: If your session expires, just re-run step 1 to refresh it.
 
 ## What Gets Tested
 

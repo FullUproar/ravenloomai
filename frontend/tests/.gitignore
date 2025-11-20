@@ -6,3 +6,6 @@ screenshots/*.png
 
 # Trace files
 trace.zip
+
+# Authentication state (contains sensitive session data)
+../playwright/.auth/
