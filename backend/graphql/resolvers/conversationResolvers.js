@@ -3,6 +3,7 @@
  */
 
 import ConversationService from '../../services/ConversationService.js';
+import ActivityTrackingService from '../../services/ActivityTrackingService.js';
 import db from '../../db.js';
 
 export default {
@@ -35,6 +36,21 @@ export default {
      * Send message and get AI response
      */
     sendMessage: async (_, { projectId, userId, message }) => {
+      // Record user activity
+      await ActivityTrackingService.recordActivity(projectId, userId);
+
+      // Detect blocker signals in user message
+      if (ActivityTrackingService.detectBlockerSignal(message)) {
+        console.log('[sendMessage] Blocker signal detected in message');
+        await ActivityTrackingService.recordPattern(
+          userId,
+          projectId,
+          'blocker_signal',
+          { message, detectedAt: new Date().toISOString() },
+          0.7
+        );
+      }
+
       const response = await ConversationService.generatePersonaResponse(
         projectId,
         userId,

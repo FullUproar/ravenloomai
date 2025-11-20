@@ -4,6 +4,7 @@
 
 import db from '../../db.js';
 import { generateSimpleResponse } from '../../utils/llm.js';
+import ActivityTrackingService from '../../services/ActivityTrackingService.js';
 
 /**
  * Generate AI summary for a completed work session
@@ -145,6 +146,14 @@ export default {
       );
 
       console.log(`🚀 [WorkSession] Started session ${result.rows[0].id} for project ${projectId}`);
+
+      // Record activity and detect patterns
+      await ActivityTrackingService.recordActivity(projectId, userId);
+
+      // Analyze best work times (async, don't block response)
+      ActivityTrackingService.detectBestWorkTimes(userId, projectId).catch(err => {
+        console.error('[WorkSession] Error detecting work time patterns:', err);
+      });
 
       return result.rows[0];
     },

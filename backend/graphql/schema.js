@@ -492,6 +492,43 @@ export default gql`
   }
 
   # ============================================================================
+  # PROACTIVE ACCOUNTABILITY TYPES
+  # ============================================================================
+
+  type ActivityPattern {
+    id: ID!
+    userId: String!
+    projectId: ID
+    patternType: String!
+    patternData: JSON!
+    detectedAt: DateTime!
+    confidenceScore: Float!
+  }
+
+  type ProjectCheckInSettings {
+    projectId: ID!
+    checkInsEnabled: Boolean!
+    lastActivityAt: DateTime
+    lastCheckInAt: DateTime
+  }
+
+  type ProactiveFeatureResult {
+    success: Boolean!
+    enabled: Boolean
+    projectId: ID
+    message: String!
+    checkInMessage: String
+  }
+
+  type TokenUsageStats {
+    used: Int!
+    budget: Int!
+    remaining: Int!
+    percentage: Int!
+    lastReset: String!
+  }
+
+  # ============================================================================
   # QUERIES
   # ============================================================================
 
@@ -546,6 +583,12 @@ export default gql`
     getSharedProjects(userId: String!): [ProjectShare!]!
     getMessages(userId: String!, otherUserId: String!, limit: Int): [UserMessage!]!
     getMessageThreads(userId: String!): [MessageThread!]!
+
+    # Proactive Accountability
+    getProactiveFeaturesEnabled(userId: String!): Boolean!
+    getProjectCheckInSettings(projectId: ID!): ProjectCheckInSettings!
+    getActivityPatterns(userId: String!, projectId: ID, patternType: String, limit: Int): [ActivityPattern!]!
+    getProactiveTokenUsageStats: TokenUsageStats!
   }
 
   # ============================================================================
@@ -617,5 +660,10 @@ export default gql`
     unshareProject(projectId: ID!, sharedWithId: String!): Boolean!
     sendUserMessage(senderId: String!, recipientId: String!, content: String!): UserMessage!
     markMessageRead(messageId: ID!): Boolean!
+
+    # Proactive Accountability
+    setProactiveFeaturesEnabled(userId: String!, enabled: Boolean!): ProactiveFeatureResult!
+    setProjectCheckInsEnabled(projectId: ID!, enabled: Boolean!): ProactiveFeatureResult!
+    triggerCheckIn(projectId: ID!, userId: String!): ProactiveFeatureResult!
   }
 `;

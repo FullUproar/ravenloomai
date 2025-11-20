@@ -13,6 +13,7 @@ import goalResolvers from './goalResolvers.js';
 import memoryResolvers from './memoryResolvers.js';
 import sharingResolvers from './sharingResolvers.js';
 import workSessionResolvers from './workSessionResolvers.js';
+import proactiveAccountabilityResolvers from './proactiveAccountabilityResolvers.js';
 import { GraphQLJSON } from 'graphql-type-json';
 import { GraphQLDateTime } from 'graphql-scalars';
 
@@ -32,7 +33,8 @@ const resolvers = {
     ...goalResolvers.Query,
     ...memoryResolvers.Query,
     ...sharingResolvers.Query,
-    ...workSessionResolvers.Query
+    ...workSessionResolvers.Query,
+    ...proactiveAccountabilityResolvers.Query
   },
 
   // Mutations
@@ -45,7 +47,8 @@ const resolvers = {
     ...goalResolvers.Mutation,
     ...memoryResolvers.Mutation,
     ...sharingResolvers.Mutation,
-    ...workSessionResolvers.Mutation
+    ...workSessionResolvers.Mutation,
+    ...proactiveAccountabilityResolvers.Mutation
   },
 
   // Type resolvers
@@ -53,7 +56,8 @@ const resolvers = {
   Conversation: conversationResolvers.Conversation,
   Project: projectResolvers.Project,
   Goal: goalResolvers.Goal,
-  WorkSession: workSessionResolvers.WorkSession
+  WorkSession: workSessionResolvers.WorkSession,
+  ActivityPattern: proactiveAccountabilityResolvers.ActivityPattern
 };
 
 export default resolvers;
