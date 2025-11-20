@@ -278,7 +278,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
 
   const { loading: chatLoading, data: chatData, refetch: refetchChat } = useQuery(GET_CONVERSATION, {
     variables: { userId, projectId: parseInt(projectId) },
-    pollInterval: isGenerating ? 2000 : 5000, // Poll faster while generating
+    skip: !userId || !projectId,
+    pollInterval: (currentView === 'chat' && isGenerating) ? 2000 : (currentView === 'chat' ? 5000 : 0), // Only poll when on chat view
   });
 
   const [sendMessage] = useMutation(SEND_MESSAGE);
@@ -308,13 +309,21 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
 
   const { data: sessionData } = useQuery(GET_ACTIVE_WORK_SESSION, {
     variables: { projectId, userId },
-    onCompleted: (data) => {
-      setActiveSession(data?.getActiveWorkSession);
-    }
+    skip: !projectId || !userId
   });
+
+  // Update active session from query data
+  useEffect(() => {
+    if (sessionData?.getActiveWorkSession) {
+      setActiveSession(sessionData.getActiveWorkSession);
+    } else if (sessionData && !sessionData.getActiveWorkSession) {
+      setActiveSession(null);
+    }
+  }, [sessionData]);
 
   const { data: sessionsData } = useQuery(GET_WORK_SESSIONS, {
     variables: { projectId, userId, limit: 50 },
+    skip: !projectId || !userId,
     pollInterval: 30000 // Refresh every 30 seconds
   });
 
