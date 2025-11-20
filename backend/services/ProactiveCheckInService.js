@@ -6,7 +6,7 @@
  */
 
 import db from '../db.js';
-import openai from '../config/openai.js';
+import { getLLMClient } from '../utils/llm.js';
 import ActivityTrackingService from './ActivityTrackingService.js';
 import PersonaPromptBuilder from './PersonaPromptBuilder.js';
 
@@ -103,7 +103,7 @@ EXAMPLES OF BAD CHECK-INS (don't do this):
 Generate ONLY the check-in message, nothing else:`;
 
       // Call OpenAI API
-      const response = await openai.chat.completions.create({
+      const response = await getLLMClient().chat.completions.create({
         model: 'gpt-4o-mini', // Use mini for cost efficiency
         messages: [
           { role: 'system', content: systemPrompt },
