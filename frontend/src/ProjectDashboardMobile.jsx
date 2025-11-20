@@ -403,7 +403,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
     ? tasks
     : tasks.filter(t => t.context === selectedContext);
 
-  // Interleave messages with session boundaries
+  // TEMPORARILY DISABLED: Session boundaries causing infinite render loop
+  // TODO: Fix the infinite loop and re-enable
   const messagesWithBoundaries = useMemo(() => {
     // Filter out optimistic messages that match real messages
     const uniqueOptimistic = optimisticMessages.filter(optMsg =>
@@ -421,6 +422,11 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
       return [];
     }
 
+    // TEMPORARILY REMOVED: Session boundary logic
+    // For now, just return messages without boundaries to fix the infinite loop
+    return allMessages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${msg.id || idx}` }));
+
+    /* COMMENTED OUT - causing infinite render loop
     if (!sessions || sessions.length === 0) {
       return allMessages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${idx}` }));
     }
@@ -482,7 +488,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
     }
 
     return items;
-  }, [serverMessages, sessions, optimisticMessages]);
+    */
+  }, [serverMessages, optimisticMessages]); // Removed 'sessions' dependency to avoid infinite loop
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
