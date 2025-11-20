@@ -5,7 +5,7 @@
  * Powers the proactive accountability system with motivation science.
  */
 
-import pool from '../config/database.js';
+import db from '../db.js';
 
 class ActivityTrackingService {
   /**
@@ -19,7 +19,7 @@ class ActivityTrackingService {
   async recordActivity(projectId, userId) {
     try {
       // Check if proactive features are enabled for this user
-      const userCheck = await pool.query(
+      const userCheck = await db.query(
         'SELECT proactive_features_enabled FROM users WHERE firebase_uid = $1',
         [userId]
       );
@@ -30,7 +30,7 @@ class ActivityTrackingService {
       }
 
       // Update last activity timestamp
-      await pool.query(
+      await db.query(
         `UPDATE projects
          SET last_activity_at = NOW()
          WHERE id = $1 AND user_id = $2`,
@@ -57,7 +57,7 @@ class ActivityTrackingService {
   async recordPattern(userId, projectId, patternType, patternData, confidence = 0.5) {
     try {
       // Check if proactive features are enabled
-      const userCheck = await pool.query(
+      const userCheck = await db.query(
         'SELECT proactive_features_enabled FROM users WHERE firebase_uid = $1',
         [userId]
       );
@@ -67,7 +67,7 @@ class ActivityTrackingService {
       }
 
       // Record pattern
-      await pool.query(
+      await db.query(
         `INSERT INTO activity_patterns (user_id, project_id, pattern_type, pattern_data, confidence_score)
          VALUES ($1, $2, $3, $4, $5)`,
         [userId, projectId, patternType, JSON.stringify(patternData), confidence]
@@ -90,7 +90,7 @@ class ActivityTrackingService {
   async detectBestWorkTimes(userId, projectId) {
     try {
       // Get successful work sessions with completion data
-      const sessions = await pool.query(
+      const sessions = await db.query(
         `SELECT
           started_at,
           ended_at,
@@ -159,7 +159,7 @@ class ActivityTrackingService {
   async detectSkippedTask(userId, projectId, taskId) {
     try {
       // Check task history to see if this is a pattern
-      const task = await pool.query(
+      const task = await db.query(
         `SELECT title, due_date, updated_at, status
          FROM tasks
          WHERE id = $1 AND project_id = $2`,
@@ -218,7 +218,7 @@ class ActivityTrackingService {
   async getProjectsNeedingCheckIn(userId, hoursInactive = 24) {
     try {
       // Check if proactive features are enabled for this user
-      const userCheck = await pool.query(
+      const userCheck = await db.query(
         'SELECT proactive_features_enabled FROM users WHERE firebase_uid = $1',
         [userId]
       );
@@ -232,7 +232,7 @@ class ActivityTrackingService {
       // 2. Last activity > threshold
       // 3. Last check-in was null or > 24 hours ago
       // 4. Project is active
-      const projects = await pool.query(
+      const projects = await db.query(
         `SELECT
           p.id,
           p.title,
@@ -270,7 +270,7 @@ class ActivityTrackingService {
    */
   async markCheckInSent(projectId) {
     try {
-      await pool.query(
+      await db.query(
         `UPDATE projects
          SET last_check_in_at = NOW()
          WHERE id = $1`,
@@ -291,7 +291,7 @@ class ActivityTrackingService {
    */
   async setProactiveFeaturesEnabled(userId, enabled) {
     try {
-      await pool.query(
+      await db.query(
         `UPDATE users
          SET proactive_features_enabled = $1
          WHERE firebase_uid = $2`,
@@ -312,7 +312,7 @@ class ActivityTrackingService {
    */
   async setProjectCheckInsEnabled(projectId, enabled) {
     try {
-      await pool.query(
+      await db.query(
         `UPDATE projects
          SET check_ins_enabled = $1
          WHERE id = $2`,
