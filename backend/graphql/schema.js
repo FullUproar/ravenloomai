@@ -365,6 +365,7 @@ export default gql`
     description: String
     completionType: String
     outcome: String
+    onboardingState: String  # JSON string for conversational onboarding state
   }
 
   input TaskInput {

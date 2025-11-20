@@ -333,19 +333,24 @@ function App({ apolloClient }) {
 
   const projects = projectsData?.getProjects || [];
 
-  const handleCreateProject = async (projectData) => {
+  const handleCreateProject = async (goalStatement) => {
     try {
-      console.log('Creating project:', projectData);
+      console.log('Creating project with conversational onboarding:', goalStatement);
 
-      // Step 1: Create the project
+      // Create the project with minimal data (just the goal as title)
       const projectResult = await createProject({
         variables: {
           userId: user?.uid || "test-user-123",
           input: {
-            title: projectData.title,
-            description: projectData.description,
-            completionType: projectData.completionType || 'milestone',
-            outcome: projectData.outcome
+            title: goalStatement,
+            description: null,
+            completionType: 'milestone', // Default, AI will adjust during onboarding
+            outcome: null,
+            onboardingState: JSON.stringify({
+              stage: "introduction",
+              domain: null, // AI will detect
+              collected: {}
+            })
           }
         }
       });
@@ -353,26 +358,31 @@ function App({ apolloClient }) {
       const projectId = projectResult.data.createProject.id;
       console.log('Project created with ID:', projectId);
 
-      // Step 2: Create AI persona from user goal
+      // Create a default neutral onboarding persona
+      // AI will configure this during conversational onboarding
       const personaResult = await createPersona({
         variables: {
           projectId: parseInt(projectId),
           userId: user?.uid || "test-user-123",
-          userGoal: projectData.userGoal,
-          preferences: projectData.preferences || {
-            tone: 'friendly',
+          userGoal: goalStatement,
+          preferences: {
+            tone: 'supportive',
             verbosity: 'balanced',
-            emoji: true,
+            emoji: false,
             platitudes: false
           }
         }
       });
 
-      console.log('Persona created:', personaResult.data.createPersonaFromGoal);
+      console.log('Onboarding persona created:', personaResult.data.createPersonaFromGoal);
 
-      // Navigate to the new project
-      navigate(`/project/${projectId}/overview`);
+      // Navigate IMMEDIATELY to chat view (not overview)
+      // This triggers the conversational onboarding
+      navigate(`/project/${projectId}/chat`);
       setShowCreateProject(false);
+
+      // The goal statement will be sent as the first message by ProjectDashboardMobile
+      // when it detects a new project with onboarding state
     } catch (error) {
       console.error('Error creating project:', error);
       alert('Failed to create project: ' + error.message);
@@ -567,36 +577,20 @@ function App({ apolloClient }) {
 }
 
 function CreateProjectForm({ onSubmit, onCancel }) {
-  const [step, setStep] = useState(1);
-  const [userGoal, setUserGoal] = useState('');
-  const [title, setTitle] = useState('');
-  const [outcome, setOutcome] = useState('');
-  const [completionType, setCompletionType] = useState('milestone');
-  const [preferences, setPreferences] = useState({
-    tone: 'friendly',
-    verbosity: 'balanced',
-    emoji: true,
-    platitudes: false
-  });
-
-  const handleContinue = () => {
-    // Extract title from first sentence of user goal
-    const extractedTitle = userGoal.split('.')[0].split('\n')[0].substring(0, 80);
-    setTitle(extractedTitle);
-    setStep(2);
-  };
+  const [goalStatement, setGoalStatement] = useState('');
+  const textareaRef = useState(null);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit({
-      title,
-      description: userGoal,
-      outcome,
-      completionType,
-      userGoal,
-      preferences
-    });
+    onSubmit(goalStatement.trim());
   };
+
+  // Auto-focus the textarea when component mounts
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, []);
 
   return (
     <main style={{
@@ -607,288 +601,130 @@ function CreateProjectForm({ onSubmit, onCancel }) {
       fontFamily: "'Inter', sans-serif",
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center'
+      alignItems: 'center',
+      justifyContent: 'center'
     }}>
       <div style={{ maxWidth: 600, width: '100%' }}>
         <h1 style={{
           textAlign: 'center',
           color: '#5D4B8C',
           marginBottom: '0.5rem',
-          fontFamily: "'Cinzel', serif"
+          fontFamily: "'Cinzel', serif",
+          fontSize: 'clamp(1.8rem, 5vw, 2.5rem)'
         }}>
-          Create New Project
+          What do you want to accomplish?
         </h1>
-        <p style={{ textAlign: 'center', color: '#888', marginBottom: '2rem' }}>
-          Step {step} of 2
+        <p style={{ textAlign: 'center', color: '#aaa', marginBottom: '2.5rem', fontSize: '1rem', lineHeight: '1.6' }}>
+          Just type your goal and I'll guide you through the rest. No forms, just conversation.
         </p>
 
-        {step === 1 && (
-          <div>
-            <label style={{
-              display: 'block',
-              marginBottom: '1rem',
-              color: '#D9D9E3',
+        <form onSubmit={handleSubmit}>
+          <textarea
+            ref={textareaRef}
+            value={goalStatement}
+            onChange={(e) => setGoalStatement(e.target.value)}
+            placeholder="Examples:
+• I want to lose 20 pounds
+• I need to launch my SaaS product
+• I'm trying to save $10,000 for a house
+• I want to learn Python programming
+• I need to be more confident in social situations"
+            rows={8}
+            style={{
+              width: '100%',
+              padding: '1.25rem',
               fontSize: '1.1rem',
-              fontWeight: '500'
-            }}>
-              What do you want to achieve?
-            </label>
-            <p style={{ color: '#aaa', marginBottom: '1rem', fontSize: '0.95rem' }}>
-              Describe your goal in your own words. Our AI will help you create a plan and guide you every step of the way.
-            </p>
-            <textarea
-              value={userGoal}
-              onChange={(e) => setUserGoal(e.target.value)}
-              placeholder="Example: I want to lose 20 pounds by eating healthier and exercising regularly. I need someone to keep me accountable and help me build better habits."
-              rows={6}
-              style={{
-                width: '100%',
-                padding: '1rem',
-                fontSize: '1rem',
-                background: '#1A1A1A',
-                border: '2px solid #2D2D40',
-                borderRadius: '8px',
-                color: '#D9D9E3',
-                resize: 'vertical',
-                lineHeight: '1.5',
-                fontFamily: 'inherit'
-              }}
-              onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
-              onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
-            />
-
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-              <button
-                type="button"
-                onClick={onCancel}
-                style={{
-                  flex: 1,
-                  padding: '0.875rem',
-                  fontSize: '1rem',
-                  backgroundColor: '#2D2D40',
-                  color: '#D9D9E3',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: '500'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleContinue}
-                disabled={!userGoal.trim() || userGoal.trim().length < 20}
-                style={{
-                  flex: 2,
-                  padding: '0.875rem',
-                  fontSize: '1rem',
-                  backgroundColor: (userGoal.trim() && userGoal.trim().length >= 20) ? '#5D4B8C' : '#333',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: (userGoal.trim() && userGoal.trim().length >= 20) ? 'pointer' : 'not-allowed',
-                  fontWeight: '500'
-                }}
-              >
-                Continue →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3', fontWeight: '500' }}>
-                Project Title
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
-                  background: '#1A1A1A',
-                  border: '2px solid #2D2D40',
-                  borderRadius: '8px',
-                  color: '#D9D9E3'
-                }}
-                onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
-                onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3', fontWeight: '500' }}>
-                Desired Outcome
-              </label>
-              <input
-                type="text"
-                value={outcome}
-                onChange={(e) => setOutcome(e.target.value)}
-                placeholder="What does success look like?"
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
-                  background: '#1A1A1A',
-                  border: '2px solid #2D2D40',
-                  borderRadius: '8px',
-                  color: '#D9D9E3'
-                }}
-                onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
-                onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', color: '#D9D9E3', fontWeight: '500' }}>
-                Project Type
-              </label>
-              <select
-                value={completionType}
-                onChange={(e) => setCompletionType(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
-                  background: '#1A1A1A',
-                  border: '2px solid #2D2D40',
-                  borderRadius: '8px',
-                  color: '#D9D9E3'
-                }}
-              >
-                <option value="milestone">📍 Milestone (One-time goal)</option>
-                <option value="habit_formation">🔁 Habit Formation (Build a routine)</option>
-                <option value="ongoing">⏳ Ongoing (Continuous improvement)</option>
-              </select>
-            </div>
-
-            <div style={{
               background: '#1A1A1A',
-              padding: '1rem',
-              borderRadius: '8px',
-              border: '1px solid #2D2D40'
-            }}>
-              <label style={{ display: 'block', marginBottom: '1rem', color: '#D9D9E3', fontWeight: '500' }}>
-                AI Coach Preferences
-              </label>
+              border: '2px solid #2D2D40',
+              borderRadius: '12px',
+              color: '#D9D9E3',
+              resize: 'vertical',
+              lineHeight: '1.6',
+              fontFamily: 'inherit'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#5D4B8C'}
+            onBlur={(e) => e.target.style.borderColor = '#2D2D40'}
+            onKeyDown={(e) => {
+              // Submit on Cmd/Ctrl + Enter
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                if (goalStatement.trim()) {
+                  handleSubmit(e);
+                }
+              }
+            }}
+          />
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', color: '#aaa', fontSize: '0.9rem' }}>
-                    Tone
-                  </label>
-                  <select
-                    value={preferences.tone}
-                    onChange={(e) => setPreferences({...preferences, tone: e.target.value})}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      fontSize: '0.9rem',
-                      background: '#0D0D0D',
-                      border: '1px solid #333',
-                      borderRadius: '4px',
-                      color: '#D9D9E3'
-                    }}
-                  >
-                    <option value="friendly">Friendly</option>
-                    <option value="direct">Direct</option>
-                    <option value="professional">Professional</option>
-                  </select>
-                </div>
+          <p style={{ color: '#666', fontSize: '0.85rem', marginTop: '0.75rem', textAlign: 'center' }}>
+            Tip: Press {navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'} + Enter to submit
+          </p>
 
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', color: '#aaa', fontSize: '0.9rem' }}>
-                    Verbosity
-                  </label>
-                  <select
-                    value={preferences.verbosity}
-                    onChange={(e) => setPreferences({...preferences, verbosity: e.target.value})}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      fontSize: '0.9rem',
-                      background: '#0D0D0D',
-                      border: '1px solid #333',
-                      borderRadius: '4px',
-                      color: '#D9D9E3'
-                    }}
-                  >
-                    <option value="concise">Concise</option>
-                    <option value="balanced">Balanced</option>
-                    <option value="detailed">Detailed</option>
-                  </select>
-                </div>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                flex: 1,
+                padding: '1rem',
+                fontSize: '1.05rem',
+                backgroundColor: 'transparent',
+                color: '#aaa',
+                border: '2px solid #2D2D40',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontWeight: '500',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.borderColor = '#5D4B8C';
+                e.target.style.color = '#D9D9E3';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.borderColor = '#2D2D40';
+                e.target.style.color = '#aaa';
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!goalStatement.trim()}
+              style={{
+                flex: 2,
+                padding: '1rem',
+                fontSize: '1.05rem',
+                backgroundColor: goalStatement.trim() ? '#5D4B8C' : '#333',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: goalStatement.trim() ? 'pointer' : 'not-allowed',
+                fontWeight: '600',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                if (goalStatement.trim()) {
+                  e.target.style.backgroundColor = '#6D5B9C';
+                  e.target.style.transform = 'translateY(-1px)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = goalStatement.trim() ? '#5D4B8C' : '#333';
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              Start →
+            </button>
+          </div>
+        </form>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={preferences.emoji}
-                    onChange={(e) => setPreferences({...preferences, emoji: e.target.checked})}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <label style={{ color: '#aaa', fontSize: '0.9rem', cursor: 'pointer' }}>
-                    Use Emoji
-                  </label>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={!preferences.platitudes}
-                    onChange={(e) => setPreferences({...preferences, platitudes: !e.target.checked})}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <label style={{ color: '#aaa', fontSize: '0.9rem', cursor: 'pointer' }}>
-                    Skip Platitudes
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                style={{
-                  flex: 1,
-                  padding: '0.875rem',
-                  fontSize: '1rem',
-                  backgroundColor: '#2D2D40',
-                  color: '#D9D9E3',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: '500'
-                }}
-              >
-                ← Back
-              </button>
-              <button
-                type="submit"
-                disabled={!title.trim()}
-                style={{
-                  flex: 2,
-                  padding: '0.875rem',
-                  fontSize: '1rem',
-                  backgroundColor: title.trim() ? '#5D4B8C' : '#333',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: title.trim() ? 'pointer' : 'not-allowed',
-                  fontWeight: '500'
-                }}
-              >
-                Create Project & AI Coach
-              </button>
-            </div>
-          </form>
-        )}
+        <p style={{
+          textAlign: 'center',
+          color: '#666',
+          marginTop: '2rem',
+          fontSize: '0.9rem',
+          lineHeight: '1.5'
+        }}>
+          Don't worry about getting it perfect. We'll figure out the details together.
+        </p>
       </div>
     </main>
   );

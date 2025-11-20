@@ -48,8 +48,8 @@ export default {
     createProject: async (_, { userId, input }) => {
       const query = `
         INSERT INTO projects (
-          user_id, title, description, completion_type, outcome, status
-        ) VALUES ($1, $2, $3, $4, $5, $6)
+          user_id, title, description, completion_type, outcome, status, onboarding_state
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
       `;
 
@@ -59,7 +59,8 @@ export default {
         input.description || null,
         input.completionType || 'milestone',
         input.outcome || null,
-        'active'
+        'active',
+        input.onboardingState || null
       ];
 
       const result = await db.query(query, values);
