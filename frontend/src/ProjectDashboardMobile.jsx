@@ -376,93 +376,22 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
     ? tasks
     : tasks.filter(t => t.context === selectedContext);
 
-  // TEMPORARILY DISABLED: Session boundaries causing infinite render loop
-  // TODO: Fix the infinite loop and re-enable
-  const messagesWithBoundaries = useMemo(() => {
-    // Filter out optimistic messages that match real messages
-    const uniqueOptimistic = optimisticMessages.filter(optMsg =>
-      !serverMessages.some(serverMsg =>
-        serverMsg.content === optMsg.content &&
-        serverMsg.senderType === optMsg.senderType &&
-        Math.abs(new Date(serverMsg.createdAt) - new Date(optMsg.createdAt)) < 5000
-      )
-    );
+  // DON'T use useMemo for data derived from Apollo queries - causes infinite loops
+  // Just recalculate on each render (small performance hit but no infinite loop)
+  const uniqueOptimistic = optimisticMessages.filter(optMsg =>
+    !serverMessages.some(serverMsg =>
+      serverMsg.content === optMsg.content &&
+      serverMsg.senderType === optMsg.senderType &&
+      Math.abs(new Date(serverMsg.createdAt) - new Date(optMsg.createdAt)) < 5000
+    )
+  );
 
-    // Combine messages inside useMemo to ensure consistency
-    const allMessages = [...serverMessages, ...uniqueOptimistic];
+  const allMessages = [...serverMessages, ...uniqueOptimistic];
+  const messagesWithBoundaries = allMessages.length === 0
+    ? []
+    : allMessages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${msg.id || idx}` }));
 
-    if (!allMessages || allMessages.length === 0) {
-      return [];
-    }
-
-    // TEMPORARILY REMOVED: Session boundary logic
-    // For now, just return messages without boundaries to fix the infinite loop
-    return allMessages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${msg.id || idx}` }));
-
-    /* COMMENTED OUT - causing infinite render loop
-    if (!sessions || sessions.length === 0) {
-      return allMessages.map((msg, idx) => ({ type: 'message', data: msg, key: `msg-${idx}` }));
-    }
-
-    const items = [];
-    let currentSessionIndex = -1;
-
-    for (let i = 0; i < allMessages.length; i++) {
-      const msg = allMessages[i];
-      const msgTime = new Date(msg.createdAt);
-
-      // Check if we need to insert a session boundary before this message
-      for (let j = currentSessionIndex + 1; j < sessions.length; j++) {
-        const session = sessions[j];
-        const sessionStart = new Date(session.startedAt);
-        const sessionEnd = session.endedAt ? new Date(session.endedAt) : null;
-
-        // If message is after session start and we haven't shown this session yet
-        if (msgTime >= sessionStart) {
-          // Insert session start boundary
-          items.push({
-            type: 'session-start',
-            data: session,
-            key: `session-start-${session.id}`
-          });
-          currentSessionIndex = j;
-
-          // Check if session has ended before this message
-          if (sessionEnd && msgTime > sessionEnd) {
-            items.push({
-              type: 'session-end',
-              data: session,
-              key: `session-end-${session.id}`
-            });
-          }
-          break;
-        }
-      }
-
-      // Add the message
-      items.push({ type: 'message', data: msg, key: `msg-${msg.id}` });
-    }
-
-    // Check if the last session needs an end boundary
-    if (currentSessionIndex >= 0 && currentSessionIndex < sessions.length) {
-      const lastSession = sessions[currentSessionIndex];
-      if (lastSession.endedAt) {
-        const lastSessionEnd = new Date(lastSession.endedAt);
-        const lastMsgTime = allMessages.length > 0 ? new Date(allMessages[allMessages.length - 1].createdAt) : null;
-
-        if (lastMsgTime && lastSessionEnd > lastMsgTime) {
-          items.push({
-            type: 'session-end',
-            data: lastSession,
-            key: `session-end-${lastSession.id}`
-          });
-        }
-      }
-    }
-
-    return items;
-    */
-  }, [serverMessages, optimisticMessages]); // Removed 'sessions' dependency to avoid infinite loop
+  // TODO: Re-enable session boundaries once infinite loop issue is resolved
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
