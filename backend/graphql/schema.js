@@ -136,6 +136,9 @@ export default gql`
     # Recurring goals
     recurringGoal: JSON
 
+    # Conversational onboarding
+    onboardingState: JSON
+
     # Debug mode
     debugModeEnabled: Boolean!
     debugModeActivatedAt: DateTime

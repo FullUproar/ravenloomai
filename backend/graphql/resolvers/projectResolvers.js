@@ -277,6 +277,9 @@ function mapProjectFromDb(row) {
     recurringGoal: typeof row.recurring_goal === 'string'
       ? JSON.parse(row.recurring_goal)
       : row.recurring_goal,
+    onboardingState: typeof row.onboarding_state === 'string'
+      ? JSON.parse(row.onboarding_state)
+      : row.onboarding_state,
     debugModeEnabled: row.debug_mode_enabled || false,
     debugModeActivatedAt: row.debug_mode_activated_at,
     createdAt: row.created_at,
