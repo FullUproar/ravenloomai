@@ -2,25 +2,35 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Work Sessions', () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to the app - authentication state is already loaded
-    await page.goto('/');
+    // Auto-login via test page
+    await page.goto('/test-login');
 
-    // Wait for app to load
-    await page.waitForTimeout(2000);
+    // Wait for redirect to dashboard
+    await page.waitForURL('/', { timeout: 15000 });
+
+    // Wait for dashboard to load
+    await page.waitForSelector('text=Your Projects', { timeout: 15000 });
   });
 
   test('should display session boundaries in chat', async ({ page }) => {
 
-    // Take screenshot of home page
-    await page.screenshot({ path: 'tests/screenshots/01-home.png', fullPage: true });
+    // Take screenshot of dashboard
+    await page.screenshot({ path: 'tests/screenshots/01-dashboard.png', fullPage: true });
 
-    // Click on a project (adjust selector based on your UI)
-    const firstProject = page.locator('[data-testid="project-card"]').first();
-    if (await firstProject.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await firstProject.click();
-    }
+    // Click on the first project
+    console.log('Clicking on project...');
+    await page.click('text=Test an online app that I built');
+
+    // Wait for navigation and project page to load
+    console.log('Waiting for project page to load...');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('button:has-text("Overview"), button:has-text("Work")', { timeout: 15000 });
+
+    // Take screenshot after entering project
+    await page.screenshot({ path: 'tests/screenshots/02-inside-project.png', fullPage: true });
 
     // Navigate to Work view
+    console.log('Clicking Work button...');
     await page.click('button:has-text("Work")');
     await page.waitForTimeout(1000);
 

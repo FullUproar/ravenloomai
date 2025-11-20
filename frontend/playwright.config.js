@@ -15,20 +15,12 @@ export default defineConfig({
   },
 
   projects: [
-    // Setup project - runs once to authenticate
-    {
-      name: 'setup',
-      testMatch: /.*\.setup\.js/,
-    },
-
-    // Tests - use saved authentication
+    // Tests - each test logs in via /test-login
     {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: 'playwright/.auth/user.json',
       },
-      dependencies: ['setup'],
     },
   ],
 
