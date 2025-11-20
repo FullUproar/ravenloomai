@@ -1,0 +1,52 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "RavenLoom Logo RavenLoom" [level=1] [ref=e6] [cursor=pointer]:
+      - img "RavenLoom Logo" [ref=e7]
+      - text: RavenLoom
+    - button "S" [ref=e9] [cursor=pointer]
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e13]: Test an online app that I built
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - heading "Test an online app that I built" [level=1] [ref=e17]
+          - paragraph [ref=e18]: Test an online app that I built
+        - generic [ref=e22]:
+          - generic [ref=e23]: 🎯
+          - paragraph [ref=e24]: Ready to get started?
+          - paragraph [ref=e25]: Start a work session or add your first task
+        - generic [ref=e26]:
+          - button "🚀 Start Working" [active] [ref=e27] [cursor=pointer]
+          - button "+ Task" [ref=e28] [cursor=pointer]
+      - navigation [ref=e29]:
+        - button "🏠 Overview" [ref=e30] [cursor=pointer]:
+          - generic [ref=e31]: 🏠
+          - text: Overview
+        - button "🚀 Work" [ref=e32] [cursor=pointer]:
+          - generic [ref=e33]: 🚀
+          - text: Work
+        - button "✓ Tasks" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]: ✓
+          - text: Tasks
+        - button "🤝 Connect" [ref=e36] [cursor=pointer]:
+          - generic [ref=e37]: 🤝
+          - text: Connect
+        - button "⚙️ Project" [ref=e38] [cursor=pointer]:
+          - generic [ref=e39]: ⚙️
+          - text: Project
+  - contentinfo [ref=e40]:
+    - generic [ref=e41]:
+      - generic [ref=e42]:
+        - link "GitHub" [ref=e43] [cursor=pointer]:
+          - /url: https://github.com/yourusername/ravenloom
+        - link "Documentation" [ref=e44] [cursor=pointer]:
+          - /url: /docs
+        - link "Privacy" [ref=e45] [cursor=pointer]:
+          - /url: /privacy
+        - link "Terms" [ref=e46] [cursor=pointer]:
+          - /url: /terms
+      - generic [ref=e47]: © 2025 Full Uproar Games, Inc. Making productivity more human with AI.
+```

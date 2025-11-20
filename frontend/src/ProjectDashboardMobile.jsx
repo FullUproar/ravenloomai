@@ -230,8 +230,11 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
 
   // Helper to change view and update URL
   const changeView = (newView) => {
+    console.log(`[changeView] Changing from ${currentView} to ${newView}, projectId: ${projectId}`);
     setCurrentView(newView);
-    navigate(`/project/${projectId}/${newView}`);
+    const newUrl = `/project/${projectId}/${newView}`;
+    console.log(`[changeView] Navigating to: ${newUrl}`);
+    navigate(newUrl);
   };
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
