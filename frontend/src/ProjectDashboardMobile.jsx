@@ -28,6 +28,7 @@ const GET_PROJECT = gql`
       status
       completionType
       outcome
+      onboardingState
       debugModeEnabled
       debugModeActivatedAt
       persona {
@@ -221,12 +222,17 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
   const [currentView, setCurrentView] = useState(urlView || initialView); // 'overview', 'chat', 'tasks', 'goals', 'connections', 'project'
   const [ravensEnabled, setRavensEnabled] = useState(false);
 
-  // Sync currentView with URL
+  // Sync currentView with URL only on initial load and external URL changes
+  // Don't sync if we're in the middle of a programmatic navigation
   useEffect(() => {
+    console.log(`[URL Sync] urlView: ${urlView}, currentView: ${currentView}`);
+    // Only sync from URL if urlView exists and is different from currentView
+    // AND we're not in the middle of a programmatic changeView call
     if (urlView && urlView !== currentView) {
+      console.log(`[URL Sync] Syncing currentView to match URL: ${urlView}`);
       setCurrentView(urlView);
     }
-  }, [urlView]);
+  }, [urlView]); // Only depend on urlView, not currentView
 
   // Helper to change view and update URL
   const changeView = (newView) => {
@@ -363,12 +369,51 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
     }
   }, [currentView]);
 
+  // Auto-send initial goal message when starting conversational onboarding
+  const hasAutoSent = useRef(false);
+  useEffect(() => {
+    const project = projectData?.getProject;
+    const isOnboarding = project?.onboardingState != null;
+    const messages = chatData?.getConversation?.messages || [];
+
+    // Only auto-send if:
+    // 1. Onboarding is active
+    // 2. We're in chat view
+    // 3. There are no messages yet
+    // 4. We haven't already auto-sent (prevent multiple sends)
+    // 5. Project data is loaded
+    if (isOnboarding &&
+        currentView === 'chat' &&
+        messages.length === 0 &&
+        !hasAutoSent.current &&
+        project?.title) {
+
+      console.log('🎯 Auto-sending initial onboarding message:', project.title);
+      hasAutoSent.current = true;
+
+      // Send the goal statement as the first message
+      sendMessage({
+        variables: {
+          projectId,
+          userId,
+          message: project.title
+        }
+      }).catch(error => {
+        console.error('Failed to auto-send initial onboarding message:', error);
+        hasAutoSent.current = false; // Allow retry on error
+      });
+    }
+  }, [projectData, chatData, currentView, projectId, userId, sendMessage]);
+
   if (projectLoading) {
     return <div style={{ color: '#ccc', padding: '2rem' }}>Loading project...</div>;
   }
 
   const project = projectData?.getProject;
   const conversation = chatData?.getConversation;
+
+  // Check if conversational onboarding is active
+  const isOnboarding = project?.onboardingState != null;
 
   // DON'T use useMemo for Apollo data - it causes infinite loops because Apollo creates new object references
   const serverMessages = chatData?.getConversation?.messages || [];
@@ -913,20 +958,20 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
             </div>
 
             {/* Message Input Area */}
-            {activeSession ? (
+            {(activeSession || isOnboarding) ? (
               <form onSubmit={handleSendMessage} style={{
                 padding: '1rem',
                 borderTop: '1px solid #2D2D40',
                 backgroundColor: '#0D0D0D'
               }}>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  {/* Green session indicator */}
+                  {/* Session/Onboarding indicator */}
                   <div style={{
                     width: '12px',
                     height: '12px',
                     borderRadius: '50%',
-                    backgroundColor: '#4CAF50',
-                    boxShadow: '0 0 8px rgba(76, 175, 80, 0.6)',
+                    backgroundColor: isOnboarding ? '#9D8BCC' : '#4CAF50',
+                    boxShadow: isOnboarding ? '0 0 8px rgba(157, 139, 204, 0.6)' : '0 0 8px rgba(76, 175, 80, 0.6)',
                     flexShrink: 0
                   }} />
 
