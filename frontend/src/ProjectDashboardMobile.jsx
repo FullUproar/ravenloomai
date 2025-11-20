@@ -384,20 +384,10 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
   const project = projectData?.getProject;
   const conversation = chatData?.getConversation;
 
-  // Stabilize array references to prevent infinite useMemo recalculation
-  // Depend on top-level data objects to avoid creating new references in dependency array
-  const serverMessages = useMemo(
-    () => chatData?.getConversation?.messages || [],
-    [chatData]
-  );
-  const tasks = useMemo(
-    () => projectData?.getProject?.tasks || [],
-    [projectData]
-  );
-  const sessions = useMemo(
-    () => sessionsData?.getWorkSessions || [],
-    [sessionsData]
-  );
+  // DON'T use useMemo for Apollo data - it causes infinite loops because Apollo creates new object references
+  const serverMessages = chatData?.getConversation?.messages || [];
+  const tasks = projectData?.getProject?.tasks || [];
+  const sessions = sessionsData?.getWorkSessions || [];
 
   const filteredTasks = selectedContext === 'all'
     ? tasks
