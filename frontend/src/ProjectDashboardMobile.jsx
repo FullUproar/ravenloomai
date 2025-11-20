@@ -313,13 +313,21 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
   });
 
   // Update active session from query data
+  // Use a more specific dependency to avoid infinite loops
+  const activeSessionFromQuery = sessionData?.getActiveWorkSession;
+  const activeSessionId = activeSessionFromQuery?.id;
+
   useEffect(() => {
-    if (sessionData?.getActiveWorkSession) {
-      setActiveSession(sessionData.getActiveWorkSession);
-    } else if (sessionData && !sessionData.getActiveWorkSession) {
+    if (activeSessionFromQuery) {
+      // Only update if the session ID changed
+      if (!activeSession || activeSession.id !== activeSessionFromQuery.id) {
+        setActiveSession(activeSessionFromQuery);
+      }
+    } else if (activeSession) {
+      // Clear if we had a session but now we don't
       setActiveSession(null);
     }
-  }, [sessionData]);
+  }, [activeSessionId]); // Only depend on the ID, not the whole object
 
   const { data: sessionsData } = useQuery(GET_WORK_SESSIONS, {
     variables: { projectId, userId, limit: 50 },
