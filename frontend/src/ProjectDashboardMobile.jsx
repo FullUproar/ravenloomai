@@ -303,7 +303,6 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
   });
 
   // Work Session state and queries
-  const [activeSession, setActiveSession] = useState(null);
   const [showEndSessionModal, setShowEndSessionModal] = useState(false);
   const [sessionNotes, setSessionNotes] = useState('');
 
@@ -312,22 +311,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
     skip: !projectId || !userId
   });
 
-  // Update active session from query data
-  // Use a more specific dependency to avoid infinite loops
-  const activeSessionFromQuery = sessionData?.getActiveWorkSession;
-  const activeSessionId = activeSessionFromQuery?.id;
-
-  useEffect(() => {
-    if (activeSessionFromQuery) {
-      // Only update if the session ID changed
-      if (!activeSession || activeSession.id !== activeSessionFromQuery.id) {
-        setActiveSession(activeSessionFromQuery);
-      }
-    } else if (activeSession) {
-      // Clear if we had a session but now we don't
-      setActiveSession(null);
-    }
-  }, [activeSessionId]); // Only depend on the ID, not the whole object
+  // Use query data directly instead of syncing to state (which caused infinite loops)
+  const activeSession = sessionData?.getActiveWorkSession || null;
 
   const { data: sessionsData } = useQuery(GET_WORK_SESSIONS, {
     variables: { projectId, userId, limit: 50 },
@@ -337,8 +322,7 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
 
   const [startWorkSession] = useMutation(START_WORK_SESSION, {
     refetchQueries: ['GetActiveWorkSession', 'GetWorkSessions'],
-    onCompleted: (data) => {
-      setActiveSession(data?.startWorkSession);
+    onCompleted: () => {
       setShowSessionsList(false); // Hide sessions list when starting new session
       changeView('chat');
     }
@@ -347,7 +331,6 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
   const [endWorkSession] = useMutation(END_WORK_SESSION, {
     refetchQueries: ['GetActiveWorkSession', 'GetWorkSessions'],
     onCompleted: () => {
-      setActiveSession(null);
       setShowEndSessionModal(false);
       setSessionNotes('');
       // Navigate back to overview after ending session
