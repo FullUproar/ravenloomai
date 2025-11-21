@@ -14,8 +14,9 @@ import MediumTermMemory from './MediumTermMemory.js';
 import MemoryService from './MemoryService.js';
 import AI_FUNCTIONS from '../config/aiFunctions.js';
 import AIFunctionExecutor from './AIFunctionExecutor.js';
-import UserStyleDetector from './UserStyleDetector.js';
-import AdaptivePlanningService from './AdaptivePlanningService.js';
+// Temporarily disabled - missing files
+// import UserStyleDetector from './UserStyleDetector.js';
+// import AdaptivePlanningService from './AdaptivePlanningService.js';
 
 class ConversationService {
   constructor() {
@@ -161,7 +162,8 @@ class ConversationService {
     console.log('[ConversationService] User message added');
 
     // === ADAPTIVE PLANNING DETECTION ===
-
+    // Temporarily disabled due to missing UserStyleDetector module
+    /*
     // Check if we're in planning mode (new project with minimal activity)
     const conversationHistory = await this.getConversationHistory(conversation.id);
     const messageCount = conversationHistory.length;
@@ -225,6 +227,7 @@ class ConversationService {
         console.error('[ConversationService] Failed to save user style:', err);
       }
     }
+    */
 
     // === MEMORY SYSTEM INTEGRATION ===
 
