@@ -124,6 +124,11 @@ function ProjectDashboard({ userId, projectId, projects, onProjectChange, onCrea
     onCompleted: () => {
       refetchChat();
       setMessage('');
+    },
+    onError: (error) => {
+      console.error('Error sending message:', error);
+      // Still refetch to show any messages that might have been saved before the error
+      refetchChat();
     }
   });
 
