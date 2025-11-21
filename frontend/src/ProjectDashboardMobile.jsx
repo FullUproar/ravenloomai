@@ -391,6 +391,17 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
       console.log('🎯 Auto-sending initial onboarding message:', project.title);
       hasAutoSent.current = true;
 
+      // Show optimistic user message
+      const optimisticUserMsg = {
+        id: `optimistic-${Date.now()}`,
+        content: project.title,
+        senderType: 'user',
+        senderName: 'You',
+        createdAt: new Date().toISOString()
+      };
+      setOptimisticMessages([optimisticUserMsg]);
+      setIsGenerating(true);
+
       // Send the goal statement as the first message
       sendMessage({
         variables: {
@@ -401,6 +412,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
       }).catch(error => {
         console.error('Failed to auto-send initial onboarding message:', error);
         hasAutoSent.current = false; // Allow retry on error
+        setIsGenerating(false);
+        setOptimisticMessages([]);
       });
     }
   }, [projectData, chatData, currentView, projectId, userId, sendMessage]);
@@ -894,7 +907,8 @@ function ProjectDashboardMobile({ userId, projectId, initialView = 'overview', p
                   padding: '1rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '1rem'
+                  gap: '1rem',
+                  justifyContent: 'flex-end'
                 }}>
               {messagesWithBoundaries.length === 0 && !chatLoading && (
                 <div style={{
