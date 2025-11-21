@@ -19,6 +19,8 @@
     "test:playwright:ui": "playwright test --ui",
     "test:playwright:headed": "playwright test --headed",
     "test:playwright:debug": "playwright test --debug",
+    "test:playwright:ai-journeys": "playwright test tests/ai-powered-user-journeys.spec.js",
+    "test:playwright:ai-journeys:headed": "playwright test tests/ai-powered-user-journeys.spec.js --headed",
     "test:report": "playwright show-report"
   },
   "dependencies": {
