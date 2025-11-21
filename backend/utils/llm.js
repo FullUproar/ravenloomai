@@ -199,8 +199,9 @@ export async function generateStructuredOutput(messages, schema, options = {}) {
       model,
       messages: enhancedMessages,
       temperature,
-      max_tokens: maxTokens,
-      response_format: { type: 'json_object' }
+      max_tokens: maxTokens
+      // Note: response_format removed - gpt-4o doesn't support json_object type
+      // JSON format is enforced via system prompt instead
     });
 
     const content = completion.choices[0].message.content;
