@@ -284,10 +284,21 @@ class ConversationService {
 
     try {
       // Generate AI response with function calling
+      console.log('[ConversationService] Calling OpenAI with gpt-4o...');
+      console.log('[ConversationService] Message count:', messages.length);
+      console.log('[ConversationService] Function count:', AI_FUNCTIONS.length);
+
       const aiResponse = await generateChatCompletionWithFunctions(messages, AI_FUNCTIONS, {
         model: 'gpt-4o',  // Use gpt-4o for 128k context window
         temperature: 0.7,
         maxTokens: 1500
+      });
+
+      console.log('[ConversationService] AI response received:', {
+        hasContent: !!aiResponse.content,
+        contentLength: aiResponse.content?.length || 0,
+        hasToolCalls: !!aiResponse.toolCalls,
+        toolCallCount: aiResponse.toolCalls?.length || 0
       });
 
       const functionsExecuted = [];
@@ -329,6 +340,7 @@ class ConversationService {
       }
 
       // Add persona response to conversation
+      console.log('[ConversationService] Saving persona message to database...');
       const personaMessage = await this.addPersonaMessage(
         conversation.id,
         persona.id,
@@ -339,6 +351,11 @@ class ConversationService {
           functionsExecuted: functionsExecuted.length > 0 ? functionsExecuted : undefined
         }
       );
+
+      console.log('[ConversationService] Message saved, returning response:', {
+        messageId: personaMessage.id,
+        contentLength: personaMessage.content.length
+      });
 
       return {
         message: personaMessage,

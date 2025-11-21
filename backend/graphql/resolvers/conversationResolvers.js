@@ -57,6 +57,12 @@ export default {
         message
       );
 
+      console.log('[sendMessage resolver] Returning response to frontend:', {
+        hasMessage: !!response.message,
+        messageId: response.message?.id,
+        messageContent: response.message?.content?.substring(0, 100)
+      });
+
       return response;
     },
 
