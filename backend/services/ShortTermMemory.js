@@ -11,7 +11,7 @@ import { generateChatCompletion } from '../utils/llm.js';
 class ShortTermMemory {
   constructor() {
     this.MESSAGES_BEFORE_SUMMARY = 20; // Summarize every 20 messages
-    this.RECENT_MESSAGE_COUNT = 10;    // Keep last 10 messages in full
+    this.RECENT_MESSAGE_COUNT = 5;     // Keep last 5 messages in full (reduced to prevent context overflow)
   }
 
   /**

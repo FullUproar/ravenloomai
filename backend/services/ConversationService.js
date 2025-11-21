@@ -291,7 +291,7 @@ class ConversationService {
       const aiResponse = await generateChatCompletionWithFunctions(messages, AI_FUNCTIONS, {
         model: 'gpt-4o',  // Use gpt-4o for 128k context window
         temperature: 0.7,
-        maxTokens: 1500
+        maxTokens: 800  // Reduced to prevent context length exceeded errors
       });
 
       console.log('[ConversationService] AI response received:', {
