@@ -250,7 +250,7 @@ User message: "${userMessage}"`;
       const response = await generateChatCompletionWithFunctions(
         [{ role: 'system', content: systemPrompt }],
         [],
-        { model: 'gpt-4', temperature: 0.3, response_format: { type: 'json_object' } }
+        { model: 'gpt-4o', temperature: 0.3, response_format: { type: 'json_object' } }  // Use gpt-4o for JSON mode
       );
 
       const extracted = JSON.parse(response.content);

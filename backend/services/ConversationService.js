@@ -14,6 +14,8 @@ import MediumTermMemory from './MediumTermMemory.js';
 import MemoryService from './MemoryService.js';
 import AI_FUNCTIONS from '../config/aiFunctions.js';
 import AIFunctionExecutor from './AIFunctionExecutor.js';
+import UserStyleDetector from './UserStyleDetector.js';
+import AdaptivePlanningService from './AdaptivePlanningService.js';
 
 class ConversationService {
   constructor() {
@@ -158,6 +160,72 @@ class ConversationService {
     await this.addUserMessage(conversation.id, userId, userMessage);
     console.log('[ConversationService] User message added');
 
+    // === ADAPTIVE PLANNING DETECTION ===
+
+    // Check if we're in planning mode (new project with minimal activity)
+    const conversationHistory = await this.getConversationHistory(conversation.id);
+    const messageCount = conversationHistory.length;
+
+    // Get task count for this project
+    const taskCountResult = await db.query(
+      'SELECT COUNT(*) as count FROM tasks WHERE project_id = $1',
+      [projectId]
+    );
+    const taskCount = parseInt(taskCountResult.rows[0].count);
+
+    // Get goal count for this project
+    const goalCountResult = await db.query(
+      'SELECT COUNT(*) as count FROM goals WHERE project_id = $1',
+      [projectId]
+    );
+    const goalCount = parseInt(goalCountResult.rows[0].count);
+
+    // Detect if this is a planning session (new project, user describing what they want)
+    const isNewProject = messageCount <= 10 && taskCount <= 3 && goalCount <= 2;
+    const isPlanningMessage = /\b(I want to|I'm thinking about|I need to|I'm planning|help me|how do I|where do I start)\b/i.test(userMessage);
+
+    let detectedUserStyle = null;
+    if (isNewProject && isPlanningMessage) {
+      console.log('[ConversationService] PLANNING MODE DETECTED - Analyzing user style...');
+
+      // Detect user's interaction style using psychology models
+      detectedUserStyle = UserStyleDetector.analyzeFirstMessage(userMessage, {
+        projectTitle: project.title,
+        projectDescription: project.description
+      });
+
+      const suggestedPathway = UserStyleDetector.suggestPlanningPathway(detectedUserStyle);
+
+      console.log('[ConversationService] Detected user style:', {
+        guidancePreference: detectedUserStyle.guidancePreference,
+        planningStyle: detectedUserStyle.planningStyle,
+        detailLevel: detectedUserStyle.detailLevel,
+        currentMode: detectedUserStyle.currentMode,
+        motivationLevel: detectedUserStyle.motivationLevel,
+        confidenceLevel: detectedUserStyle.confidenceLevel,
+        suggestedPathway: suggestedPathway.pathway
+      });
+
+      // Store detected style in medium-term memory for persistence
+      try {
+        await MediumTermMemory.addPreference(
+          projectId,
+          'user_style',
+          JSON.stringify({
+            detectedAt: new Date().toISOString(),
+            userMessage: userMessage,
+            detectedStyle: detectedUserStyle,
+            suggestedPathway: suggestedPathway.pathway,
+            confidence: suggestedPathway.confidence
+          }),
+          7 // importance level
+        );
+        console.log('[ConversationService] User style saved to medium-term memory');
+      } catch (err) {
+        console.error('[ConversationService] Failed to save user style:', err);
+      }
+    }
+
     // === MEMORY SYSTEM INTEGRATION ===
 
     // Tier 1: Get short-term memory (recent messages + summary)
@@ -217,7 +285,7 @@ class ConversationService {
     try {
       // Generate AI response with function calling
       const aiResponse = await generateChatCompletionWithFunctions(messages, AI_FUNCTIONS, {
-        model: 'gpt-4',
+        model: 'gpt-4o',  // Use gpt-4o for 128k context window
         temperature: 0.7,
         maxTokens: 1500
       });

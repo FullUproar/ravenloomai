@@ -93,7 +93,7 @@ Which persona type is most appropriate for this goal?`;
           { role: 'user', content: userPrompt }
         ],
         schema,
-        { model: 'gpt-4', temperature: 0.7 }
+        { model: 'gpt-4o', temperature: 0.7 }  // Use gpt-4o for JSON mode support
       );
 
       // Validate the suggestion

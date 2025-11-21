@@ -40,7 +40,7 @@ export async function generateChatCompletion(messages, options = {}) {
   const client = getLLMClient();
 
   const {
-    model = 'gpt-4',
+    model = 'gpt-4o',  // Use gpt-4o for better performance and larger context
     temperature = 0.7,
     maxTokens = 1000,
     ...otherOptions
@@ -73,7 +73,7 @@ export async function* generateStreamingChatCompletion(messages, options = {}) {
   const client = getLLMClient();
 
   const {
-    model = 'gpt-4',
+    model = 'gpt-4o',  // Use gpt-4o for streaming with larger context
     temperature = 0.7,
     maxTokens = 1000,
     ...otherOptions
@@ -113,7 +113,7 @@ export async function generateChatCompletionWithFunctions(messages, functions, o
   const client = getLLMClient();
 
   const {
-    model = 'gpt-4',
+    model = 'gpt-4o',  // Use gpt-4o for function calling with 128k context
     temperature = 0.7,
     maxTokens = 1500,
     toolChoice = 'auto',
@@ -179,7 +179,7 @@ export async function generateStructuredOutput(messages, schema, options = {}) {
   const client = getLLMClient();
 
   const {
-    model = 'gpt-4',
+    model = 'gpt-4o', // Use gpt-4o which supports JSON mode
     temperature = 0.7,
     maxTokens = 1000
   } = options;
