@@ -9,7 +9,7 @@ import {
   GoogleAuthProvider
 } from 'firebase/auth';
 
-function Login({ onLogin, onSignInStart }) {
+function Login({ onSignInStart }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState('login'); // or 'signup'
@@ -80,10 +80,6 @@ function Login({ onLogin, onSignInStart }) {
       });
   }, []);
 
-  // Quick test login bypass
-  const handleTestLogin = () => {
-    onLogin({ uid: 'test-user-123', email: 'test@example.com' });
-  };
 
   // Google Sign-In
   const handleGoogleSignIn = async (e) => {
@@ -341,33 +337,6 @@ function Login({ onLogin, onSignInStart }) {
             </button>
           </p>
 
-          <hr style={{ border: 'none', borderTop: '1px solid #333', margin: '1.5rem 0' }} />
-
-          <button
-            onClick={handleTestLogin}
-            style={{
-              width: '100%',
-              background: '#2D2D40',
-              color: '#9D8BCC',
-              padding: '0.75rem',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              fontWeight: '500'
-            }}
-          >
-            🧪 Continue as Test User
-          </button>
-          <p style={{
-            textAlign: 'center',
-            fontSize: '0.85rem',
-            color: '#666',
-            marginTop: '0.5rem',
-            marginBottom: 0
-          }}>
-            Skip authentication for testing
-          </p>
         </div>
       </div>
     </div>

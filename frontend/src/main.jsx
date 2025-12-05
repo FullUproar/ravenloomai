@@ -2,42 +2,56 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import App from './App.jsx';
-import TestLogin from './TestLogin.jsx';
 import './styles.css';
-
 
 import {
   ApolloClient,
   InMemoryCache,
-  ApolloProvider
+  ApolloProvider,
+  createHttpLink
 } from '@apollo/client';
+import { setContext } from '@apollo/client/link/context';
 
 // Detect if running in Capacitor native app or emulator
 const isNativeApp = window.location.protocol === 'capacitor:' ||
                     window.location.protocol === 'ionic:' ||
-                    window.location.hostname === '10.0.2.2'; // Android emulator
+                    window.location.hostname === '10.0.2.2';
 
-// For native app local dev, use emulator's special localhost IP
+// API URI configuration
 const apiUri = isNativeApp
-  ? 'http://10.0.2.2:4013/graphql' // Native app uses emulator localhost for local dev
+  ? 'http://10.0.2.2:4000/graphql'
   : process.env.NODE_ENV === 'production'
-    ? '/api/graphql'  // Web PWA uses relative path
-    : 'http://localhost:4013/graphql'; // Web dev uses local backend
+    ? '/api/graphql'
+    : 'http://localhost:4000/graphql';
 
-// Debug: Log the API URI
 console.log('🪶 RavenLoom API URI:', apiUri);
-console.log('🪶 Window location:', window.location.href);
-console.log('🪶 Is Native App:', isNativeApp);
+
+// HTTP link for GraphQL
+const httpLink = createHttpLink({
+  uri: apiUri,
+});
+
+// Auth link to add user ID header
+const authLink = setContext((_, { headers }) => {
+  // Get user ID from localStorage (set on login)
+  const userId = localStorage.getItem('userId');
+  return {
+    headers: {
+      ...headers,
+      'x-user-id': userId || '',
+    }
+  };
+});
 
 const client = new ApolloClient({
-  uri: apiUri,
+  link: authLink.concat(httpLink),
   cache: new InMemoryCache({
     typePolicies: {
-      Conversation: {
+      Channel: {
         fields: {
           messages: {
             merge(existing = [], incoming) {
-              return incoming; // Replace with new messages
+              return incoming;
             }
           }
         }
@@ -51,39 +65,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <ApolloProvider client={client}>
         <Routes>
-          <Route path="/test-login" element={<TestLogin />} />
-          <Route path="/project/:projectId/:view" element={<App apolloClient={client} />} />
-          <Route path="/project/:projectId" element={<App apolloClient={client} />} />
+          <Route path="/team/:teamId/channel/:channelId" element={<App apolloClient={client} />} />
+          <Route path="/team/:teamId" element={<App apolloClient={client} />} />
           <Route path="*" element={<App apolloClient={client} />} />
         </Routes>
       </ApolloProvider>
     </BrowserRouter>
   </React.StrictMode>
 );
-
-// Register service worker for PWA capabilities
-// TEMPORARILY DISABLED - uncomment when service worker is needed
-/*
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        console.log('SW registered:', registration);
-      })
-      .catch((error) => {
-        console.log('SW registration failed:', error);
-      });
-  });
-}
-*/
-
-// Unregister any existing service workers
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      registration.unregister();
-      console.log('Service worker unregistered');
-    }
-  });
-}

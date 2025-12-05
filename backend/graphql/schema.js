@@ -5,531 +5,276 @@ export default gql`
   scalar DateTime
 
   # ============================================================================
-  # PERSONA TYPES
+  # TEAM TYPES
   # ============================================================================
 
-  type Persona {
+  type Team {
     id: ID!
-    projectId: ID!
-    userId: String!
-    archetype: String!
-    specialization: String!
-    displayName: String!
-    voice: String
-    interventionStyle: String
-    focusArea: String
-    domainKnowledge: [String!]!
-    domainMetrics: [String!]!
-    customInstructions: String
-    communicationPreferences: CommunicationPreferences
-    context: JSON
-    active: Boolean!
-    color: String
-    shape: String
+    name: String!
+    slug: String!
+    members: [TeamMember!]!
+    channels: [Channel!]!
     createdAt: DateTime!
-    lastActiveAt: DateTime!
+    updatedAt: DateTime!
   }
 
-  type CommunicationPreferences {
-    tone: String
-    verbosity: String
-    emoji: Boolean
-    platitudes: Boolean
-  }
-
-  type PersonaSuggestion {
-    archetype: String!
-    specialization: String!
-    displayName: String!
-    rationale: String!
-    alternates: [PersonaAlternate!]
-  }
-
-  type PersonaAlternate {
-    archetype: String!
-    specialization: String!
-    rationale: String!
-  }
-
-  input PersonaInput {
-    archetype: String!
-    specialization: String!
-    customInstructions: String
-    communicationPreferences: CommunicationPreferencesInput
-  }
-
-  input CommunicationPreferencesInput {
-    tone: String
-    verbosity: String
-    emoji: Boolean
-    platitudes: Boolean
-  }
-
-  # ============================================================================
-  # CONVERSATION TYPES
-  # ============================================================================
-
-  type Conversation {
+  type TeamMember {
     id: ID!
-    projectId: ID!
+    teamId: ID!
     userId: String!
-    topic: String
-    decisionRequired: Boolean
-    status: String!
-    messages: [Message!]!
+    user: User!
+    role: String!  # owner, admin, member
+    displayName: String
+    createdAt: DateTime!
+  }
+
+  type TeamInvite {
+    id: ID!
+    teamId: ID!
+    email: String!
+    role: String!
+    token: String!
+    expiresAt: DateTime!
+    acceptedAt: DateTime
+    createdAt: DateTime!
+  }
+
+  type User {
+    id: ID!
+    email: String!
+    displayName: String
+    avatarUrl: String
+    createdAt: DateTime!
+  }
+
+  # ============================================================================
+  # CHANNEL & MESSAGE TYPES
+  # ============================================================================
+
+  type Channel {
+    id: ID!
+    teamId: ID!
+    name: String!
+    description: String
+    aiMode: String!  # mentions_only, active, silent
+    isDefault: Boolean!
+    createdBy: String
+    messages(limit: Int, before: ID): [Message!]!
     createdAt: DateTime!
     updatedAt: DateTime!
   }
 
   type Message {
     id: ID!
-    conversationId: ID!
-    senderId: String!
-    senderType: String!
-    senderName: String!
-    senderAvatar: String
+    channelId: ID!
+    userId: String
+    user: User
     content: String!
-    addressedTo: [String!]
-    inReplyTo: ID
-    intent: String
-    confidence: Float
-    isDebugMessage: Boolean!
-    debugData: JSON
+    isAi: Boolean!
+    mentionsAi: Boolean!
+    aiCommand: String  # remember, query, remind, task, etc.
+    metadata: JSON
     createdAt: DateTime!
   }
 
-  type ChatResponse {
-    message: Message!
-    conversation: Conversation!
-    persona: Persona!
-    functionsExecuted: [FunctionExecution!]
+  # ============================================================================
+  # KNOWLEDGE BASE TYPES
+  # ============================================================================
+
+  type Fact {
+    id: ID!
+    teamId: ID!
+    content: String!
+    category: String  # product, manufacturing, marketing, sales, general
+    sourceType: String!  # conversation, document, manual, integration
+    sourceId: ID
+    createdBy: String
+    createdByUser: User
+    validFrom: DateTime!
+    validUntil: DateTime
+    supersededBy: ID
+    createdAt: DateTime!
+    updatedAt: DateTime!
   }
 
-  type FunctionExecution {
+  type Decision {
+    id: ID!
+    teamId: ID!
+    what: String!
+    why: String
+    alternatives: JSON
+    madeBy: String
+    madeByUser: User
+    sourceId: ID
+    relatedFacts: [ID!]
+    createdAt: DateTime!
+  }
+
+  type Document {
+    id: ID!
+    teamId: ID!
     name: String!
-    arguments: JSON!
-    result: JSON!
+    fileType: String
+    sourceUrl: String
+    contentText: String
+    uploadedBy: String
+    processedAt: DateTime
+    metadata: JSON
+    createdAt: DateTime!
+  }
+
+  # Search result for knowledge queries
+  type KnowledgeResult {
+    facts: [Fact!]!
+    decisions: [Decision!]!
+    documents: [Document!]!
+    answer: String  # AI-generated answer if applicable
   }
 
   # ============================================================================
-  # PROJECT TYPES (Enhanced)
+  # ALERT TYPES
+  # ============================================================================
+
+  type Alert {
+    id: ID!
+    teamId: ID!
+    channelId: ID
+    createdBy: String
+    triggerType: String!  # date, recurring, condition
+    triggerAt: DateTime
+    recurrenceRule: String
+    message: String!
+    relatedFactId: ID
+    status: String!  # pending, sent, snoozed, cancelled
+    sentAt: DateTime
+    snoozedUntil: DateTime
+    createdAt: DateTime!
+  }
+
+  # ============================================================================
+  # PROJECT & TASK TYPES (Simplified)
   # ============================================================================
 
   type Project {
     id: ID!
-    userId: String!
-    title: String!
+    teamId: ID!
+    name: String!
     description: String
-    status: String!
-
-    # New persona-related fields
-    completionType: String
-    outcome: String
-    healthScore: Int
-    lastActivityAt: DateTime
-
-    # Habit tracking
-    habitStreakCurrent: Int
-    habitStreakLongest: Int
-    habitStreakTarget: Int
-
-    # Recurring goals
-    recurringGoal: JSON
-
-    # Conversational onboarding
-    onboardingState: JSON
-
-    # Debug mode
-    debugModeEnabled: Boolean!
-    debugModeActivatedAt: DateTime
-
-    # Relationships
-    persona: Persona
-    goals: [Goal!]!
+    status: String!  # active, completed, archived
+    createdBy: String
     tasks: [Task!]!
-    metrics: [Metric!]!
-
     createdAt: DateTime!
     updatedAt: DateTime!
   }
-
-  # ============================================================================
-  # TASK TYPES (Enhanced)
-  # ============================================================================
 
   type Task {
     id: ID!
-    projectId: ID!
-    goalId: ID
-    title: String!
-    description: String
-    type: String!
-    status: String!
-    priority: Int!
-    assignedTo: String!
-    requiresApproval: Boolean!
-
-    # GTD fields
-    gtdType: String
-    context: String
-    energyLevel: String
-    timeEstimate: Int
-
-    # Dependencies
-    dependsOn: [ID!]
-    blockedBy: String
-
-    # Scheduling
-    dueDate: DateTime
-    scheduledFor: DateTime
-    completedAt: DateTime
-    autoScheduled: Boolean
-    createdBy: String
-
-    # Recurring task fields
-    isRecurring: Boolean
-    parentTaskId: ID
-    recurrenceType: String
-    recurrenceInterval: Int
-    recurrenceDays: [Int!]
-    recurrenceEndType: String
-    recurrenceEndDate: DateTime
-    recurrenceEndCount: Int
-    recurrenceInstancesGenerated: Int
-    lastInstanceGeneratedAt: DateTime
-    recurrencePaused: Boolean
-
-    config: JSON
-    result: JSON
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  # ============================================================================
-  # METRIC TYPES
-  # ============================================================================
-
-  type Metric {
-    id: ID!
-    projectId: ID!
-    goalId: ID
-    name: String!
-    value: Float!
-    unit: String
-    recordedAt: DateTime!
-    source: String!
-    metadata: JSON
-  }
-
-  # ============================================================================
-  # GOAL TYPES
-  # ============================================================================
-
-  type Goal {
-    id: ID!
-    projectId: ID!
-    title: String!
-    description: String
-    targetValue: Float
-    currentValue: Float
-    unit: String
-    priority: Int!
-    status: String!
-    targetDate: DateTime
-    metrics: [Metric!]!
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  # ============================================================================
-  # MEMORY TYPES (Enhanced - Episodic + Semantic Memory)
-  # ============================================================================
-
-  # Episodic Memory - Conversation summaries
-  type ConversationEpisode {
-    id: ID!
-    conversationId: ID!
-    projectId: ID!
-    userId: String!
-    startMessageId: ID
-    endMessageId: ID
-    messageCount: Int!
-    topic: String
-    summary: String!
-    keyPoints: [String!]!
-    decisionsMade: JSON
-    emotionsDetected: String
-    userState: String
-    createdAt: DateTime!
-  }
-
-  # Semantic Memory - Knowledge Graph nodes (facts about user/project)
-  type KnowledgeNode {
-    id: ID!
-    userId: String!
+    teamId: ID!
     projectId: ID
-    nodeType: String!
-    label: String!
-    properties: JSON
-    sourceEpisodeId: ID
+    channelId: ID
+    title: String!
+    description: String
+    status: String!  # todo, in_progress, done
+    priority: String!  # low, medium, high, urgent
+    assignedTo: String
+    assignedToUser: User
+    dueAt: DateTime
+    completedAt: DateTime
+    createdBy: String
     sourceMessageId: ID
-    confidence: Float!
-    lastReinforcedAt: DateTime!
-    timesMentioned: Int!
-    contradictedBy: ID
-    isActive: Boolean!
-    createdAt: DateTime!
-  }
-
-  # Memory retrieval results with context
-  type MemoryContext {
-    recentEpisodes: [ConversationEpisode!]!
-    relevantFacts: [KnowledgeNode!]!
-    blockers: [KnowledgeNode!]!
-    strengths: [KnowledgeNode!]!
-  }
-
-  # ============================================================================
-  # WORK SESSIONS
-  # ============================================================================
-
-  type WorkSession {
-    id: ID!
-    projectId: ID!
-    userId: String!
-    conversationId: ID
-    title: String
-    focusArea: String
-    startedAt: DateTime!
-    endedAt: DateTime
-    durationMinutes: Int
-    tasksCompleted: [Int!]!
-    tasksCreated: [Int!]!
-    notes: String
-    summary: String
-    mood: String
-    interruptions: Int
-    breaksTaken: Int
-    status: String!
     createdAt: DateTime!
     updatedAt: DateTime!
-  }
-
-  input WorkSessionInput {
-    title: String
-    focusArea: String
-  }
-
-  input EndWorkSessionInput {
-    notes: String
-    mood: String
-    interruptions: Int
-    breaksTaken: Int
-  }
-
-  # Legacy ProjectMemory (keep for backward compatibility)
-  type ProjectMemory {
-    id: ID!
-    projectId: ID!
-    memoryType: String!
-    key: String!
-    value: String!
-    importance: Int!
-    expiresAt: DateTime
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type MemoryStats {
-    totalMemories: Int!
-    facts: Int!
-    decisions: Int!
-    blockers: Int!
-    preferences: Int!
-    insights: Int!
-    avgImportance: Float!
-    episodeCount: Int!
-    knowledgeNodeCount: Int!
-  }
-
-  type ConversationSummary {
-    conversationId: ID!
-    summary: String
-    lastSummaryAt: DateTime
-    messageCountAtSummary: Int
   }
 
   # ============================================================================
   # INPUT TYPES
   # ============================================================================
 
-  input ProjectInput {
-    title: String!
-    description: String
-    completionType: String
-    outcome: String
-    onboardingState: String  # JSON string for conversational onboarding state
-  }
-
-  input TaskInput {
-    goalId: ID
-    title: String!
-    description: String
-    type: String!
-    priority: Int
-    assignedTo: String
-    requiresApproval: Boolean
-    dueDate: DateTime
-    gtdType: String
-    context: String
-    energyLevel: String
-    timeEstimate: Int
-    config: JSON
-
-    # Recurring task fields
-    isRecurring: Boolean
-    recurrenceType: String
-    recurrenceInterval: Int
-    recurrenceDays: [Int!]
-    recurrenceEndType: String
-    recurrenceEndDate: DateTime
-    recurrenceEndCount: Int
-  }
-
-  input RecurringTaskInput {
-    recurrenceType: String!
-    recurrenceInterval: Int
-    recurrenceDays: [Int!]
-    recurrenceEndType: String
-    recurrenceEndDate: DateTime
-    recurrenceEndCount: Int
-  }
-
-  input GoalInput {
-    title: String!
-    description: String
-    targetValue: Float
-    currentValue: Float
-    unit: String
-    priority: Int
-    status: String
-    targetDate: DateTime
-  }
-
-  input MetricInput {
-    goalId: ID
+  input CreateTeamInput {
     name: String!
-    value: Float!
-    unit: String
-    source: String
-    metadata: JSON
   }
 
-  input MemoryInput {
-    memoryType: String!
-    key: String!
-    value: String!
-    importance: Int
-    expiresAt: DateTime
+  input InviteTeamMemberInput {
+    email: String!
+    role: String
   }
 
-  # ============================================================================
-  # PERSONA NAMING TYPES
-  # ============================================================================
-
-  type AvailableName {
-    id: ID!
+  input CreateChannelInput {
     name: String!
-    popularityRank: Int
-    timesClaimed: Int!
-    isAvailable: Boolean!
+    description: String
+    aiMode: String
   }
 
-  type PersonaName {
-    id: ID!
-    name: String!
-    archetype: String!
-    userId: ID!
-    personaId: ID
-    claimedAt: DateTime!
+  input UpdateChannelInput {
+    name: String
+    description: String
+    aiMode: String
   }
 
-  # ============================================================================
-  # SHARING & CONNECTIONS TYPES
-  # ============================================================================
-
-  type UserConnection {
-    id: ID!
-    requesterId: String!
-    recipientId: String!
-    status: String!
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type ProjectShare {
-    id: ID!
-    projectId: ID!
-    ownerId: String!
-    sharedWithId: String!
-    permissionLevel: String!
-    project: Project
-    createdAt: DateTime!
-  }
-
-  type UserMessage {
-    id: ID!
-    senderId: String!
-    recipientId: String!
+  input SendMessageInput {
     content: String!
-    read: Boolean!
-    createdAt: DateTime!
   }
 
-  type MessageThread {
-    id: ID!
-    otherUserId: String!
-    lastMessageContent: String
-    lastMessageSender: String
-    lastMessageAt: DateTime!
-    createdAt: DateTime!
+  input CreateFactInput {
+    content: String!
+    category: String
   }
 
-  # ============================================================================
-  # PROACTIVE ACCOUNTABILITY TYPES
-  # ============================================================================
-
-  type ActivityPattern {
-    id: ID!
-    userId: String!
-    projectId: ID
-    patternType: String!
-    patternData: JSON!
-    detectedAt: DateTime!
-    confidenceScore: Float!
+  input CreateDecisionInput {
+    what: String!
+    why: String
+    alternatives: JSON
+    relatedFacts: [ID!]
   }
 
-  type ProjectCheckInSettings {
-    projectId: ID!
-    checkInsEnabled: Boolean!
-    lastActivityAt: DateTime
-    lastCheckInAt: DateTime
-  }
-
-  type ProactiveFeatureResult {
-    success: Boolean!
-    enabled: Boolean
-    projectId: ID
+  input CreateAlertInput {
+    channelId: ID
+    triggerType: String!
+    triggerAt: DateTime
+    recurrenceRule: String
     message: String!
-    checkInMessage: String
+    relatedFactId: ID
   }
 
-  type TokenUsageStats {
-    used: Int!
-    budget: Int!
-    remaining: Int!
-    percentage: Int!
-    lastReset: String!
+  input CreateProjectInput {
+    name: String!
+    description: String
+  }
+
+  input UpdateProjectInput {
+    name: String
+    description: String
+    status: String
+  }
+
+  input CreateTaskInput {
+    projectId: ID
+    channelId: ID
+    title: String!
+    description: String
+    priority: String
+    assignedTo: String
+    dueAt: DateTime
+  }
+
+  input UpdateTaskInput {
+    title: String
+    description: String
+    status: String
+    priority: String
+    assignedTo: String
+    dueAt: DateTime
+  }
+
+  # ============================================================================
+  # AI RESPONSE TYPE
+  # ============================================================================
+
+  type AIResponse {
+    message: Message!
+    factsCreated: [Fact!]
+    alertsCreated: [Alert!]
+    tasksCreated: [Task!]
   }
 
   # ============================================================================
@@ -537,62 +282,39 @@ export default gql`
   # ============================================================================
 
   type Query {
-    # Projects
-    getProject(userId: String!, projectId: ID!): Project
-    getProjects(userId: String!): [Project!]!
+    # User
+    me: User
 
-    # Personas
-    getPersona(personaId: ID!): Persona
-    getActivePersona(projectId: ID!): Persona
-    suggestPersona(userGoal: String!): PersonaSuggestion!
+    # Teams
+    getTeam(teamId: ID!): Team
+    getMyTeams: [Team!]!
+    getTeamBySlug(slug: String!): Team
 
-    # Persona Names
-    getAvailableNames(archetype: String!): [AvailableName!]!
-    checkNameAvailability(name: String!, archetype: String!): Boolean!
-    getUserPersonaNames(userId: String!): [PersonaName!]!
+    # Channels
+    getChannel(channelId: ID!): Channel
+    getChannels(teamId: ID!): [Channel!]!
 
-    # Conversations
-    getConversation(projectId: ID!, userId: String!): Conversation
-    getConversationHistory(conversationId: ID!, limit: Int): [Message!]!
+    # Messages
+    getMessages(channelId: ID!, limit: Int, before: ID): [Message!]!
 
-    # Tasks
-    getTasks(projectId: ID!, status: String): [Task!]!
+    # Knowledge
+    getFacts(teamId: ID!, category: String, limit: Int): [Fact!]!
+    getDecisions(teamId: ID!, limit: Int): [Decision!]!
+    searchKnowledge(teamId: ID!, query: String!): KnowledgeResult!
 
-    # Goals
-    getGoals(projectId: ID!): [Goal!]!
-    getGoal(goalId: ID!): Goal
+    # Alerts
+    getAlerts(teamId: ID!, status: String): [Alert!]!
+    getPendingAlerts(teamId: ID!): [Alert!]!
 
-    # Metrics
-    getMetrics(projectId: ID!, goalId: ID, dateFrom: DateTime, dateTo: DateTime): [Metric!]!
+    # Projects & Tasks
+    getProjects(teamId: ID!): [Project!]!
+    getProject(projectId: ID!): Project
+    getTasks(teamId: ID!, projectId: ID, status: String, assignedTo: String): [Task!]!
+    getTask(taskId: ID!): Task
 
-    # Memory - Legacy
-    getProjectMemories(projectId: ID!): [ProjectMemory!]!
-    getMemoriesByType(projectId: ID!, memoryType: String!): [ProjectMemory!]!
-    getMemoryStats(projectId: ID!): MemoryStats!
-    getConversationSummary(conversationId: ID!): ConversationSummary
-
-    # Memory - Episodic & Semantic
-    getMemoryContext(userId: String!, projectId: ID!, currentContext: String): MemoryContext!
-    getConversationEpisodes(projectId: ID!, limit: Int): [ConversationEpisode!]!
-    getKnowledgeNodes(userId: String!, projectId: ID, nodeTypes: [String!]): [KnowledgeNode!]!
-    searchMemory(userId: String!, projectId: ID, query: String!): MemoryContext!
-
-    # Work Sessions
-    getWorkSessions(projectId: ID!, userId: String!, limit: Int): [WorkSession!]!
-    getActiveWorkSession(projectId: ID!, userId: String!): WorkSession
-    getWorkSession(sessionId: ID!): WorkSession
-
-    # Sharing & Connections
-    getConnections(userId: String!, status: String): [UserConnection!]!
-    getSharedProjects(userId: String!): [ProjectShare!]!
-    getMessages(userId: String!, otherUserId: String!, limit: Int): [UserMessage!]!
-    getMessageThreads(userId: String!): [MessageThread!]!
-
-    # Proactive Accountability
-    getProactiveFeaturesEnabled(userId: String!): Boolean!
-    getProjectCheckInSettings(projectId: ID!): ProjectCheckInSettings!
-    getActivityPatterns(userId: String!, projectId: ID, patternType: String, limit: Int): [ActivityPattern!]!
-    getProactiveTokenUsageStats: TokenUsageStats!
+    # Team Invites
+    getTeamInvites(teamId: ID!): [TeamInvite!]!
+    validateInviteToken(token: String!): TeamInvite
   }
 
   # ============================================================================
@@ -600,74 +322,48 @@ export default gql`
   # ============================================================================
 
   type Mutation {
+    # User
+    createOrUpdateUser(email: String!, displayName: String, avatarUrl: String): User!
+
+    # Teams
+    createTeam(input: CreateTeamInput!): Team!
+    updateTeam(teamId: ID!, name: String!): Team!
+    deleteTeam(teamId: ID!): Boolean!
+
+    # Team Members & Invites
+    inviteTeamMember(teamId: ID!, input: InviteTeamMemberInput!): TeamInvite!
+    acceptInvite(token: String!): TeamMember!
+    removeTeamMember(teamId: ID!, userId: String!): Boolean!
+    updateMemberRole(teamId: ID!, userId: String!, role: String!): TeamMember!
+
+    # Channels
+    createChannel(teamId: ID!, input: CreateChannelInput!): Channel!
+    updateChannel(channelId: ID!, input: UpdateChannelInput!): Channel!
+    deleteChannel(channelId: ID!): Boolean!
+
+    # Messages & AI
+    sendMessage(channelId: ID!, input: SendMessageInput!): AIResponse!
+
+    # Knowledge - Manual
+    createFact(teamId: ID!, input: CreateFactInput!): Fact!
+    updateFact(factId: ID!, content: String!, category: String): Fact!
+    invalidateFact(factId: ID!): Fact!
+    createDecision(teamId: ID!, input: CreateDecisionInput!): Decision!
+
+    # Alerts
+    createAlert(teamId: ID!, input: CreateAlertInput!): Alert!
+    snoozeAlert(alertId: ID!, until: DateTime!): Alert!
+    cancelAlert(alertId: ID!): Alert!
+
     # Projects
-    createProject(userId: String!, input: ProjectInput!): Project!
-    updateProject(projectId: ID!, input: ProjectInput!): Project!
+    createProject(teamId: ID!, input: CreateProjectInput!): Project!
+    updateProject(projectId: ID!, input: UpdateProjectInput!): Project!
     deleteProject(projectId: ID!): Boolean!
-    enableDebugMode(projectId: ID!, passcode: String!): Project!
-    disableDebugMode(projectId: ID!): Project!
-
-    # Personas
-    createPersona(projectId: ID!, userId: String!, input: PersonaInput!): Persona!
-    createPersonaFromGoal(projectId: ID!, userId: String!, userGoal: String!, preferences: CommunicationPreferencesInput): Persona!
-    updatePersonaCommunication(personaId: ID!, preferences: CommunicationPreferencesInput!): Persona!
-    deactivatePersona(personaId: ID!): Boolean!
-
-    # Persona Names
-    claimPersonaName(userId: String!, name: String!, archetype: String!, color: String!, shape: String!): PersonaName!
-    releasePersonaName(personaNameId: ID!): Boolean!
-
-    # Conversations & Chat
-    sendMessage(projectId: ID!, userId: String!, message: String!): ChatResponse!
-    clearConversation(conversationId: ID!): Boolean!
-
-    # Work Sessions
-    startWorkSession(projectId: ID!, userId: String!, input: WorkSessionInput): WorkSession!
-    endWorkSession(sessionId: ID!, input: EndWorkSessionInput): WorkSession!
-    abandonWorkSession(sessionId: ID!): Boolean!
 
     # Tasks
-    createTask(projectId: ID!, input: TaskInput!): Task!
-    updateTask(taskId: ID!, input: TaskInput!): Task!
-    updateTaskStatus(taskId: ID!, status: String!, result: JSON): Task!
+    createTask(teamId: ID!, input: CreateTaskInput!): Task!
+    updateTask(taskId: ID!, input: UpdateTaskInput!): Task!
+    completeTask(taskId: ID!): Task!
     deleteTask(taskId: ID!): Boolean!
-
-    # Recurring Tasks
-    generateRecurringTaskInstances(taskId: ID!): [Task!]!
-    updateRecurringTask(taskId: ID!, input: RecurringTaskInput!): Task!
-    pauseRecurringTask(taskId: ID!): Task!
-    resumeRecurringTask(taskId: ID!): Task!
-
-    # Goals
-    createGoal(projectId: ID!, input: GoalInput!): Goal!
-    updateGoal(goalId: ID!, input: GoalInput!): Goal!
-    updateGoalProgress(goalId: ID!, currentValue: Float!): Goal!
-    deleteGoal(goalId: ID!): Boolean!
-
-    # Metrics
-    recordMetric(projectId: ID!, input: MetricInput!): Metric!
-
-    # Memory - Legacy
-    setProjectMemory(projectId: ID!, input: MemoryInput!): ProjectMemory!
-    removeProjectMemory(projectId: ID!, key: String!): Boolean!
-    updateMemoryImportance(projectId: ID!, key: String!, importance: Int!): ProjectMemory!
-    createConversationSummary(conversationId: ID!): ConversationSummary!
-
-    # Memory - Episodic & Semantic (Automatic - no manual creation needed)
-    triggerEpisodeSummarization(conversationId: ID!): ConversationEpisode!
-    extractKnowledgeFacts(conversationId: ID!, episodeId: ID!): [KnowledgeNode!]!
-
-    # Sharing & Connections
-    sendConnectionRequest(requesterId: String!, recipientId: String!): UserConnection!
-    respondToConnection(connectionId: ID!, status: String!): UserConnection!
-    shareProject(projectId: ID!, ownerId: String!, sharedWithId: String!, permissionLevel: String): ProjectShare!
-    unshareProject(projectId: ID!, sharedWithId: String!): Boolean!
-    sendUserMessage(senderId: String!, recipientId: String!, content: String!): UserMessage!
-    markMessageRead(messageId: ID!): Boolean!
-
-    # Proactive Accountability
-    setProactiveFeaturesEnabled(userId: String!, enabled: Boolean!): ProactiveFeatureResult!
-    setProjectCheckInsEnabled(projectId: ID!, enabled: Boolean!): ProactiveFeatureResult!
-    triggerCheckIn(projectId: ID!, userId: String!): ProactiveFeatureResult!
   }
 `;
