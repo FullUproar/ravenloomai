@@ -192,23 +192,44 @@ export default gql`
     targetDate: DateTime
     startDate: DateTime
     status: String!  # active, achieved, abandoned, paused
-    progress: Int!   # 0-100
+    progress: Int!   # 0-100 (computed from linked tasks)
     owner: User
     ownerId: String
     createdBy: String
     parentGoalId: ID
     parentGoal: Goal
     childGoals: [Goal!]!
+    # Many-to-many associations
     projects: [Project!]!
+    tasks: [GoalTask!]!  # All tasks linked to this goal (direct + inherited)
+    taskCount: Int!
+    completedTaskCount: Int!
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  # Task with goal link type info
+  type GoalTask {
+    id: ID!
+    title: String!
+    status: String!
+    priority: String!
+    projectId: ID
+    linkType: String!  # 'direct' or 'inherited'
+    createdAt: DateTime!
+  }
+
+  # Goal with link type info (for task/project views)
+  type LinkedGoal {
+    id: ID!
+    title: String!
+    status: String!
+    linkType: String!  # 'direct' or 'inherited'
   }
 
   type Project {
     id: ID!
     teamId: ID!
-    goalId: ID
-    goal: Goal
     name: String!
     description: String
     status: String!  # active, completed, archived
@@ -217,6 +238,9 @@ export default gql`
     owner: User
     ownerId: String
     createdBy: String
+    goalsInherit: Boolean!  # If true, tasks inherit goals from project
+    # Many-to-many: goals linked to this project
+    goals: [Goal!]!
     tasks: [Task!]!
     taskCount: Int!
     completedTaskCount: Int!
@@ -246,6 +270,9 @@ export default gql`
     createdBy: String
     createdByUser: User
     sourceMessageId: ID
+    # Many-to-many: goals for this task
+    goals: [LinkedGoal!]!       # Effective goals (direct + inherited)
+    directGoals: [Goal!]!       # Only directly linked goals
     comments: [TaskComment!]!
     commentCount: Int!
     activity: [TaskActivity!]!
@@ -369,20 +396,22 @@ export default gql`
   input CreateProjectInput {
     name: String!
     description: String
-    goalId: ID
+    goalIds: [ID!]  # Many-to-many: initial goals to link
     color: String
     dueDate: DateTime
     ownerId: String
+    goalsInherit: Boolean  # Default true
   }
 
   input UpdateProjectInput {
     name: String
     description: String
     status: String
-    goalId: ID
+    goalIds: [ID!]  # Replace all goal associations
     color: String
     dueDate: DateTime
     ownerId: String
+    goalsInherit: Boolean
   }
 
   input CreateTaskInput {
@@ -396,6 +425,7 @@ export default gql`
     startDate: DateTime
     estimatedHours: Float
     tags: [String!]
+    goalIds: [ID!]  # Direct goal links (in addition to inherited)
   }
 
   input UpdateTaskInput {
@@ -411,6 +441,7 @@ export default gql`
     actualHours: Float
     tags: [String!]
     sortOrder: Int
+    goalIds: [ID!]  # Replace direct goal links
   }
 
   input CreateTaskCommentInput {
@@ -490,11 +521,12 @@ export default gql`
     # Goals
     getGoals(teamId: ID!, status: String): [Goal!]!
     getGoal(goalId: ID!): Goal
+    getTasksForGoal(teamId: ID!, goalId: ID!): [GoalTask!]!  # All tasks linked to a goal
 
     # Projects & Tasks
     getProjects(teamId: ID!, goalId: ID, status: String): [Project!]!
     getProject(projectId: ID!): Project
-    getTasks(teamId: ID!, projectId: ID, status: String, assignedTo: String): [Task!]!
+    getTasks(teamId: ID!, projectId: ID, goalId: ID, status: String, assignedTo: String): [Task!]!
     getTask(taskId: ID!): Task
     getTaskComments(taskId: ID!): [TaskComment!]!
     getTaskActivity(taskId: ID!): [TaskActivity!]!
@@ -573,5 +605,13 @@ export default gql`
     addTaskComment(taskId: ID!, input: CreateTaskCommentInput!): TaskComment!
     updateTaskComment(commentId: ID!, content: String!): TaskComment!
     deleteTaskComment(commentId: ID!): Boolean!
+
+    # Goal Associations (many-to-many)
+    linkGoalToProject(goalId: ID!, projectId: ID!): Boolean!
+    unlinkGoalFromProject(goalId: ID!, projectId: ID!): Boolean!
+    setProjectGoals(projectId: ID!, goalIds: [ID!]!): [Goal!]!
+    linkGoalToTask(goalId: ID!, taskId: ID!): Boolean!
+    unlinkGoalFromTask(goalId: ID!, taskId: ID!): Boolean!
+    setTaskGoals(taskId: ID!, goalIds: [ID!]!): [Goal!]!
   }
 `;

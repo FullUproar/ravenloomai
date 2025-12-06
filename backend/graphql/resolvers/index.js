@@ -142,6 +142,10 @@ const resolvers = {
       return GoalService.getGoal(goalId);
     },
 
+    getTasksForGoal: async (_, { teamId, goalId }) => {
+      return GoalService.getTasksForGoal(goalId, teamId);
+    },
+
     // Projects & Tasks
     getProjects: async (_, { teamId, goalId, status }) => {
       return ProjectService.getProjects(teamId, { goalId, status });
@@ -151,8 +155,8 @@ const resolvers = {
       return ProjectService.getProjectById(projectId);
     },
 
-    getTasks: async (_, { teamId, projectId, status, assignedTo }) => {
-      return TaskService.getTasks(teamId, { projectId, status, assignedTo });
+    getTasks: async (_, { teamId, projectId, goalId, status, assignedTo }) => {
+      return TaskService.getTasks(teamId, { projectId, goalId, status, assignedTo });
     },
 
     getTask: async (_, { taskId }) => {
@@ -381,6 +385,31 @@ const resolvers = {
 
     deleteTaskComment: async (_, { commentId }) => {
       return TaskService.deleteTaskComment(commentId);
+    },
+
+    // Goal Associations
+    linkGoalToProject: async (_, { goalId, projectId }) => {
+      return GoalService.linkGoalToProject(goalId, projectId);
+    },
+
+    unlinkGoalFromProject: async (_, { goalId, projectId }) => {
+      return GoalService.unlinkGoalFromProject(goalId, projectId);
+    },
+
+    setProjectGoals: async (_, { projectId, goalIds }) => {
+      return GoalService.setProjectGoals(projectId, goalIds);
+    },
+
+    linkGoalToTask: async (_, { goalId, taskId }) => {
+      return GoalService.linkGoalToTask(goalId, taskId);
+    },
+
+    unlinkGoalFromTask: async (_, { goalId, taskId }) => {
+      return GoalService.unlinkGoalFromTask(goalId, taskId);
+    },
+
+    setTaskGoals: async (_, { taskId, goalIds }) => {
+      return GoalService.setTaskGoals(taskId, goalIds);
     }
   },
 
@@ -443,13 +472,26 @@ const resolvers = {
 
     projects: async (goal) => {
       return GoalService.getProjectsForGoal(goal.id);
+    },
+
+    tasks: async (goal) => {
+      return GoalService.getTasksForGoal(goal.id, goal.teamId);
+    },
+
+    taskCount: async (goal) => {
+      const tasks = await GoalService.getTasksForGoal(goal.id, goal.teamId);
+      return tasks.length;
+    },
+
+    completedTaskCount: async (goal) => {
+      const tasks = await GoalService.getTasksForGoal(goal.id, goal.teamId);
+      return tasks.filter(t => t.status === 'done').length;
     }
   },
 
   Project: {
-    goal: async (project) => {
-      if (!project.goalId) return null;
-      return GoalService.getGoal(project.goalId);
+    goals: async (project) => {
+      return GoalService.getGoalsForProject(project.id);
     },
 
     owner: async (project) => {
@@ -486,6 +528,20 @@ const resolvers = {
     createdByUser: async (task) => {
       if (!task.createdBy) return null;
       return UserService.getUserById(task.createdBy);
+    },
+
+    goals: async (task) => {
+      const effectiveGoals = await GoalService.getEffectiveGoalsForTask(task.id);
+      return effectiveGoals.map(g => ({
+        id: g.id,
+        title: g.title,
+        status: g.status,
+        linkType: g.linkType
+      }));
+    },
+
+    directGoals: async (task) => {
+      return GoalService.getDirectGoalsForTask(task.id);
     },
 
     comments: async (task) => {

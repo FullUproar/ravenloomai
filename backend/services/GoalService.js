@@ -45,26 +45,168 @@ export async function getChildGoals(parentGoalId) {
   return result.rows.map(mapGoal);
 }
 
-// Get projects for a goal
+// Get projects for a goal (via junction table)
 export async function getProjectsForGoal(goalId) {
   const result = await pool.query(
-    'SELECT * FROM projects WHERE goal_id = $1 ORDER BY created_at',
+    `SELECT p.* FROM projects p
+     JOIN goal_projects gp ON gp.project_id = p.id
+     WHERE gp.goal_id = $1
+     ORDER BY p.created_at`,
     [goalId]
+  );
+  return result.rows.map(mapProject);
+}
+
+// Get goals for a project
+export async function getGoalsForProject(projectId) {
+  const result = await pool.query(
+    `SELECT g.* FROM goals g
+     JOIN goal_projects gp ON gp.goal_id = g.id
+     WHERE gp.project_id = $1
+     ORDER BY g.title`,
+    [projectId]
+  );
+  return result.rows.map(mapGoal);
+}
+
+// Get direct goals for a task (not inherited)
+export async function getDirectGoalsForTask(taskId) {
+  const result = await pool.query(
+    `SELECT g.* FROM goals g
+     JOIN goal_tasks gt ON gt.goal_id = g.id
+     WHERE gt.task_id = $1
+     ORDER BY g.title`,
+    [taskId]
+  );
+  return result.rows.map(mapGoal);
+}
+
+// Get effective goals for a task (direct + inherited)
+export async function getEffectiveGoalsForTask(taskId) {
+  const result = await pool.query(
+    `SELECT DISTINCT g.*,
+       CASE WHEN gt.id IS NOT NULL THEN 'direct' ELSE 'inherited' END as link_type
+     FROM goals g
+     LEFT JOIN goal_tasks gt ON gt.goal_id = g.id AND gt.task_id = $1
+     LEFT JOIN tasks t ON t.id = $1
+     LEFT JOIN projects p ON t.project_id = p.id AND p.goals_inherit = true
+     LEFT JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = g.id
+     WHERE gt.task_id = $1 OR (gp.project_id IS NOT NULL AND p.goals_inherit = true)
+     ORDER BY g.title`,
+    [taskId]
+  );
+  return result.rows.map(row => ({
+    ...mapGoal(row),
+    linkType: row.link_type
+  }));
+}
+
+// Get all tasks linked to a goal (direct + inherited)
+export async function getTasksForGoal(goalId, teamId) {
+  const result = await pool.query(
+    `SELECT DISTINCT t.*,
+       CASE WHEN gt.id IS NOT NULL THEN 'direct' ELSE 'inherited' END as link_type
+     FROM tasks t
+     LEFT JOIN goal_tasks gt ON gt.task_id = t.id AND gt.goal_id = $1
+     LEFT JOIN projects p ON t.project_id = p.id AND p.goals_inherit = true
+     LEFT JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = $1
+     WHERE t.team_id = $2
+       AND (gt.goal_id = $1 OR gp.goal_id = $1)
+     ORDER BY t.created_at DESC`,
+    [goalId, teamId]
   );
   return result.rows.map(row => ({
     id: row.id,
     teamId: row.team_id,
-    goalId: row.goal_id,
-    name: row.name,
-    description: row.description,
+    projectId: row.project_id,
+    title: row.title,
     status: row.status,
-    color: row.color,
-    dueDate: row.due_date,
-    ownerId: row.owner_id,
-    createdBy: row.created_by,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
+    priority: row.priority,
+    linkType: row.link_type,
+    createdAt: row.created_at
   }));
+}
+
+// ============================================================================
+// Goal Association Management
+// ============================================================================
+
+// Link goal to project
+export async function linkGoalToProject(goalId, projectId) {
+  const result = await pool.query(
+    `INSERT INTO goal_projects (goal_id, project_id)
+     VALUES ($1, $2)
+     ON CONFLICT (goal_id, project_id) DO NOTHING
+     RETURNING *`,
+    [goalId, projectId]
+  );
+  return result.rowCount > 0;
+}
+
+// Unlink goal from project
+export async function unlinkGoalFromProject(goalId, projectId) {
+  const result = await pool.query(
+    `DELETE FROM goal_projects WHERE goal_id = $1 AND project_id = $2`,
+    [goalId, projectId]
+  );
+  return result.rowCount > 0;
+}
+
+// Link goal to task (direct link)
+export async function linkGoalToTask(goalId, taskId) {
+  const result = await pool.query(
+    `INSERT INTO goal_tasks (goal_id, task_id)
+     VALUES ($1, $2)
+     ON CONFLICT (goal_id, task_id) DO NOTHING
+     RETURNING *`,
+    [goalId, taskId]
+  );
+  return result.rowCount > 0;
+}
+
+// Unlink goal from task
+export async function unlinkGoalFromTask(goalId, taskId) {
+  const result = await pool.query(
+    `DELETE FROM goal_tasks WHERE goal_id = $1 AND task_id = $2`,
+    [goalId, taskId]
+  );
+  return result.rowCount > 0;
+}
+
+// Set all goals for a project (replaces existing)
+export async function setProjectGoals(projectId, goalIds) {
+  // Remove existing links
+  await pool.query('DELETE FROM goal_projects WHERE project_id = $1', [projectId]);
+
+  // Add new links
+  if (goalIds && goalIds.length > 0) {
+    const values = goalIds.map((gId, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(', ');
+    const params = goalIds.flatMap(gId => [gId, projectId]);
+    await pool.query(
+      `INSERT INTO goal_projects (goal_id, project_id) VALUES ${values}`,
+      params
+    );
+  }
+
+  return getGoalsForProject(projectId);
+}
+
+// Set direct goals for a task (replaces existing direct links)
+export async function setTaskGoals(taskId, goalIds) {
+  // Remove existing direct links
+  await pool.query('DELETE FROM goal_tasks WHERE task_id = $1', [taskId]);
+
+  // Add new links
+  if (goalIds && goalIds.length > 0) {
+    const values = goalIds.map((gId, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(', ');
+    const params = goalIds.flatMap(gId => [gId, taskId]);
+    await pool.query(
+      `INSERT INTO goal_tasks (goal_id, task_id) VALUES ${values}`,
+      params
+    );
+  }
+
+  return getDirectGoalsForTask(taskId);
 }
 
 // Update a goal
@@ -118,39 +260,28 @@ export async function updateGoal(goalId, input, userId) {
 
 // Delete a goal
 export async function deleteGoal(goalId) {
-  // First, unlink any projects from this goal
-  await pool.query('UPDATE projects SET goal_id = NULL WHERE goal_id = $1', [goalId]);
-
-  // Then delete the goal
+  // Junction table entries are deleted via CASCADE
   const result = await pool.query('DELETE FROM goals WHERE id = $1', [goalId]);
   return result.rowCount > 0;
 }
 
-// Calculate goal progress based on linked projects/tasks
-export async function calculateGoalProgress(goalId) {
-  // Get all projects linked to this goal
-  const projectsResult = await pool.query(
-    'SELECT id FROM projects WHERE goal_id = $1',
-    [goalId]
-  );
-
-  if (projectsResult.rows.length === 0) {
-    return 0;
-  }
-
-  const projectIds = projectsResult.rows.map(r => r.id);
-
-  // Count total and completed tasks across all linked projects
-  const tasksResult = await pool.query(
+// Calculate goal progress based on all linked tasks (direct + inherited)
+export async function calculateGoalProgress(goalId, teamId) {
+  // Use the effective goals view/query to count all tasks for this goal
+  const result = await pool.query(
     `SELECT
-       COUNT(*) as total,
-       COUNT(CASE WHEN status = 'done' THEN 1 END) as completed
-     FROM tasks
-     WHERE project_id = ANY($1)`,
-    [projectIds]
+       COUNT(DISTINCT t.id) as total,
+       COUNT(DISTINCT CASE WHEN t.status = 'done' THEN t.id END) as completed
+     FROM tasks t
+     LEFT JOIN goal_tasks gt ON gt.task_id = t.id AND gt.goal_id = $1
+     LEFT JOIN projects p ON t.project_id = p.id AND p.goals_inherit = true
+     LEFT JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = $1
+     WHERE (gt.goal_id = $1 OR gp.goal_id = $1)
+       AND ($2::uuid IS NULL OR t.team_id = $2)`,
+    [goalId, teamId || null]
   );
 
-  const { total, completed } = tasksResult.rows[0];
+  const { total, completed } = result.rows[0];
   if (parseInt(total) === 0) return 0;
 
   return Math.round((parseInt(completed) / parseInt(total)) * 100);
@@ -170,6 +301,23 @@ function mapGoal(row) {
     ownerId: row.owner_id,
     createdBy: row.created_by,
     parentGoalId: row.parent_goal_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapProject(row) {
+  return {
+    id: row.id,
+    teamId: row.team_id,
+    name: row.name,
+    description: row.description,
+    status: row.status,
+    color: row.color,
+    dueDate: row.due_date,
+    ownerId: row.owner_id,
+    goalsInherit: row.goals_inherit,
+    createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
