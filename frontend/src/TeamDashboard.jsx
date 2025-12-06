@@ -500,6 +500,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectGoalId, setNewProjectGoalId] = useState('');
+  const [newProjectDueDate, setNewProjectDueDate] = useState('');
 
   // Raven command suggestions
   const ravenCommands = [
@@ -2135,12 +2136,14 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                           teamId,
                           input: {
                             name: newProjectName.trim(),
-                            goalId: newProjectGoalId || null
+                            goalIds: newProjectGoalId ? [newProjectGoalId] : [],
+                            dueDate: newProjectDueDate || null
                           }
                         }
                       });
                       setNewProjectName('');
                       setNewProjectGoalId('');
+                      setNewProjectDueDate('');
                       setShowCreateProject(false);
                       refetchProjects();
                       refetchGoals();
@@ -2155,6 +2158,14 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                       value={newProjectName}
                       onChange={(e) => setNewProjectName(e.target.value)}
                       autoFocus
+                    />
+                    <input
+                      type="date"
+                      className="input-field"
+                      style={{ marginTop: '0.75rem' }}
+                      placeholder="Due date (optional)"
+                      value={newProjectDueDate}
+                      onChange={(e) => setNewProjectDueDate(e.target.value)}
                     />
                     <select
                       className="input-field"

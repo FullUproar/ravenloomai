@@ -1,20 +1,38 @@
 /**
- * ProjectService - Manages projects (lightweight grouping of tasks)
+ * ProjectService - Manages projects (time-bound containers for tasks)
  */
 
 import db from '../db.js';
+import * as GoalService from './GoalService.js';
 
 /**
  * Create a new project
  */
-export async function createProject(teamId, { name, description = null, createdBy = null }) {
+export async function createProject(teamId, {
+  name,
+  description = null,
+  color = '#5D4B8C',
+  dueDate = null,
+  ownerId = null,
+  goalsInherit = true,
+  goalIds = [],
+  createdBy = null
+}) {
   const result = await db.query(
-    `INSERT INTO projects (team_id, name, description, created_by)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO projects (team_id, name, description, color, due_date, owner_id, goals_inherit, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
-    [teamId, name, description, createdBy]
+    [teamId, name, description, color, dueDate, ownerId, goalsInherit, createdBy]
   );
-  return mapProject(result.rows[0]);
+
+  const project = mapProject(result.rows[0]);
+
+  // Link goals if provided
+  if (goalIds && goalIds.length > 0) {
+    await GoalService.setProjectGoals(project.id, goalIds);
+  }
+
+  return project;
 }
 
 /**
@@ -28,13 +46,29 @@ export async function getProjectById(projectId) {
 /**
  * Get projects for a team
  */
-export async function getProjects(teamId) {
-  const result = await db.query(
-    `SELECT * FROM projects
-     WHERE team_id = $1
-     ORDER BY status = 'active' DESC, updated_at DESC`,
-    [teamId]
-  );
+export async function getProjects(teamId, { goalId, status } = {}) {
+  let query = `SELECT DISTINCT p.* FROM projects p`;
+  const params = [teamId];
+  let paramIndex = 2;
+
+  // Join with goal_projects if filtering by goal
+  if (goalId) {
+    query += ` INNER JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = $${paramIndex}`;
+    params.push(goalId);
+    paramIndex++;
+  }
+
+  query += ` WHERE p.team_id = $1`;
+
+  if (status) {
+    query += ` AND p.status = $${paramIndex}`;
+    params.push(status);
+    paramIndex++;
+  }
+
+  query += ` ORDER BY p.status = 'active' DESC, p.updated_at DESC`;
+
+  const result = await db.query(query, params);
   return result.rows.map(mapProject);
 }
 
@@ -42,31 +76,49 @@ export async function getProjects(teamId) {
  * Update a project
  */
 export async function updateProject(projectId, updates) {
-  const allowedFields = ['name', 'description', 'status'];
+  const allowedFields = ['name', 'description', 'status', 'color', 'due_date', 'owner_id', 'goals_inherit'];
+  const fieldMapping = {
+    name: 'name',
+    description: 'description',
+    status: 'status',
+    color: 'color',
+    dueDate: 'due_date',
+    ownerId: 'owner_id',
+    goalsInherit: 'goals_inherit'
+  };
+
   const setClauses = [];
   const params = [projectId];
   let paramIndex = 2;
 
   for (const [key, value] of Object.entries(updates)) {
-    if (allowedFields.includes(key) && value !== undefined) {
-      setClauses.push(`${key} = $${paramIndex}`);
+    const dbField = fieldMapping[key];
+    if (dbField && allowedFields.includes(dbField) && value !== undefined) {
+      setClauses.push(`${dbField} = $${paramIndex}`);
       params.push(value);
       paramIndex++;
     }
   }
 
-  if (setClauses.length === 0) {
+  if (setClauses.length === 0 && !updates.goalIds) {
     return getProjectById(projectId);
   }
 
-  setClauses.push('updated_at = NOW()');
+  if (setClauses.length > 0) {
+    setClauses.push('updated_at = NOW()');
 
-  const result = await db.query(
-    `UPDATE projects SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
-    params
-  );
+    await db.query(
+      `UPDATE projects SET ${setClauses.join(', ')} WHERE id = $1`,
+      params
+    );
+  }
 
-  return result.rows[0] ? mapProject(result.rows[0]) : null;
+  // Update goal associations if provided
+  if (updates.goalIds !== undefined) {
+    await GoalService.setProjectGoals(projectId, updates.goalIds);
+  }
+
+  return getProjectById(projectId);
 }
 
 /**
@@ -75,6 +127,23 @@ export async function updateProject(projectId, updates) {
 export async function deleteProject(projectId) {
   const result = await db.query('DELETE FROM projects WHERE id = $1 RETURNING id', [projectId]);
   return result.rows.length > 0;
+}
+
+/**
+ * Get task counts for a project
+ */
+export async function getTaskCounts(projectId) {
+  const result = await db.query(
+    `SELECT
+       COUNT(*) as total,
+       COUNT(*) FILTER (WHERE status = 'done') as completed
+     FROM tasks WHERE project_id = $1`,
+    [projectId]
+  );
+  return {
+    taskCount: parseInt(result.rows[0]?.total || 0),
+    completedTaskCount: parseInt(result.rows[0]?.completed || 0)
+  };
 }
 
 // ============================================================================
@@ -89,6 +158,10 @@ function mapProject(row) {
     name: row.name,
     description: row.description,
     status: row.status,
+    color: row.color,
+    dueDate: row.due_date,
+    ownerId: row.owner_id,
+    goalsInherit: row.goals_inherit ?? true,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -100,5 +173,6 @@ export default {
   getProjectById,
   getProjects,
   updateProject,
-  deleteProject
+  deleteProject,
+  getTaskCounts
 };
