@@ -575,6 +575,224 @@ body {
 }
 
 /* ============================================================================
+   Message Input Area - @mentions, Commands, Reply
+   ============================================================================ */
+
+.message-input-area {
+  position: relative;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.message-input-area .message-form {
+  border-top: none;
+}
+
+/* Reply indicator */
+.reply-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.reply-icon {
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+.reply-text {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+}
+
+.reply-preview {
+  color: var(--text);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
+}
+
+.reply-cancel {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.reply-cancel:hover {
+  color: var(--pop);
+}
+
+/* @mentions popup */
+.mention-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 1rem;
+  right: 1rem;
+  max-height: 250px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 50;
+  margin-bottom: 0.5rem;
+}
+
+.mention-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9375rem;
+}
+
+.mention-option:hover,
+.mention-option.selected {
+  background: var(--bg-tertiary);
+}
+
+.mention-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.mention-avatar.ai-avatar {
+  background: linear-gradient(135deg, var(--primary), var(--cta));
+  font-size: 1rem;
+}
+
+.mention-name {
+  flex: 1;
+}
+
+.mention-badge {
+  background: var(--primary);
+  color: white;
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.mention-empty {
+  padding: 1rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+/* @ravenloom commands popup */
+.commands-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 1rem;
+  right: 1rem;
+  max-height: 350px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 50;
+  margin-bottom: 0.5rem;
+}
+
+.commands-header {
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.05em;
+}
+
+.command-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-option:hover,
+.command-option.selected {
+  background: var(--bg-tertiary);
+}
+
+.command-name {
+  font-family: monospace;
+  font-size: 0.9375rem;
+  color: var(--cta);
+}
+
+.command-desc {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.commands-hint {
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+/* Message reply button */
+.message-reply-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 0.125rem 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s;
+  margin-left: auto;
+}
+
+.message:hover .message-reply-btn {
+  opacity: 1;
+}
+
+.message-reply-btn:hover {
+  color: var(--primary);
+}
+
+/* ============================================================================
    Modal
    ============================================================================ */
 

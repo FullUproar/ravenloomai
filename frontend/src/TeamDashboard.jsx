@@ -271,6 +271,28 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [askAnswer, setAskAnswer] = useState(null);
   const [askLoading, setAskLoading] = useState(false);
   const [askHistory, setAskHistory] = useState([]);
+  // @mentions autocomplete state
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionStartPos, setMentionStartPos] = useState(null);
+  // @ravenloom command suggestions state
+  const [showCommands, setShowCommands] = useState(false);
+  const [commandIndex, setCommandIndex] = useState(0);
+  // Reply-to state
+  const [replyingTo, setReplyingTo] = useState(null);
+
+  // Raven command suggestions
+  const ravenCommands = [
+    { cmd: '@raven remember', desc: 'Save a fact to knowledge base', example: '@raven remember our API rate limit is 100/min' },
+    { cmd: '@raven task', desc: 'Create a new task', example: '@raven task Review PR #123' },
+    { cmd: '@raven remind', desc: 'Set a reminder', example: '@raven remind me tomorrow to follow up' },
+    { cmd: '@raven decide', desc: 'Record a decision', example: '@raven decide We will use PostgreSQL because...' },
+    { cmd: '@raven summarize', desc: 'Summarize recent discussion', example: '@raven summarize' },
+    { cmd: '@raven search', desc: 'Search knowledge base', example: '@raven search deployment process' },
+    { cmd: '@raven status', desc: 'Get project status', example: '@raven status' },
+    { cmd: '@raven help', desc: 'Show available commands', example: '@raven help' },
+  ];
 
   // Fetch team data
   const { data: teamData, loading: teamLoading, refetch: refetchTeam } = useQuery(GET_TEAM, {
@@ -362,8 +384,20 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
     e.preventDefault();
     if (!messageInput.trim() || isSending) return;
 
-    const content = messageInput.trim();
+    // Don't submit if selecting from popup
+    if (showMentions || showCommands) return;
+
+    let content = messageInput.trim();
+
+    // Prepend reply context if replying
+    if (replyingTo) {
+      const replyAuthor = replyingTo.isAi ? 'Raven' : (replyingTo.user?.displayName || replyingTo.user?.email || 'User');
+      const replyPreview = replyingTo.content.substring(0, 50) + (replyingTo.content.length > 50 ? '...' : '');
+      content = `> Replying to ${replyAuthor}: "${replyPreview}"\n\n${content}`;
+    }
+
     setMessageInput('');
+    setReplyingTo(null);
     setIsSending(true);
 
     try {
@@ -376,7 +410,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
       await refetchMessages();
     } catch (error) {
       console.error('Error sending message:', error);
-      setMessageInput(content); // Restore message on error
+      setMessageInput(messageInput); // Restore original message on error
       alert('Failed to send message: ' + error.message);
     } finally {
       setIsSending(false);
@@ -565,6 +599,187 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
     setTimeout(() => {
       document.getElementById('ask-form')?.requestSubmit();
     }, 100);
+  };
+
+  // Handle message input change with @mention detection
+  const handleMessageInputChange = (e) => {
+    const value = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    setMessageInput(value);
+
+    // Find @ symbol before cursor
+    const textBeforeCursor = value.substring(0, cursorPos);
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (lastAtIndex !== -1) {
+      // Check if @ is at start or preceded by whitespace
+      const charBefore = lastAtIndex > 0 ? value[lastAtIndex - 1] : ' ';
+      if (charBefore === ' ' || charBefore === '\n' || lastAtIndex === 0) {
+        const query = textBeforeCursor.substring(lastAtIndex + 1).toLowerCase();
+
+        // Check if typing @raven command
+        if (query.startsWith('raven') || query === 'r' || query === 'ra' || query === 'rav' || query === 'rave') {
+          // Show command suggestions if @raven is mostly typed
+          if (query.length >= 5 && query.startsWith('raven')) {
+            const afterRaven = query.substring(5).trim();
+            if (afterRaven === '' || afterRaven.startsWith(' ')) {
+              setShowCommands(true);
+              setShowMentions(false);
+              setCommandIndex(0);
+              return;
+            }
+          }
+        }
+
+        // Show mentions popup
+        if (!query.includes(' ') && query.length < 20) {
+          setMentionQuery(query);
+          setMentionStartPos(lastAtIndex);
+          setShowMentions(true);
+          setShowCommands(false);
+          setMentionIndex(0);
+          return;
+        }
+      }
+    }
+
+    // Hide popups if no valid @ found
+    setShowMentions(false);
+    setShowCommands(false);
+  };
+
+  // Get filtered mention options
+  const getMentionOptions = () => {
+    const members = team?.members || [];
+    const options = [
+      // Always include @raven at the top
+      { type: 'ai', id: 'raven', name: 'Raven', displayName: 'Raven (AI Assistant)', isAi: true }
+    ];
+
+    // Add team members
+    members.forEach(member => {
+      if (member.user) {
+        options.push({
+          type: 'user',
+          id: member.userId,
+          name: member.user.displayName || member.user.email?.split('@')[0] || 'User',
+          displayName: member.user.displayName || member.user.email,
+          email: member.user.email,
+          isAi: false
+        });
+      }
+    });
+
+    // Filter by query
+    if (mentionQuery) {
+      return options.filter(opt =>
+        opt.name.toLowerCase().includes(mentionQuery) ||
+        opt.displayName.toLowerCase().includes(mentionQuery) ||
+        (opt.email && opt.email.toLowerCase().includes(mentionQuery))
+      );
+    }
+    return options;
+  };
+
+  // Select a mention from popup
+  const handleSelectMention = (option) => {
+    const beforeAt = messageInput.substring(0, mentionStartPos);
+    const afterQuery = messageInput.substring(mentionStartPos + 1 + mentionQuery.length);
+    const mentionText = option.isAi ? '@raven ' : `@${option.name} `;
+    const newValue = beforeAt + mentionText + afterQuery;
+    setMessageInput(newValue);
+    setShowMentions(false);
+    setMentionQuery('');
+    setMentionStartPos(null);
+
+    // Focus input and set cursor after mention
+    setTimeout(() => {
+      inputRef.current?.focus();
+      const newCursorPos = beforeAt.length + mentionText.length;
+      inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+
+    // If @raven selected, show commands
+    if (option.isAi) {
+      setTimeout(() => setShowCommands(true), 100);
+    }
+  };
+
+  // Select a command from popup
+  const handleSelectCommand = (command) => {
+    // Find @raven in the input and replace with command
+    const ravenMatch = messageInput.match(/@raven\s*/i);
+    if (ravenMatch) {
+      const ravenIndex = messageInput.toLowerCase().indexOf('@raven');
+      const beforeRaven = messageInput.substring(0, ravenIndex);
+      const afterRaven = messageInput.substring(ravenIndex + ravenMatch[0].length);
+      const newValue = beforeRaven + command.cmd + ' ' + afterRaven.trimStart();
+      setMessageInput(newValue);
+
+      // Set cursor at end of command
+      setTimeout(() => {
+        inputRef.current?.focus();
+        const newCursorPos = beforeRaven.length + command.cmd.length + 1;
+        inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+    setShowCommands(false);
+    setCommandIndex(0);
+  };
+
+  // Handle keyboard navigation in popups
+  const handleInputKeyDown = (e) => {
+    const mentionOptions = getMentionOptions();
+
+    if (showMentions && mentionOptions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(i => (i + 1) % mentionOptions.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(i => (i - 1 + mentionOptions.length) % mentionOptions.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        handleSelectMention(mentionOptions[mentionIndex]);
+      } else if (e.key === 'Escape') {
+        setShowMentions(false);
+      }
+      return;
+    }
+
+    if (showCommands) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setCommandIndex(i => (i + 1) % ravenCommands.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCommandIndex(i => (i - 1 + ravenCommands.length) % ravenCommands.length);
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        // Only select command if just @raven with no content after
+        const afterRaven = messageInput.toLowerCase().replace(/@raven\s*/, '').trim();
+        if (afterRaven === '') {
+          e.preventDefault();
+          handleSelectCommand(ravenCommands[commandIndex]);
+          return;
+        }
+      } else if (e.key === 'Escape') {
+        setShowCommands(false);
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        handleSelectCommand(ravenCommands[commandIndex]);
+      }
+    }
+  };
+
+  // Handle reply to message
+  const handleReplyTo = (message) => {
+    setReplyingTo(message);
+    inputRef.current?.focus();
+  };
+
+  // Cancel reply
+  const handleCancelReply = () => {
+    setReplyingTo(null);
   };
 
   // ============================================================================
@@ -861,6 +1076,13 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                       <span className="message-time">
                         {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
+                      <button
+                        className="message-reply-btn"
+                        onClick={() => handleReplyTo(message)}
+                        title="Reply to this message"
+                      >
+                        ↩
+                      </button>
                     </div>
                     <div className="message-content">
                       <ReactMarkdown>{message.content}</ReactMarkdown>
@@ -873,24 +1095,84 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
           </div>
 
           {/* Message Input */}
-          <form onSubmit={handleSendMessage} className="message-form">
-            <input
-              ref={inputRef}
-              type="text"
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              placeholder={`Message #${activeChannel?.name || 'channel'}... (use @raven to talk to AI)`}
-              disabled={isSending || !activeChannelId}
-              className="message-input"
-            />
-            <button
-              type="submit"
-              disabled={isSending || !messageInput.trim() || !activeChannelId}
-              className="send-btn"
-            >
-              {isSending ? '...' : 'Send'}
-            </button>
-          </form>
+          <div className="message-input-area">
+            {/* Reply indicator */}
+            {replyingTo && (
+              <div className="reply-indicator">
+                <span className="reply-icon">↩</span>
+                <span className="reply-text">
+                  Replying to {replyingTo.isAi ? 'Raven' : (replyingTo.user?.displayName || replyingTo.user?.email || 'User')}:
+                  <span className="reply-preview">
+                    {replyingTo.content.substring(0, 60)}{replyingTo.content.length > 60 ? '...' : ''}
+                  </span>
+                </span>
+                <button className="reply-cancel" onClick={handleCancelReply} title="Cancel reply">×</button>
+              </div>
+            )}
+
+            {/* @mentions popup */}
+            {showMentions && (
+              <div className="mention-popup">
+                {getMentionOptions().length > 0 ? (
+                  getMentionOptions().map((option, i) => (
+                    <button
+                      key={option.id}
+                      className={`mention-option ${i === mentionIndex ? 'selected' : ''}`}
+                      onClick={() => handleSelectMention(option)}
+                      onMouseEnter={() => setMentionIndex(i)}
+                    >
+                      <span className={`mention-avatar ${option.isAi ? 'ai-avatar' : ''}`}>
+                        {option.isAi ? '🪶' : option.name[0].toUpperCase()}
+                      </span>
+                      <span className="mention-name">{option.displayName}</span>
+                      {option.isAi && <span className="mention-badge">AI</span>}
+                    </button>
+                  ))
+                ) : (
+                  <div className="mention-empty">No matches found</div>
+                )}
+              </div>
+            )}
+
+            {/* @ravenloom commands popup */}
+            {showCommands && (
+              <div className="commands-popup">
+                <div className="commands-header">Raven Commands</div>
+                {ravenCommands.map((cmd, i) => (
+                  <button
+                    key={cmd.cmd}
+                    className={`command-option ${i === commandIndex ? 'selected' : ''}`}
+                    onClick={() => handleSelectCommand(cmd)}
+                    onMouseEnter={() => setCommandIndex(i)}
+                  >
+                    <span className="command-name">{cmd.cmd}</span>
+                    <span className="command-desc">{cmd.desc}</span>
+                  </button>
+                ))}
+                <div className="commands-hint">Press Tab or Enter to select, Esc to close</div>
+              </div>
+            )}
+
+            <form onSubmit={handleSendMessage} className="message-form">
+              <input
+                ref={inputRef}
+                type="text"
+                value={messageInput}
+                onChange={handleMessageInputChange}
+                onKeyDown={handleInputKeyDown}
+                placeholder={`Message #${activeChannel?.name || 'channel'}... (type @ to mention)`}
+                disabled={isSending || !activeChannelId}
+                className="message-input"
+              />
+              <button
+                type="submit"
+                disabled={isSending || !messageInput.trim() || !activeChannelId}
+                className="send-btn"
+              >
+                {isSending ? '...' : 'Send'}
+              </button>
+            </form>
+          </div>
         </main>
       ) : activeView === 'tasks' ? (
         <main className="tasks-area">
