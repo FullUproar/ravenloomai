@@ -17,6 +17,7 @@ import ThreadService from '../../services/ThreadService.js';
 import DigestService from '../../services/DigestService.js';
 import AIService from '../../services/AIService.js';
 import * as GoalService from '../../services/GoalService.js';
+import * as QuestionService from '../../services/QuestionService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -193,6 +194,22 @@ const resolvers = {
     getDailyDigest: async (_, { teamId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return DigestService.generateDigest(teamId, userId);
+    },
+
+    // Team Questions
+    getTeamQuestions: async (_, { teamId, status, assignedTo }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return QuestionService.getQuestions(teamId, { status, assignedTo });
+    },
+
+    getTeamQuestion: async (_, { questionId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return QuestionService.getQuestionById(questionId);
+    },
+
+    getOpenQuestionCount: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return QuestionService.getOpenQuestionCount(teamId, userId);
     }
   },
 
@@ -419,6 +436,31 @@ const resolvers = {
 
     setTaskGoals: async (_, { taskId, goalIds }) => {
       return GoalService.setTaskGoals(taskId, goalIds);
+    },
+
+    // Team Questions
+    createTeamQuestion: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return QuestionService.createQuestion(teamId, userId, input);
+    },
+
+    answerTeamQuestion: async (_, { questionId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const question = await QuestionService.getQuestionById(questionId);
+      return QuestionService.answerQuestion(questionId, userId, input.answer, {
+        addToKnowledge: input.addToKnowledge,
+        teamId: question?.teamId
+      });
+    },
+
+    assignTeamQuestion: async (_, { questionId, assigneeIds }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return QuestionService.assignQuestion(questionId, assigneeIds, userId);
+    },
+
+    closeTeamQuestion: async (_, { questionId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return QuestionService.closeQuestion(questionId);
     }
   },
 
@@ -590,6 +632,22 @@ const resolvers = {
     createdByUser: async (fact) => {
       if (!fact.createdBy) return null;
       return UserService.getUserById(fact.createdBy);
+    }
+  },
+
+  TeamQuestion: {
+    askedByUser: async (question) => {
+      if (!question.askedBy) return null;
+      return UserService.getUserById(question.askedBy);
+    },
+
+    answeredByUser: async (question) => {
+      if (!question.answeredBy) return null;
+      return UserService.getUserById(question.answeredBy);
+    },
+
+    assignees: async (question) => {
+      return QuestionService.getQuestionAssignees(question.id);
     }
   }
 };

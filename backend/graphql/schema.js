@@ -482,6 +482,44 @@ export default gql`
   }
 
   # ============================================================================
+  # TEAM QUESTIONS (for when Raven doesn't have a confident answer)
+  # ============================================================================
+
+  type TeamQuestion {
+    id: ID!
+    teamId: ID!
+    askedBy: ID!
+    askedByUser: User
+    question: String!
+    aiAnswer: String
+    aiConfidence: Float!
+    status: String!  # open, answered, closed
+    answer: String
+    answeredBy: ID
+    answeredByUser: User
+    answeredAt: DateTime
+    assignees: [User!]!
+    channelId: ID
+    context: String
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  input CreateTeamQuestionInput {
+    question: String!
+    aiAnswer: String
+    aiConfidence: Float
+    channelId: ID
+    context: String
+    assigneeIds: [ID!]
+  }
+
+  input AnswerTeamQuestionInput {
+    answer: String!
+    addToKnowledge: Boolean
+  }
+
+  # ============================================================================
   # QUERIES
   # ============================================================================
 
@@ -537,6 +575,11 @@ export default gql`
 
     # Daily Digest
     getDailyDigest(teamId: ID!): DailyDigest!
+
+    # Team Questions
+    getTeamQuestions(teamId: ID!, status: String, assignedTo: ID): [TeamQuestion!]!
+    getTeamQuestion(questionId: ID!): TeamQuestion
+    getOpenQuestionCount(teamId: ID!): Int!
   }
 
   # ============================================================================
@@ -613,5 +656,11 @@ export default gql`
     linkGoalToTask(goalId: ID!, taskId: ID!): Boolean!
     unlinkGoalFromTask(goalId: ID!, taskId: ID!): Boolean!
     setTaskGoals(taskId: ID!, goalIds: [ID!]!): [Goal!]!
+
+    # Team Questions
+    createTeamQuestion(teamId: ID!, input: CreateTeamQuestionInput!): TeamQuestion!
+    answerTeamQuestion(questionId: ID!, input: AnswerTeamQuestionInput!): TeamQuestion!
+    assignTeamQuestion(questionId: ID!, assigneeIds: [ID!]!): TeamQuestion!
+    closeTeamQuestion(questionId: ID!): TeamQuestion!
   }
 `;

@@ -765,7 +765,20 @@ Return JSON with:
     });
 
     try {
-      return JSON.parse(response.choices[0].message.content);
+      let content = response.choices[0].message.content;
+
+      // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
+      const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        content = codeBlockMatch[1].trim();
+      }
+
+      const parsed = JSON.parse(content);
+      return {
+        answer: parsed.answer || content,
+        confidence: parsed.confidence || 0.5,
+        followups: parsed.followups || []
+      };
     } catch (parseError) {
       // If not valid JSON, return as plain answer
       return {

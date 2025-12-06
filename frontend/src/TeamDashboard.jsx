@@ -216,6 +216,56 @@ const ASK_COMPANY = gql`
   }
 `;
 
+const GET_TEAM_QUESTIONS = gql`
+  query GetTeamQuestions($teamId: ID!, $status: String) {
+    getTeamQuestions(teamId: $teamId, status: $status) {
+      id
+      question
+      aiAnswer
+      aiConfidence
+      status
+      answer
+      answeredAt
+      askedByUser {
+        id
+        displayName
+        email
+      }
+      answeredByUser {
+        id
+        displayName
+      }
+      assignees {
+        id
+        displayName
+        email
+      }
+      createdAt
+    }
+  }
+`;
+
+const CREATE_TEAM_QUESTION = gql`
+  mutation CreateTeamQuestion($teamId: ID!, $input: CreateTeamQuestionInput!) {
+    createTeamQuestion(teamId: $teamId, input: $input) {
+      id
+      question
+      status
+    }
+  }
+`;
+
+const ANSWER_TEAM_QUESTION = gql`
+  mutation AnswerTeamQuestion($questionId: ID!, $input: AnswerTeamQuestionInput!) {
+    answerTeamQuestion(questionId: $questionId, input: $input) {
+      id
+      answer
+      status
+      answeredAt
+    }
+  }
+`;
+
 const GET_DAILY_DIGEST = gql`
   query GetDailyDigest($teamId: ID!) {
     getDailyDigest(teamId: $teamId) {
@@ -486,6 +536,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [askAnswer, setAskAnswer] = useState(null);
   const [askLoading, setAskLoading] = useState(false);
   const [askHistory, setAskHistory] = useState([]);
+  // Team questions state (for low-confidence answers)
+  const [showPostQuestion, setShowPostQuestion] = useState(false);
+  const [questionContext, setQuestionContext] = useState('');
+  const [selectedAssignees, setSelectedAssignees] = useState([]);
+  const [showOpenQuestions, setShowOpenQuestions] = useState(false);
+  const [answeringQuestionId, setAnsweringQuestionId] = useState(null);
+  const [questionAnswerText, setQuestionAnswerText] = useState('');
   // @mentions autocomplete state
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -657,6 +714,16 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [executeAskCompany] = useLazyQuery(ASK_COMPANY, {
     fetchPolicy: 'network-only'
   });
+
+  // Team questions
+  const { data: questionsData, refetch: refetchQuestions } = useQuery(GET_TEAM_QUESTIONS, {
+    variables: { teamId, status: showOpenQuestions ? 'open' : null },
+    skip: !teamId || activeView !== 'ask'
+  });
+  const teamQuestions = questionsData?.getTeamQuestions || [];
+
+  const [createTeamQuestion] = useMutation(CREATE_TEAM_QUESTION);
+  const [answerTeamQuestion] = useMutation(ANSWER_TEAM_QUESTION);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -1005,6 +1072,65 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     setTimeout(() => {
       document.getElementById('ask-form')?.requestSubmit();
     }, 100);
+  };
+
+  // Post a question to the team when Raven doesn't have a confident answer
+  const handlePostQuestion = async () => {
+    if (!askAnswer || !askHistory.length) return;
+
+    const lastQuestion = askHistory[0];
+    try {
+      await createTeamQuestion({
+        variables: {
+          teamId,
+          input: {
+            question: lastQuestion.question,
+            aiAnswer: lastQuestion.answer,
+            aiConfidence: lastQuestion.confidence,
+            context: questionContext || null,
+            assigneeIds: selectedAssignees
+          }
+        }
+      });
+
+      setShowPostQuestion(false);
+      setQuestionContext('');
+      setSelectedAssignees([]);
+      refetchQuestions();
+
+      // Show success feedback
+      setAskAnswer({
+        ...askAnswer,
+        posted: true
+      });
+    } catch (error) {
+      console.error('Error posting question:', error);
+      alert('Failed to post question: ' + error.message);
+    }
+  };
+
+  // Answer a posted team question
+  const handleAnswerQuestion = async (questionId) => {
+    if (!questionAnswerText.trim()) return;
+
+    try {
+      await answerTeamQuestion({
+        variables: {
+          questionId,
+          input: {
+            answer: questionAnswerText.trim(),
+            addToKnowledge: true
+          }
+        }
+      });
+
+      setAnsweringQuestionId(null);
+      setQuestionAnswerText('');
+      refetchQuestions();
+    } catch (error) {
+      console.error('Error answering question:', error);
+      alert('Failed to submit answer: ' + error.message);
+    }
   };
 
   // Handle message input change with @mention detection
@@ -2086,6 +2212,69 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   </div>
                 )}
 
+                {/* Low confidence - offer to post question to team */}
+                {askAnswer.confidence < 0.5 && !askAnswer.posted && (
+                  <div className="low-confidence-action">
+                    <p className="low-confidence-message">
+                      Raven isn't confident about this answer. Would you like to ask your team?
+                    </p>
+                    {!showPostQuestion ? (
+                      <button
+                        className="btn-primary"
+                        onClick={() => setShowPostQuestion(true)}
+                      >
+                        Post Question to Team
+                      </button>
+                    ) : (
+                      <div className="post-question-form">
+                        <textarea
+                          value={questionContext}
+                          onChange={(e) => setQuestionContext(e.target.value)}
+                          placeholder="Add any context that might help (optional)"
+                          className="question-context-input"
+                          rows={2}
+                        />
+                        <div className="assignee-select">
+                          <label>Assign to (optional):</label>
+                          <div className="assignee-options">
+                            {members.map(member => (
+                              <label key={member.userId} className="assignee-option">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedAssignees.includes(member.userId)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedAssignees([...selectedAssignees, member.userId]);
+                                    } else {
+                                      setSelectedAssignees(selectedAssignees.filter(id => id !== member.userId));
+                                    }
+                                  }}
+                                />
+                                {member.user?.displayName || member.user?.email}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="post-question-actions">
+                          <button className="btn-secondary" onClick={() => setShowPostQuestion(false)}>
+                            Cancel
+                          </button>
+                          <button className="btn-primary" onClick={handlePostQuestion}>
+                            Post Question
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Posted confirmation */}
+                {askAnswer.posted && (
+                  <div className="question-posted-badge">
+                    Question posted to team - you'll be notified when someone answers.
+                  </div>
+                )}
+
                 {askAnswer.factsUsed?.length > 0 && (
                   <div className="answer-sources">
                     <span className="sources-label">Based on:</span>
@@ -2151,6 +2340,101 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 ))}
               </div>
             )}
+
+            {/* Team Questions Section */}
+            <div className="team-questions-section">
+              <div className="team-questions-header">
+                <h4>Team Questions</h4>
+                <button
+                  className={`filter-btn ${showOpenQuestions ? 'active' : ''}`}
+                  onClick={() => { setShowOpenQuestions(!showOpenQuestions); refetchQuestions(); }}
+                >
+                  {showOpenQuestions ? 'Show All' : 'Open Only'}
+                </button>
+              </div>
+
+              {teamQuestions.length === 0 ? (
+                <p className="no-questions">No questions from the team yet.</p>
+              ) : (
+                <div className="team-questions-list">
+                  {teamQuestions.map(q => (
+                    <div key={q.id} className={`team-question-card ${q.status}`}>
+                      <div className="question-header">
+                        <span className="question-author">
+                          {q.askedByUser?.displayName || q.askedByUser?.email || 'Team member'}
+                        </span>
+                        <span className="question-date">
+                          {new Date(q.createdAt).toLocaleDateString()}
+                        </span>
+                        <span className={`question-status ${q.status}`}>{q.status}</span>
+                      </div>
+
+                      <p className="question-text">{q.question}</p>
+
+                      {q.aiAnswer && (
+                        <div className="ai-attempt">
+                          <span className="ai-label">Raven's attempt ({Math.round((q.aiConfidence || 0) * 100)}% confidence):</span>
+                          <p className="ai-answer-preview">{q.aiAnswer.substring(0, 150)}...</p>
+                        </div>
+                      )}
+
+                      {q.status === 'answered' && q.answer && (
+                        <div className="human-answer">
+                          <span className="answer-label">
+                            Answered by {q.answeredByUser?.displayName || 'Team member'}:
+                          </span>
+                          <ReactMarkdown>{q.answer}</ReactMarkdown>
+                        </div>
+                      )}
+
+                      {q.status === 'open' && (
+                        answeringQuestionId === q.id ? (
+                          <div className="answer-form">
+                            <textarea
+                              value={questionAnswerText}
+                              onChange={(e) => setQuestionAnswerText(e.target.value)}
+                              placeholder="Share your knowledge..."
+                              rows={3}
+                              className="answer-input"
+                            />
+                            <div className="answer-form-actions">
+                              <button
+                                className="btn-secondary"
+                                onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="btn-primary"
+                                onClick={() => handleAnswerQuestion(q.id)}
+                                disabled={!questionAnswerText.trim()}
+                              >
+                                Submit Answer
+                              </button>
+                            </div>
+                            <p className="answer-note">Your answer will be added to the knowledge base.</p>
+                          </div>
+                        ) : (
+                          <button
+                            className="btn-secondary answer-btn"
+                            onClick={() => setAnsweringQuestionId(q.id)}
+                          >
+                            I can answer this
+                          </button>
+                        )
+                      )}
+
+                      {q.assignees?.length > 0 && (
+                        <div className="question-assignees">
+                          <span>Assigned to: </span>
+                          {q.assignees.map(a => a.displayName || a.email).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </main>
       ) : activeView === 'goals' ? (
@@ -2395,27 +2679,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* Standalone Projects Section */}
-            {projects.filter(p => !p.goalId).length > 0 && (
-              <div className="standalone-projects">
-                <h4>Standalone Projects</h4>
-                <p className="section-subtitle">Projects not linked to any goal</p>
-                <div className="projects-grid">
-                  {projects.filter(p => !p.goalId).map(proj => (
-                    <div key={proj.id} className="project-card" style={{ borderColor: proj.color || '#5D4B8C' }}>
-                      <h5>{proj.name}</h5>
-                      <div className="project-meta">
-                        <span>{proj.completedTaskCount}/{proj.taskCount} tasks</span>
-                        {proj.dueDate && (
-                          <span>Due: {new Date(proj.dueDate).toLocaleDateString()}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
 
