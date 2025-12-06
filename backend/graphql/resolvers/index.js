@@ -13,6 +13,9 @@ import KnowledgeService from '../../services/KnowledgeService.js';
 import AlertService from '../../services/AlertService.js';
 import TaskService from '../../services/TaskService.js';
 import ProjectService from '../../services/ProjectService.js';
+import ThreadService from '../../services/ThreadService.js';
+import DigestService from '../../services/DigestService.js';
+import AIService from '../../services/AIService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -53,14 +56,27 @@ const resolvers = {
       return ChannelService.getChannels(teamId);
     },
 
+    // Threads
+    getThread: async (_, { threadId }) => {
+      return ThreadService.getThread(threadId);
+    },
+
+    getThreads: async (_, { channelId, limit }) => {
+      return ThreadService.getThreads(channelId, { limit });
+    },
+
     // Messages
     getMessages: async (_, { channelId, limit, before }) => {
       return MessageService.getMessages(channelId, { limit, before });
     },
 
+    getThreadMessages: async (_, { threadId, limit }) => {
+      return ThreadService.getThreadMessages(threadId, { limit });
+    },
+
     // Knowledge
-    getFacts: async (_, { teamId, category, limit }) => {
-      return KnowledgeService.getFacts(teamId, { category, limit });
+    getFacts: async (_, { teamId, category, entityType, limit }) => {
+      return KnowledgeService.getFacts(teamId, { category, entityType, limit });
     },
 
     getDecisions: async (_, { teamId, limit }) => {
@@ -69,6 +85,42 @@ const resolvers = {
 
     searchKnowledge: async (_, { teamId, query }) => {
       return KnowledgeService.searchKnowledge(teamId, query);
+    },
+
+    // Ask the Company (AI Q&A)
+    askCompany: async (_, { teamId, input }, { userId }) => {
+      // Get all relevant knowledge
+      const knowledge = await KnowledgeService.getKnowledgeContext(teamId, input.question);
+
+      // Generate AI answer
+      const answer = await AIService.generateCompanyAnswer(
+        input.question,
+        knowledge.facts,
+        knowledge.decisions
+      );
+
+      // Log the query for analytics
+      try {
+        const { Pool } = await import('pg');
+        const db = (await import('../../db.js')).default;
+        await db.query(
+          `INSERT INTO knowledge_queries (team_id, user_id, query, answer, facts_used, confidence_score)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [teamId, userId, input.question, answer.answer,
+           knowledge.facts.slice(0, 5).map(f => f.id),
+           answer.confidence]
+        );
+      } catch (e) {
+        console.error('Error logging query:', e);
+      }
+
+      return {
+        answer: answer.answer,
+        confidence: answer.confidence,
+        factsUsed: knowledge.facts.slice(0, 5),
+        decisionsUsed: knowledge.decisions.slice(0, 3),
+        suggestedFollowups: answer.followups || []
+      };
     },
 
     // Alerts
@@ -104,6 +156,12 @@ const resolvers = {
 
     validateInviteToken: async (_, { token }) => {
       return TeamService.validateInviteToken(token);
+    },
+
+    // Daily Digest
+    getDailyDigest: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return DigestService.generateDigest(teamId, userId);
     }
   },
 
@@ -116,6 +174,11 @@ const resolvers = {
     createOrUpdateUser: async (_, { email, displayName, avatarUrl }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return UserService.createOrUpdateUser(userId, email, displayName, avatarUrl);
+    },
+
+    updateUserPreferences: async (_, { input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return UserService.updatePreferences(userId, input);
     },
 
     // Teams
@@ -166,10 +229,33 @@ const resolvers = {
       return ChannelService.deleteChannel(channelId);
     },
 
+    // Threads
+    createThread: async (_, { channelId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ThreadService.createThread(channelId, userId, {
+        title: input.title,
+        initialMessage: input.initialMessage
+      });
+    },
+
+    resolveThread: async (_, { threadId }) => {
+      return ThreadService.resolveThread(threadId);
+    },
+
     // Messages & AI
     sendMessage: async (_, { channelId, input }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return MessageService.sendMessage(channelId, userId, input.content);
+    },
+
+    sendThreadMessage: async (_, { threadId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      // Get thread to find channel
+      const thread = await ThreadService.getThread(threadId);
+      if (!thread) throw new Error('Thread not found');
+
+      // Use message service with thread context
+      return MessageService.sendThreadMessage(threadId, userId, input.content);
     },
 
     // Knowledge - Manual
@@ -257,12 +343,41 @@ const resolvers = {
   Channel: {
     messages: async (channel, { limit, before }) => {
       return MessageService.getMessages(channel.id, { limit: limit || 50, before });
+    },
+
+    threads: async (channel, { limit }) => {
+      return ThreadService.getThreads(channel.id, { limit: limit || 50 });
+    }
+  },
+
+  Thread: {
+    messages: async (thread, { limit }) => {
+      return ThreadService.getThreadMessages(thread.id, { limit: limit || 100 });
+    },
+
+    startedByUser: async (thread) => {
+      if (!thread.startedBy) return null;
+      return UserService.getUserById(thread.startedBy);
+    }
+  },
+
+  Message: {
+    thread: async (message) => {
+      if (!message.threadId) return null;
+      return ThreadService.getThread(message.threadId);
     }
   },
 
   Project: {
     tasks: async (project) => {
       return TaskService.getTasks(project.teamId, { projectId: project.id });
+    }
+  },
+
+  Fact: {
+    createdByUser: async (fact) => {
+      if (!fact.createdBy) return null;
+      return UserService.getUserById(fact.createdBy);
     }
   }
 };

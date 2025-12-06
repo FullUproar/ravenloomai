@@ -1,4 +1,4 @@
-import { gql, useQuery, useMutation } from '@apollo/client';
+import { gql, useQuery, useMutation, useLazyQuery } from '@apollo/client';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
@@ -88,6 +88,159 @@ const CREATE_CHANNEL = gql`
   }
 `;
 
+const INVITE_TEAM_MEMBER = gql`
+  mutation InviteTeamMember($teamId: ID!, $input: InviteTeamMemberInput!) {
+    inviteTeamMember(teamId: $teamId, input: $input) {
+      id
+      email
+      role
+      token
+      expiresAt
+    }
+  }
+`;
+
+const GET_TEAM_INVITES = gql`
+  query GetTeamInvites($teamId: ID!) {
+    getTeamInvites(teamId: $teamId) {
+      id
+      email
+      role
+      token
+      expiresAt
+      createdAt
+    }
+  }
+`;
+
+const GET_TASKS = gql`
+  query GetTasks($teamId: ID!, $status: String, $assignedTo: String) {
+    getTasks(teamId: $teamId, status: $status, assignedTo: $assignedTo) {
+      id
+      title
+      description
+      status
+      priority
+      assignedTo
+      assignedToUser {
+        id
+        displayName
+        email
+      }
+      dueAt
+      completedAt
+      createdAt
+    }
+  }
+`;
+
+const CREATE_TASK_DIRECT = gql`
+  mutation CreateTask($teamId: ID!, $input: CreateTaskInput!) {
+    createTask(teamId: $teamId, input: $input) {
+      id
+      title
+      status
+      priority
+    }
+  }
+`;
+
+const UPDATE_TASK = gql`
+  mutation UpdateTask($taskId: ID!, $input: UpdateTaskInput!) {
+    updateTask(taskId: $taskId, input: $input) {
+      id
+      title
+      status
+      priority
+      assignedTo
+      dueAt
+    }
+  }
+`;
+
+const COMPLETE_TASK = gql`
+  mutation CompleteTask($taskId: ID!) {
+    completeTask(taskId: $taskId) {
+      id
+      status
+      completedAt
+    }
+  }
+`;
+
+const GET_ALERTS = gql`
+  query GetAlerts($teamId: ID!, $status: String) {
+    getAlerts(teamId: $teamId, status: $status) {
+      id
+      message
+      triggerAt
+      triggerType
+      status
+      channelId
+      createdAt
+    }
+  }
+`;
+
+const SNOOZE_ALERT = gql`
+  mutation SnoozeAlert($alertId: ID!, $until: DateTime!) {
+    snoozeAlert(alertId: $alertId, until: $until) {
+      id
+      status
+      snoozedUntil
+    }
+  }
+`;
+
+const CANCEL_ALERT = gql`
+  mutation CancelAlert($alertId: ID!) {
+    cancelAlert(alertId: $alertId) {
+      id
+      status
+    }
+  }
+`;
+
+const ASK_COMPANY = gql`
+  query AskCompany($teamId: ID!, $input: AskCompanyInput!) {
+    askCompany(teamId: $teamId, input: $input) {
+      answer
+      confidence
+      suggestedFollowups
+      factsUsed {
+        id
+        content
+        category
+      }
+    }
+  }
+`;
+
+const GET_DAILY_DIGEST = gql`
+  query GetDailyDigest($teamId: ID!) {
+    getDailyDigest(teamId: $teamId) {
+      teamId
+      date
+      overdueTasks {
+        id
+        title
+        dueAt
+      }
+      dueTodayTasks {
+        id
+        title
+        dueAt
+      }
+      recentDecisions {
+        id
+        what
+        why
+      }
+      activitySummary
+    }
+  }
+`;
+
 // ============================================================================
 // TeamDashboard Component
 // ============================================================================
@@ -102,6 +255,22 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('member');
+  const [inviteSending, setInviteSending] = useState(false);
+  const [lastInviteLink, setLastInviteLink] = useState(null);
+  const [showMembersPanel, setShowMembersPanel] = useState(false);
+  const [activeView, setActiveView] = useState('chat'); // 'chat', 'tasks', or 'ask'
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState('medium');
+  const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
+  // Q&A state
+  const [askQuestion, setAskQuestion] = useState('');
+  const [askAnswer, setAskAnswer] = useState(null);
+  const [askLoading, setAskLoading] = useState(false);
+  const [askHistory, setAskHistory] = useState([]);
 
   // Fetch team data
   const { data: teamData, loading: teamLoading, refetch: refetchTeam } = useQuery(GET_TEAM, {
@@ -126,9 +295,54 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
 
   const messages = messagesData?.getMessages || [];
 
+  // Fetch team invites
+  const { data: invitesData, refetch: refetchInvites } = useQuery(GET_TEAM_INVITES, {
+    variables: { teamId },
+    fetchPolicy: 'cache-and-network'
+  });
+  const pendingInvites = invitesData?.getTeamInvites || [];
+
+  // Fetch tasks
+  const taskQueryVars = { teamId };
+  if (taskFilter === 'my') {
+    taskQueryVars.assignedTo = user?.uid;
+  } else if (taskFilter === 'open') {
+    taskQueryVars.status = null; // Get all, filter in UI
+  }
+
+  const { data: tasksData, refetch: refetchTasks } = useQuery(GET_TASKS, {
+    variables: taskQueryVars,
+    fetchPolicy: 'cache-and-network',
+    pollInterval: 10000 // Refresh every 10 seconds
+  });
+
+  const allTasks = tasksData?.getTasks || [];
+  const tasks = taskFilter === 'open'
+    ? allTasks.filter(t => t.status !== 'done')
+    : taskFilter === 'my'
+    ? allTasks.filter(t => t.assignedTo === user?.uid)
+    : allTasks;
+
+  // Fetch pending alerts
+  const { data: alertsData, refetch: refetchAlerts } = useQuery(GET_ALERTS, {
+    variables: { teamId, status: 'pending' },
+    fetchPolicy: 'cache-and-network',
+    pollInterval: 30000 // Check every 30 seconds
+  });
+  const pendingAlerts = alertsData?.getAlerts || [];
+
   // Mutations
   const [sendMessage] = useMutation(SEND_MESSAGE);
   const [createChannel] = useMutation(CREATE_CHANNEL);
+  const [inviteTeamMember] = useMutation(INVITE_TEAM_MEMBER);
+  const [createTaskDirect] = useMutation(CREATE_TASK_DIRECT);
+  const [updateTask] = useMutation(UPDATE_TASK);
+  const [completeTask] = useMutation(COMPLETE_TASK);
+  const [snoozeAlert] = useMutation(SNOOZE_ALERT);
+  const [cancelAlert] = useMutation(CANCEL_ALERT);
+  const [executeAskCompany] = useLazyQuery(ASK_COMPANY, {
+    fetchPolicy: 'network-only'
+  });
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -200,6 +414,159 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
     navigate('/');
   };
 
+  const handleInviteMember = async (e) => {
+    e.preventDefault();
+    if (!inviteEmail.trim() || inviteSending) return;
+
+    setInviteSending(true);
+    try {
+      const { data } = await inviteTeamMember({
+        variables: {
+          teamId,
+          input: { email: inviteEmail.trim(), role: inviteRole }
+        }
+      });
+
+      // Generate invite link
+      const baseUrl = window.location.origin;
+      const inviteLink = `${baseUrl}/invite/${data.inviteTeamMember.token}`;
+      setLastInviteLink(inviteLink);
+      setInviteEmail('');
+      setInviteRole('member');
+      await refetchInvites();
+    } catch (error) {
+      console.error('Error inviting member:', error);
+      alert('Failed to send invite: ' + error.message);
+    } finally {
+      setInviteSending(false);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    if (lastInviteLink) {
+      await navigator.clipboard.writeText(lastInviteLink);
+      alert('Invite link copied to clipboard!');
+    }
+  };
+
+  const handleCreateTask = async (e) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) return;
+
+    try {
+      await createTaskDirect({
+        variables: {
+          teamId,
+          input: {
+            title: newTaskTitle.trim(),
+            priority: newTaskPriority,
+            channelId: activeChannelId
+          }
+        }
+      });
+
+      setShowCreateTask(false);
+      setNewTaskTitle('');
+      setNewTaskPriority('medium');
+      await refetchTasks();
+    } catch (error) {
+      console.error('Error creating task:', error);
+      alert('Failed to create task: ' + error.message);
+    }
+  };
+
+  const handleToggleTaskStatus = async (task) => {
+    try {
+      if (task.status === 'done') {
+        // Reopen - set to todo
+        await updateTask({
+          variables: {
+            taskId: task.id,
+            input: { status: 'todo' }
+          }
+        });
+      } else if (task.status === 'todo') {
+        // Start - set to in_progress
+        await updateTask({
+          variables: {
+            taskId: task.id,
+            input: { status: 'in_progress' }
+          }
+        });
+      } else {
+        // Complete
+        await completeTask({
+          variables: { taskId: task.id }
+        });
+      }
+      await refetchTasks();
+    } catch (error) {
+      console.error('Error updating task:', error);
+    }
+  };
+
+  const handleCompleteTask = async (taskId) => {
+    try {
+      await completeTask({
+        variables: { taskId }
+      });
+      await refetchTasks();
+    } catch (error) {
+      console.error('Error completing task:', error);
+    }
+  };
+
+  const handleAskCompany = async (e) => {
+    e.preventDefault();
+    if (!askQuestion.trim() || askLoading) return;
+
+    const question = askQuestion.trim();
+    setAskLoading(true);
+    setAskAnswer(null);
+
+    try {
+      const { data } = await executeAskCompany({
+        variables: {
+          teamId,
+          input: { question }
+        }
+      });
+
+      const result = data.askCompany;
+      setAskAnswer(result);
+
+      // Add to history
+      setAskHistory(prev => [{
+        question,
+        answer: result.answer,
+        confidence: result.confidence,
+        factsUsed: result.factsUsed,
+        suggestedFollowups: result.suggestedFollowups,
+        timestamp: new Date()
+      }, ...prev.slice(0, 9)]);
+
+      setAskQuestion('');
+    } catch (error) {
+      console.error('Error asking company:', error);
+      setAskAnswer({
+        answer: 'Sorry, I encountered an error. Please try again.',
+        confidence: 0,
+        factsUsed: [],
+        suggestedFollowups: []
+      });
+    } finally {
+      setAskLoading(false);
+    }
+  };
+
+  const handleFollowupQuestion = (question) => {
+    setAskQuestion(question);
+    // Auto-submit the followup
+    setTimeout(() => {
+      document.getElementById('ask-form')?.requestSubmit();
+    }, 100);
+  };
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -236,6 +603,33 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
         <div className="sidebar-header">
           <button onClick={handleBackToTeams} className="back-btn">←</button>
           <h2 className="team-name">{team.name}</h2>
+        </div>
+
+        {/* View Toggle */}
+        <div className="view-toggle">
+          <button
+            className={`view-btn ${activeView === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveView('chat')}
+          >
+            Chat
+          </button>
+          <button
+            className={`view-btn ${activeView === 'tasks' ? 'active' : ''}`}
+            onClick={() => setActiveView('tasks')}
+          >
+            Tasks {tasks.length > 0 && `(${tasks.length})`}
+          </button>
+          <button
+            className={`view-btn ${activeView === 'ask' ? 'active' : ''}`}
+            onClick={() => setActiveView('ask')}
+          >
+            Ask
+          </button>
+          {pendingAlerts.length > 0 && (
+            <div className="alerts-indicator" title={`${pendingAlerts.length} pending reminders`}>
+              {pendingAlerts.length}
+            </div>
+          )}
         </div>
 
         {/* Channels */}
@@ -296,6 +690,127 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
           )}
         </div>
 
+        {/* Team Members Section */}
+        <div className="members-section">
+          <div className="section-header">
+            <span>Team ({team.members?.length || 0})</span>
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="add-btn"
+              title="Invite member"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="member-list">
+            {team.members?.slice(0, 5).map((member) => (
+              <div key={member.id} className="member-item">
+                <span className="member-avatar">
+                  {(member.user?.displayName || member.user?.email || '?')[0].toUpperCase()}
+                </span>
+                <span className="member-name">
+                  {member.user?.displayName || member.user?.email}
+                </span>
+                {member.role === 'owner' && <span className="member-role">owner</span>}
+              </div>
+            ))}
+            {(team.members?.length || 0) > 5 && (
+              <button
+                className="show-more-btn"
+                onClick={() => setShowMembersPanel(true)}
+              >
+                +{team.members.length - 5} more
+              </button>
+            )}
+          </div>
+
+          {/* Pending Invites */}
+          {pendingInvites.length > 0 && (
+            <div className="pending-invites">
+              <span className="pending-label">Pending ({pendingInvites.length})</span>
+              {pendingInvites.slice(0, 3).map((invite) => (
+                <div key={invite.id} className="invite-item">
+                  <span className="invite-email">{invite.email}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Invite Modal */}
+          {showInviteModal && (
+            <div className="modal-overlay" onClick={() => { setShowInviteModal(false); setLastInviteLink(null); }}>
+              <div className="modal invite-modal" onClick={(e) => e.stopPropagation()}>
+                <h3>Invite Team Member</h3>
+
+                {lastInviteLink ? (
+                  <div className="invite-success">
+                    <p>Invite created! Share this link:</p>
+                    <div className="invite-link-box">
+                      <input
+                        type="text"
+                        value={lastInviteLink}
+                        readOnly
+                        className="input-field"
+                      />
+                      <button onClick={copyInviteLink} className="btn-primary">
+                        Copy
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => setLastInviteLink(null)}
+                      className="btn-secondary"
+                      style={{ marginTop: '10px' }}
+                    >
+                      Invite Another
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleInviteMember}>
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="email@example.com"
+                      autoFocus
+                      className="input-field"
+                      required
+                    />
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="member">Member</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <div className="form-actions">
+                      <button
+                        type="submit"
+                        className="btn-primary"
+                        disabled={inviteSending}
+                      >
+                        {inviteSending ? 'Sending...' : 'Send Invite'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowInviteModal(false);
+                          setInviteEmail('');
+                          setLastInviteLink(null);
+                        }}
+                        className="btn-secondary"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* User Info */}
         <div className="sidebar-footer">
           <div className="user-info">
@@ -307,75 +822,339 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
         </div>
       </aside>
 
-      {/* Main Chat Area */}
-      <main className="chat-area">
-        {/* Channel Header */}
-        <header className="chat-header">
-          <h3># {activeChannel?.name || 'Select a channel'}</h3>
-          {activeChannel?.description && (
-            <p className="channel-description">{activeChannel.description}</p>
-          )}
-        </header>
+      {/* Main Content Area */}
+      {activeView === 'chat' ? (
+        <main className="chat-area">
+          {/* Channel Header */}
+          <header className="chat-header">
+            <h3># {activeChannel?.name || 'Select a channel'}</h3>
+            {activeChannel?.description && (
+              <p className="channel-description">{activeChannel.description}</p>
+            )}
+          </header>
 
-        {/* Messages */}
-        <div className="messages-container">
-          {messagesLoading && messages.length === 0 ? (
-            <div className="messages-loading">Loading messages...</div>
-          ) : messages.length === 0 ? (
-            <div className="messages-empty">
-              <p>No messages yet.</p>
-              <p className="hint">
-                Try: <code>@raven remember [something]</code> to save a fact
-              </p>
-              <p className="hint">
-                Or: <code>@raven [question]</code> to ask something
-              </p>
+          {/* Messages */}
+          <div className="messages-container">
+            {messagesLoading && messages.length === 0 ? (
+              <div className="messages-loading">Loading messages...</div>
+            ) : messages.length === 0 ? (
+              <div className="messages-empty">
+                <p>No messages yet.</p>
+                <p className="hint">
+                  Try: <code>@raven remember [something]</code> to save a fact
+                </p>
+                <p className="hint">
+                  Or: <code>@raven [question]</code> to ask something
+                </p>
+              </div>
+            ) : (
+              <div className="messages-list">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`message ${message.isAi ? 'ai-message' : 'user-message'}`}
+                  >
+                    <div className="message-header">
+                      <span className="message-author">
+                        {message.isAi ? '🪶 Raven' : (message.user?.displayName || message.user?.email || 'User')}
+                      </span>
+                      <span className="message-time">
+                        {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="message-content">
+                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+
+          {/* Message Input */}
+          <form onSubmit={handleSendMessage} className="message-form">
+            <input
+              ref={inputRef}
+              type="text"
+              value={messageInput}
+              onChange={(e) => setMessageInput(e.target.value)}
+              placeholder={`Message #${activeChannel?.name || 'channel'}... (use @raven to talk to AI)`}
+              disabled={isSending || !activeChannelId}
+              className="message-input"
+            />
+            <button
+              type="submit"
+              disabled={isSending || !messageInput.trim() || !activeChannelId}
+              className="send-btn"
+            >
+              {isSending ? '...' : 'Send'}
+            </button>
+          </form>
+        </main>
+      ) : activeView === 'tasks' ? (
+        <main className="tasks-area">
+          {/* Tasks Header */}
+          <header className="tasks-header">
+            <h3>Tasks</h3>
+            <div className="tasks-filters">
+              <button
+                className={`filter-btn ${taskFilter === 'open' ? 'active' : ''}`}
+                onClick={() => setTaskFilter('open')}
+              >
+                Open
+              </button>
+              <button
+                className={`filter-btn ${taskFilter === 'my' ? 'active' : ''}`}
+                onClick={() => setTaskFilter('my')}
+              >
+                My Tasks
+              </button>
+              <button
+                className={`filter-btn ${taskFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setTaskFilter('all')}
+              >
+                All
+              </button>
             </div>
-          ) : (
-            <div className="messages-list">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`message ${message.isAi ? 'ai-message' : 'user-message'}`}
-                >
-                  <div className="message-header">
-                    <span className="message-author">
-                      {message.isAi ? '🪶 Raven' : (message.user?.displayName || message.user?.email || 'User')}
-                    </span>
-                    <span className="message-time">
-                      {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+            <button
+              className="btn-primary"
+              onClick={() => setShowCreateTask(true)}
+            >
+              + New Task
+            </button>
+          </header>
+
+          {/* Tasks List */}
+          <div className="tasks-container">
+            {tasks.length === 0 ? (
+              <div className="tasks-empty">
+                <p>No tasks yet.</p>
+                <p className="hint">Create a task or use <code>@raven task [description]</code> in chat</p>
+              </div>
+            ) : (
+              <div className="tasks-list">
+                {tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className={`task-item ${task.status} priority-${task.priority}`}
+                  >
+                    <button
+                      className="task-checkbox"
+                      onClick={() => task.status === 'done' ? handleToggleTaskStatus(task) : handleCompleteTask(task.id)}
+                      title={task.status === 'done' ? 'Reopen task' : 'Complete task'}
+                    >
+                      {task.status === 'done' ? '✓' : task.status === 'in_progress' ? '▶' : '○'}
+                    </button>
+                    <div className="task-content">
+                      <span className="task-title">{task.title}</span>
+                      {task.description && (
+                        <span className="task-description">{task.description}</span>
+                      )}
+                      <div className="task-meta">
+                        {task.priority !== 'medium' && (
+                          <span className={`task-priority priority-${task.priority}`}>
+                            {task.priority}
+                          </span>
+                        )}
+                        {task.assignedToUser && (
+                          <span className="task-assignee">
+                            {task.assignedToUser.displayName || task.assignedToUser.email}
+                          </span>
+                        )}
+                        {task.dueAt && (
+                          <span className="task-due">
+                            Due: {new Date(task.dueAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="task-actions">
+                      {task.status === 'todo' && (
+                        <button
+                          className="task-action-btn"
+                          onClick={() => handleToggleTaskStatus(task)}
+                          title="Start working"
+                        >
+                          Start
+                        </button>
+                      )}
+                      {task.status === 'in_progress' && (
+                        <button
+                          className="task-action-btn"
+                          onClick={() => handleCompleteTask(task.id)}
+                          title="Mark complete"
+                        >
+                          Done
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="message-content">
-                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Create Task Modal */}
+          {showCreateTask && (
+            <div className="modal-overlay" onClick={() => setShowCreateTask(false)}>
+              <div className="modal" onClick={(e) => e.stopPropagation()}>
+                <h3>New Task</h3>
+                <form onSubmit={handleCreateTask}>
+                  <input
+                    type="text"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    placeholder="Task title..."
+                    autoFocus
+                    className="input-field"
+                  />
+                  <select
+                    value={newTaskPriority}
+                    onChange={(e) => setNewTaskPriority(e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="low">Low Priority</option>
+                    <option value="medium">Medium Priority</option>
+                    <option value="high">High Priority</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                  <div className="form-actions">
+                    <button type="submit" className="btn-primary">Create Task</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateTask(false);
+                        setNewTaskTitle('');
+                      }}
+                      className="btn-secondary"
+                    >
+                      Cancel
+                    </button>
                   </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </main>
+      ) : activeView === 'ask' ? (
+        <main className="ask-area">
+          {/* Ask Header */}
+          <header className="ask-header">
+            <h3>Ask the Company</h3>
+            <p className="ask-subtitle">Ask questions about your team's knowledge base</p>
+          </header>
+
+          {/* Ask Form */}
+          <form id="ask-form" onSubmit={handleAskCompany} className="ask-form">
+            <input
+              type="text"
+              value={askQuestion}
+              onChange={(e) => setAskQuestion(e.target.value)}
+              placeholder="What would you like to know? (e.g., 'What's our manufacturing process?')"
+              disabled={askLoading}
+              className="ask-input"
+            />
+            <button
+              type="submit"
+              disabled={askLoading || !askQuestion.trim()}
+              className="btn-primary"
+            >
+              {askLoading ? 'Thinking...' : 'Ask'}
+            </button>
+          </form>
+
+          {/* Answer Display */}
+          <div className="ask-content">
+            {askLoading && (
+              <div className="ask-loading">
+                <div className="loading-spinner"></div>
+                <p>Searching knowledge base...</p>
+              </div>
+            )}
+
+            {askAnswer && !askLoading && (
+              <div className="ask-answer-card">
+                <div className="answer-content">
+                  <ReactMarkdown>{askAnswer.answer}</ReactMarkdown>
                 </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
 
-        {/* Message Input */}
-        <form onSubmit={handleSendMessage} className="message-form">
-          <input
-            ref={inputRef}
-            type="text"
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            placeholder={`Message #${activeChannel?.name || 'channel'}... (use @raven to talk to AI)`}
-            disabled={isSending || !activeChannelId}
-            className="message-input"
-          />
-          <button
-            type="submit"
-            disabled={isSending || !messageInput.trim() || !activeChannelId}
-            className="send-btn"
-          >
-            {isSending ? '...' : 'Send'}
-          </button>
-        </form>
-      </main>
+                {askAnswer.confidence > 0 && (
+                  <div className="answer-confidence">
+                    <span className={`confidence-badge ${askAnswer.confidence >= 0.7 ? 'high' : askAnswer.confidence >= 0.4 ? 'medium' : 'low'}`}>
+                      {Math.round(askAnswer.confidence * 100)}% confidence
+                    </span>
+                  </div>
+                )}
+
+                {askAnswer.factsUsed?.length > 0 && (
+                  <div className="answer-sources">
+                    <span className="sources-label">Based on:</span>
+                    <div className="sources-list">
+                      {askAnswer.factsUsed.map((fact, i) => (
+                        <span key={fact.id} className="source-tag" title={fact.content}>
+                          {fact.category || 'fact'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {askAnswer.suggestedFollowups?.length > 0 && (
+                  <div className="followup-questions">
+                    <span className="followups-label">Related questions:</span>
+                    <div className="followups-list">
+                      {askAnswer.suggestedFollowups.map((q, i) => (
+                        <button
+                          key={i}
+                          className="followup-btn"
+                          onClick={() => handleFollowupQuestion(q)}
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!askAnswer && !askLoading && (
+              <div className="ask-empty">
+                <div className="ask-empty-icon">?</div>
+                <p>Ask anything about your company's knowledge</p>
+                <div className="ask-examples">
+                  <p className="examples-label">Try asking:</p>
+                  <button className="example-btn" onClick={() => setAskQuestion("What products do we make?")}>
+                    What products do we make?
+                  </button>
+                  <button className="example-btn" onClick={() => setAskQuestion("Who are our manufacturing partners?")}>
+                    Who are our manufacturing partners?
+                  </button>
+                  <button className="example-btn" onClick={() => setAskQuestion("What decisions have been made recently?")}>
+                    What decisions have been made recently?
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* History */}
+            {askHistory.length > 0 && (
+              <div className="ask-history">
+                <h4>Recent Questions</h4>
+                {askHistory.slice(0, 5).map((item, i) => (
+                  <div key={i} className="history-item" onClick={() => setAskQuestion(item.question)}>
+                    <span className="history-question">{item.question}</span>
+                    <span className="history-time">
+                      {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
+      ) : null}
     </div>
   );
 }

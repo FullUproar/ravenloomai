@@ -8,6 +8,10 @@
       "destination": "/api/graphql"
     },
     {
+      "source": "/api/check-alerts",
+      "destination": "/api/check-alerts"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
@@ -15,6 +19,19 @@
   "functions": {
     "api/graphql.js": {
       "maxDuration": 30
+    },
+    "api/check-alerts.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/check-alerts",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/send-digests",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

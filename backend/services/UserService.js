@@ -72,6 +72,52 @@ export async function updateUser(userId, { displayName, avatarUrl }) {
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
+/**
+ * Update user preferences (digest, timezone, etc.)
+ */
+export async function updatePreferences(userId, { digestTime, timezone, digestEnabled, preferences }) {
+  const updates = [];
+  const params = [userId];
+  let paramIndex = 2;
+
+  if (digestTime !== undefined) {
+    updates.push(`digest_time = $${paramIndex}`);
+    params.push(digestTime);
+    paramIndex++;
+  }
+
+  if (timezone !== undefined) {
+    updates.push(`timezone = $${paramIndex}`);
+    params.push(timezone);
+    paramIndex++;
+  }
+
+  if (digestEnabled !== undefined) {
+    updates.push(`digest_enabled = $${paramIndex}`);
+    params.push(digestEnabled);
+    paramIndex++;
+  }
+
+  if (preferences !== undefined) {
+    updates.push(`preferences = $${paramIndex}`);
+    params.push(JSON.stringify(preferences));
+    paramIndex++;
+  }
+
+  if (updates.length === 0) {
+    return getUserById(userId);
+  }
+
+  updates.push('updated_at = NOW()');
+
+  const result = await db.query(
+    `UPDATE users SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
+    params
+  );
+
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
 // ============================================================================
 // Helper functions
 // ============================================================================
@@ -83,6 +129,10 @@ function mapUser(row) {
     email: row.email,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
+    digestTime: row.digest_time,
+    timezone: row.timezone,
+    digestEnabled: row.digest_enabled,
+    preferences: row.preferences,
     createdAt: row.created_at
   };
 }
@@ -91,5 +141,6 @@ export default {
   createOrUpdateUser,
   getUserById,
   getUserByEmail,
-  updateUser
+  updateUser,
+  updatePreferences
 };

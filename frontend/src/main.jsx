@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import App from './App.jsx';
+import InviteAccept from './InviteAccept.jsx';
 import './styles.css';
 
 import {
@@ -65,6 +66,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <ApolloProvider client={client}>
         <Routes>
+          <Route path="/invite/:token" element={<InviteAccept apolloClient={client} />} />
           <Route path="/team/:teamId/channel/:channelId" element={<App apolloClient={client} />} />
           <Route path="/team/:teamId" element={<App apolloClient={client} />} />
           <Route path="*" element={<App apolloClient={client} />} />

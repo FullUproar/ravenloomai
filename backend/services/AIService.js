@@ -3,10 +3,16 @@
  *
  * Commands:
  * - @raven remember [X] - Save a fact
+ * - @raven forget [X] - Remove/invalidate a fact
+ * - @raven correct [old] to [new] - Update a fact
  * - @raven [question] - Query knowledge base
  * - @raven remind [when] [what] - Create an alert
  * - @raven task [description] - Create a task
+ * - @raven tasks / @raven my tasks - List tasks
  * - @raven decide [what] because [why] - Record a decision
+ * - @raven start learning - Enable auto-learning mode
+ * - @raven stop learning - Disable auto-learning mode
+ * - @raven what do you know - List stored knowledge
  */
 
 import OpenAI from 'openai';
@@ -100,6 +106,48 @@ export function parseRavenCommand(content) {
     };
   }
 
+  // Forget/remove a fact
+  if (lowerAfterRaven.startsWith('forget ') || lowerAfterRaven.startsWith('remove ') || lowerAfterRaven.startsWith('delete ')) {
+    const forgetContent = afterRaven.substring(afterRaven.indexOf(' ') + 1).trim();
+    return {
+      type: 'forget',
+      content: forgetContent
+    };
+  }
+
+  // Correct/update a fact
+  if (lowerAfterRaven.startsWith('correct ') || lowerAfterRaven.startsWith('update ') || lowerAfterRaven.startsWith('change ')) {
+    const updateContent = afterRaven.substring(afterRaven.indexOf(' ') + 1).trim();
+    return {
+      type: 'correct',
+      content: updateContent
+    };
+  }
+
+  // Learning mode
+  if (lowerAfterRaven.startsWith('start learning') || lowerAfterRaven === 'learn' || lowerAfterRaven === 'learning mode on') {
+    return { type: 'start_learning' };
+  }
+
+  if (lowerAfterRaven.startsWith('stop learning') || lowerAfterRaven === 'learning mode off') {
+    return { type: 'stop_learning' };
+  }
+
+  // List tasks
+  if (lowerAfterRaven === 'tasks' || lowerAfterRaven === 'my tasks' || lowerAfterRaven.startsWith('list tasks') || lowerAfterRaven.startsWith('show tasks')) {
+    return { type: 'list_tasks' };
+  }
+
+  // List knowledge
+  if (lowerAfterRaven.startsWith('what do you know') || lowerAfterRaven === 'facts' || lowerAfterRaven.startsWith('list facts') || lowerAfterRaven.startsWith('show facts')) {
+    return { type: 'list_knowledge' };
+  }
+
+  // List reminders
+  if (lowerAfterRaven === 'reminders' || lowerAfterRaven.startsWith('list reminders') || lowerAfterRaven.startsWith('show reminders') || lowerAfterRaven === 'alerts') {
+    return { type: 'list_reminders' };
+  }
+
   // Default: treat as a query
   return {
     type: 'query',
@@ -169,21 +217,68 @@ export async function generateResponse(query, knowledgeContext, conversationHist
 }
 
 /**
- * Extract a fact from user's "remember" command
+ * Extract URLs from text
+ */
+function extractUrls(text) {
+  const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi;
+  const matches = text.match(urlRegex) || [];
+  return [...new Set(matches)]; // Remove duplicates
+}
+
+/**
+ * Extract dates from text (returns array of ISO strings)
+ */
+function extractDates(text) {
+  const dates = [];
+  const now = new Date();
+
+  // Common date patterns
+  const patterns = [
+    /(\d{1,2}\/\d{1,2}\/\d{2,4})/g,                    // 12/25/2025
+    /(\d{4}-\d{2}-\d{2})/g,                             // 2025-12-25
+    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}?/gi,  // March 22nd, 2025
+    /(Q[1-4])\s*(\d{4})?/gi,                           // Q1 2025
+  ];
+
+  for (const pattern of patterns) {
+    const matches = text.match(pattern) || [];
+    for (const match of matches) {
+      try {
+        const parsed = new Date(match);
+        if (!isNaN(parsed.getTime())) {
+          dates.push(parsed.toISOString().split('T')[0]);
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+  }
+
+  return [...new Set(dates)];
+}
+
+/**
+ * Extract a fact from user's "remember" command with rich metadata
  */
 export async function extractFact(content) {
+  // Extract metadata from raw content first
+  const urls = extractUrls(content);
+  const dates = extractDates(content);
+
   const messages = [
     {
       role: 'system',
       content: `You extract facts from user statements. Return a JSON object with:
 - fact: The core fact to remember (concise, clear statement)
-- category: One of: product, manufacturing, marketing, sales, general
+- category: One of: product, manufacturing, marketing, sales, finance, people, general
+- entities: Array of key entities mentioned (company names, product names, people)
+- tags: Array of relevant tags for search
 
 Example input: "The Dungeon Crawlers launch date is March 22nd"
-Example output: {"fact": "Dungeon Crawlers launch date is March 22, 2025", "category": "product"}
+Example output: {"fact": "Dungeon Crawlers launch date is March 22, 2025", "category": "product", "entities": ["Dungeon Crawlers"], "tags": ["launch", "date", "release"]}
 
-Example input: "We're using Panda Manufacturing for the next order"
-Example output: {"fact": "Using Panda Manufacturing for next order", "category": "manufacturing"}
+Example input: "We're using Panda Manufacturing for the next order, their contact is jenny@panda.com"
+Example output: {"fact": "Using Panda Manufacturing for next order, contact: jenny@panda.com", "category": "manufacturing", "entities": ["Panda Manufacturing"], "tags": ["vendor", "manufacturing", "contact"]}
 
 Return ONLY valid JSON, no other text.`
     },
@@ -197,21 +292,35 @@ Return ONLY valid JSON, no other text.`
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages,
-      max_tokens: 200,
+      max_tokens: 300,
       temperature: 0
     });
 
     const result = JSON.parse(response.choices[0].message.content);
+
+    // Build rich metadata object
+    const metadata = {
+      urls: urls.length > 0 ? urls : undefined,
+      dates: dates.length > 0 ? dates : undefined,
+      entities: result.entities?.length > 0 ? result.entities : undefined,
+      tags: result.tags?.length > 0 ? result.tags : undefined
+    };
+
+    // Remove undefined keys
+    Object.keys(metadata).forEach(key => metadata[key] === undefined && delete metadata[key]);
+
     return {
       content: result.fact,
-      category: result.category || 'general'
+      category: result.category || 'general',
+      metadata: Object.keys(metadata).length > 0 ? metadata : null
     };
   } catch (error) {
     console.error('Fact extraction error:', error);
     // Fallback: use the content as-is
     return {
       content,
-      category: 'general'
+      category: 'general',
+      metadata: urls.length > 0 ? { urls } : null
     };
   }
 }
@@ -353,11 +462,258 @@ Return ONLY valid JSON, no other text.`
   }
 }
 
+/**
+ * Find fact to forget/invalidate based on user description
+ */
+export async function findFactToForget(content, existingFacts) {
+  if (existingFacts.length === 0) {
+    return null;
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You help find which stored fact the user wants to forget/remove.
+
+Given a list of facts and the user's request, identify which fact ID they're referring to.
+
+FACTS:
+${existingFacts.map(f => `- ID: ${f.id} | "${f.content}" [${f.category}]`).join('\n')}
+
+Return a JSON object with:
+- factId: The ID of the fact to remove (or null if no match)
+- confidence: "high", "medium", or "low"
+- reason: Brief explanation
+
+Return ONLY valid JSON.`
+    },
+    {
+      role: 'user',
+      content: `User wants to forget: "${content}"`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 200,
+      temperature: 0
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    console.error('Find fact error:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract correction details from user's message
+ */
+export async function extractCorrection(content, existingFacts) {
+  const messages = [
+    {
+      role: 'system',
+      content: `You help correct/update stored facts.
+
+Given a correction request and existing facts, identify:
+1. Which fact to update (by ID)
+2. What the new content should be
+
+EXISTING FACTS:
+${existingFacts.map(f => `- ID: ${f.id} | "${f.content}" [${f.category}]`).join('\n')}
+
+Examples:
+"the launch date is actually March 25th not March 22nd" -> Find the launch date fact and update it
+"Panda Manufacturing to Dragon Manufacturing" -> Find the manufacturer fact and update it
+
+Return JSON:
+- factId: ID of fact to update (null if creating new)
+- newContent: The corrected content
+- category: Category for the fact
+
+Return ONLY valid JSON.`
+    },
+    {
+      role: 'user',
+      content
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 200,
+      temperature: 0
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    console.error('Correction extraction error:', error);
+    return { factId: null, newContent: content, category: 'general' };
+  }
+}
+
+/**
+ * Extract facts from a regular message (for learning mode)
+ */
+export async function extractFactsFromMessage(content) {
+  const messages = [
+    {
+      role: 'system',
+      content: `Analyze this message and extract any facts worth remembering for a business.
+
+Extract things like:
+- Decisions made
+- Important dates/deadlines
+- Vendor/partner information
+- Product information
+- Process/workflow information
+- Contact information
+
+Return a JSON array of facts. Each fact:
+- content: The fact to remember
+- category: product, manufacturing, marketing, sales, general
+- confidence: 0.0-1.0 (how confident this is important to remember)
+
+If no extractable facts, return empty array [].
+Only extract facts with confidence >= 0.6.
+
+Return ONLY valid JSON array.`
+    },
+    {
+      role: 'user',
+      content
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 500,
+      temperature: 0
+    });
+
+    const facts = JSON.parse(response.choices[0].message.content);
+    return facts.filter(f => f.confidence >= 0.6);
+  } catch (error) {
+    console.error('Message fact extraction error:', error);
+    return [];
+  }
+}
+
+/**
+ * Call OpenAI with messages (generic helper)
+ */
+export async function callOpenAI(messages, { maxTokens = 500, temperature = 0.7 } = {}) {
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: maxTokens,
+      temperature
+    });
+
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error('OpenAI call error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate an answer for "Ask the Company" feature
+ * Uses knowledge base to answer questions about the company
+ */
+export async function generateCompanyAnswer(question, facts, decisions) {
+  // Build knowledge context
+  let knowledgeContext = '';
+
+  if (facts.length > 0) {
+    knowledgeContext += 'COMPANY KNOWLEDGE (Facts):\n';
+    facts.forEach((fact, i) => {
+      knowledgeContext += `${i + 1}. ${fact.content}`;
+      if (fact.category) knowledgeContext += ` [${fact.category}]`;
+      if (fact.entityType && fact.entityName) {
+        knowledgeContext += ` (${fact.entityType}: ${fact.entityName})`;
+      }
+      knowledgeContext += '\n';
+    });
+    knowledgeContext += '\n';
+  }
+
+  if (decisions.length > 0) {
+    knowledgeContext += 'COMPANY DECISIONS:\n';
+    decisions.forEach((decision, i) => {
+      knowledgeContext += `${i + 1}. ${decision.what}`;
+      if (decision.why) knowledgeContext += ` - Reason: ${decision.why}`;
+      knowledgeContext += '\n';
+    });
+    knowledgeContext += '\n';
+  }
+
+  const systemPrompt = `You are a company knowledge assistant. Answer questions using ONLY the company knowledge provided below. If you don't have enough information to answer, say so clearly.
+
+${knowledgeContext || 'No specific knowledge available yet.'}
+
+Guidelines:
+- Be direct and concise
+- Reference specific facts when answering
+- If information is incomplete, state what you do know and what's missing
+- Suggest related questions the user might ask
+- Rate your confidence in the answer (0.0 to 1.0)
+
+Return JSON with:
+- answer: Your answer to the question
+- confidence: 0.0-1.0 how confident you are based on available knowledge
+- followups: Array of 2-3 related questions the user might want to ask`;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: question }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 600,
+      temperature: 0.5
+    });
+
+    try {
+      return JSON.parse(response.choices[0].message.content);
+    } catch (parseError) {
+      // If not valid JSON, return as plain answer
+      return {
+        answer: response.choices[0].message.content,
+        confidence: 0.5,
+        followups: []
+      };
+    }
+  } catch (error) {
+    console.error('Company answer generation error:', error);
+    return {
+      answer: "I encountered an error trying to answer your question. Please try again.",
+      confidence: 0,
+      followups: []
+    };
+  }
+}
+
 export default {
   parseRavenCommand,
   generateResponse,
   extractFact,
   extractAlert,
   extractTask,
-  extractDecision
+  extractDecision,
+  findFactToForget,
+  extractCorrection,
+  extractFactsFromMessage,
+  callOpenAI,
+  generateCompanyAnswer
 };

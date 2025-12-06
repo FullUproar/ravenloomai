@@ -7,12 +7,12 @@ import db from '../db.js';
 /**
  * Create a new fact
  */
-export async function createFact(teamId, { content, category, sourceType = 'conversation', sourceId = null, createdBy = null }) {
+export async function createFact(teamId, { content, category, sourceType = 'conversation', sourceId = null, createdBy = null, metadata = null }) {
   const result = await db.query(
-    `INSERT INTO facts (team_id, content, category, source_type, source_id, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO facts (team_id, content, category, source_type, source_id, created_by, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [teamId, content, category, sourceType, sourceId, createdBy]
+    [teamId, content, category, sourceType, sourceId, createdBy, metadata ? JSON.stringify(metadata) : null]
   );
   return mapFact(result.rows[0]);
 }
@@ -198,7 +198,13 @@ function mapFact(row) {
     id: row.id,
     teamId: row.team_id,
     content: row.content,
+    // Structured entity model
+    entityType: row.entity_type,
+    entityName: row.entity_name,
+    attribute: row.attribute,
+    value: row.value,
     category: row.category,
+    confidenceScore: row.confidence_score ? parseFloat(row.confidence_score) : null,
     sourceType: row.source_type,
     sourceId: row.source_id,
     createdBy: row.created_by,
@@ -207,6 +213,7 @@ function mapFact(row) {
       displayName: row.created_by_name,
       email: row.created_by_email
     } : null,
+    metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : null,
     validFrom: row.valid_from,
     validUntil: row.valid_until,
     supersededBy: row.superseded_by,

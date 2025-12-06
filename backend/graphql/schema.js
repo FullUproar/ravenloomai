@@ -25,6 +25,8 @@ export default gql`
     user: User!
     role: String!  # owner, admin, member
     displayName: String
+    notificationsEnabled: Boolean
+    lastSeenAt: DateTime
     createdAt: DateTime!
   }
 
@@ -44,11 +46,15 @@ export default gql`
     email: String!
     displayName: String
     avatarUrl: String
+    digestTime: String
+    timezone: String
+    digestEnabled: Boolean
+    preferences: JSON
     createdAt: DateTime!
   }
 
   # ============================================================================
-  # CHANNEL & MESSAGE TYPES
+  # CHANNEL, THREAD & MESSAGE TYPES
   # ============================================================================
 
   type Channel {
@@ -59,14 +65,30 @@ export default gql`
     aiMode: String!  # mentions_only, active, silent
     isDefault: Boolean!
     createdBy: String
+    threads(limit: Int): [Thread!]!
     messages(limit: Int, before: ID): [Message!]!
     createdAt: DateTime!
     updatedAt: DateTime!
   }
 
+  type Thread {
+    id: ID!
+    channelId: ID!
+    title: String
+    startedBy: String
+    startedByUser: User
+    messageCount: Int!
+    lastActivityAt: DateTime!
+    isResolved: Boolean!
+    messages(limit: Int): [Message!]!
+    createdAt: DateTime!
+  }
+
   type Message {
     id: ID!
     channelId: ID!
+    threadId: ID
+    thread: Thread
     userId: String
     user: User
     content: String!
@@ -78,14 +100,20 @@ export default gql`
   }
 
   # ============================================================================
-  # KNOWLEDGE BASE TYPES
+  # KNOWLEDGE BASE TYPES (Enhanced)
   # ============================================================================
 
   type Fact {
     id: ID!
     teamId: ID!
     content: String!
-    category: String  # product, manufacturing, marketing, sales, general
+    # Structured entity model
+    entityType: String  # person, product, process, policy, etc.
+    entityName: String  # "John Smith", "Widget Pro", etc.
+    attribute: String   # "email", "price", "status"
+    value: String       # "john@example.com", "$99", "active"
+    category: String    # product, manufacturing, marketing, sales, general
+    confidenceScore: Float  # 0.0 - 1.0
     sourceType: String!  # conversation, document, manual, integration
     sourceId: ID
     createdBy: String
@@ -93,6 +121,7 @@ export default gql`
     validFrom: DateTime!
     validUntil: DateTime
     supersededBy: ID
+    metadata: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -218,6 +247,26 @@ export default gql`
   input CreateFactInput {
     content: String!
     category: String
+    entityType: String
+    entityName: String
+    attribute: String
+    value: String
+  }
+
+  input CreateThreadInput {
+    title: String
+    initialMessage: String!
+  }
+
+  input AskCompanyInput {
+    question: String!
+  }
+
+  input UpdateUserPreferencesInput {
+    digestTime: String
+    timezone: String
+    digestEnabled: Boolean
+    preferences: JSON
   }
 
   input CreateDecisionInput {
@@ -267,7 +316,7 @@ export default gql`
   }
 
   # ============================================================================
-  # AI RESPONSE TYPE
+  # AI RESPONSE TYPES
   # ============================================================================
 
   type AIResponse {
@@ -275,6 +324,27 @@ export default gql`
     factsCreated: [Fact!]
     alertsCreated: [Alert!]
     tasksCreated: [Task!]
+  }
+
+  # Ask the Company response
+  type AskCompanyResponse {
+    answer: String!
+    confidence: Float
+    factsUsed: [Fact!]
+    decisionsUsed: [Decision!]
+    suggestedFollowups: [String!]
+  }
+
+  # Daily Digest
+  type DailyDigest {
+    teamId: ID!
+    date: String!
+    overdueTasks: [Task!]!
+    dueTodayTasks: [Task!]!
+    upcomingAlerts: [Alert!]!
+    recentDecisions: [Decision!]!
+    newFacts: [Fact!]!
+    activitySummary: String
   }
 
   # ============================================================================
@@ -294,13 +364,21 @@ export default gql`
     getChannel(channelId: ID!): Channel
     getChannels(teamId: ID!): [Channel!]!
 
+    # Threads
+    getThread(threadId: ID!): Thread
+    getThreads(channelId: ID!, limit: Int): [Thread!]!
+
     # Messages
     getMessages(channelId: ID!, limit: Int, before: ID): [Message!]!
+    getThreadMessages(threadId: ID!, limit: Int): [Message!]!
 
     # Knowledge
-    getFacts(teamId: ID!, category: String, limit: Int): [Fact!]!
+    getFacts(teamId: ID!, category: String, entityType: String, limit: Int): [Fact!]!
     getDecisions(teamId: ID!, limit: Int): [Decision!]!
     searchKnowledge(teamId: ID!, query: String!): KnowledgeResult!
+
+    # Ask the Company (AI Q&A)
+    askCompany(teamId: ID!, input: AskCompanyInput!): AskCompanyResponse!
 
     # Alerts
     getAlerts(teamId: ID!, status: String): [Alert!]!
@@ -315,6 +393,9 @@ export default gql`
     # Team Invites
     getTeamInvites(teamId: ID!): [TeamInvite!]!
     validateInviteToken(token: String!): TeamInvite
+
+    # Daily Digest
+    getDailyDigest(teamId: ID!): DailyDigest!
   }
 
   # ============================================================================
@@ -324,6 +405,7 @@ export default gql`
   type Mutation {
     # User
     createOrUpdateUser(email: String!, displayName: String, avatarUrl: String): User!
+    updateUserPreferences(input: UpdateUserPreferencesInput!): User!
 
     # Teams
     createTeam(input: CreateTeamInput!): Team!
@@ -341,8 +423,13 @@ export default gql`
     updateChannel(channelId: ID!, input: UpdateChannelInput!): Channel!
     deleteChannel(channelId: ID!): Boolean!
 
+    # Threads
+    createThread(channelId: ID!, input: CreateThreadInput!): Thread!
+    resolveThread(threadId: ID!): Thread!
+
     # Messages & AI
     sendMessage(channelId: ID!, input: SendMessageInput!): AIResponse!
+    sendThreadMessage(threadId: ID!, input: SendMessageInput!): AIResponse!
 
     # Knowledge - Manual
     createFact(teamId: ID!, input: CreateFactInput!): Fact!
