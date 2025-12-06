@@ -2553,3 +2553,685 @@ button:active:not(:disabled),
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* ============================================================================
+   Goals View - Asana-style
+   ============================================================================ */
+
+.goals-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.goals-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.goals-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-family: var(--font-header);
+  flex: 1;
+}
+
+.btn-small {
+  padding: 0.375rem 0.875rem;
+  font-size: 0.8125rem;
+}
+
+.goals-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.goals-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.goals-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.goals-empty h4 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.goals-empty p {
+  margin: 0 0 1.5rem;
+  color: var(--text-muted);
+  max-width: 400px;
+}
+
+.goals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.goal-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  transition: all 0.2s;
+}
+
+.goal-card:hover {
+  border-color: var(--primary);
+}
+
+.goal-card.achieved {
+  opacity: 0.8;
+  border-color: var(--success);
+}
+
+.goal-card.paused {
+  opacity: 0.7;
+  border-left: 3px solid var(--text-muted);
+}
+
+.goal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.goal-status-badge {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.goal-card.active .goal-status-badge {
+  background: rgba(58, 141, 255, 0.15);
+  color: var(--cta);
+}
+
+.goal-card.achieved .goal-status-badge {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--success);
+}
+
+.goal-card.paused .goal-status-badge {
+  background: rgba(136, 136, 160, 0.15);
+  color: var(--text-muted);
+}
+
+.goal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  flex: 1;
+  min-width: 200px;
+}
+
+.goal-target {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.goal-description {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+/* Progress Bar */
+.goal-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--cta));
+  border-radius: 3px;
+  transition: width 0.3s var(--ease-out);
+}
+
+.goal-card.achieved .progress-fill {
+  background: var(--success);
+}
+
+.progress-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Goal Projects */
+.goal-projects {
+  margin-bottom: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.projects-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.projects-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--cta);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+.projects-list-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.project-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-tertiary);
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+}
+
+.project-chip .project-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.project-chip .project-progress {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* Goal Actions */
+.goal-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-success {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.btn-success:hover {
+  background: rgba(76, 175, 80, 0.25);
+}
+
+.achieved-badge {
+  font-size: 0.875rem;
+  color: var(--success);
+}
+
+/* Standalone Projects */
+.standalone-projects {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.standalone-projects h4 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.section-subtitle {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.project-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.2s;
+}
+
+.project-card:hover {
+  border-color: var(--primary);
+  background: var(--bg-tertiary);
+}
+
+.project-card h5 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.project-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.goals-footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ============================================================================
+   Task Detail Panel - Slide-over
+   ============================================================================ */
+
+.task-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 200;
+  animation: fadeIn 0.2s var(--ease-out);
+}
+
+.task-detail-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 480px;
+  max-width: 100%;
+  height: 100%;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.25s var(--ease-out-expo);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.task-detail-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.task-detail-header .close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+}
+
+.task-detail-header .close-btn:hover {
+  color: var(--text);
+}
+
+.task-status-badge {
+  display: inline-block;
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  width: fit-content;
+}
+
+.task-status-badge.todo {
+  background: rgba(136, 136, 160, 0.15);
+  color: var(--text-muted);
+}
+
+.task-status-badge.in_progress {
+  background: rgba(58, 141, 255, 0.15);
+  color: var(--cta);
+}
+
+.task-status-badge.done {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--success);
+}
+
+.task-detail-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  padding-right: 2rem;
+}
+
+.task-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+/* Task Properties */
+.task-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.property-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.property-label {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.property-value {
+  flex: 1;
+  font-size: 0.9375rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.375rem 0.5rem;
+  color: var(--text);
+}
+
+.property-value.project-badge {
+  border-left: 3px solid var(--primary);
+  padding-left: 0.75rem;
+}
+
+select.property-value {
+  cursor: pointer;
+}
+
+input[type="date"].property-value {
+  cursor: pointer;
+}
+
+/* Task Description Section */
+.task-description-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.task-description-section h4,
+.task-comments-section h4,
+.task-activity-section h4 {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.task-description-section p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/* Task Comments */
+.task-comments-section {
+  margin-bottom: 1.5rem;
+}
+
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.comment-item {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.375rem;
+}
+
+.comment-author {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.comment-time {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.comment-content {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
+}
+
+.no-comments {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0 0 1rem;
+}
+
+/* Add Comment Form */
+.add-comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comment-input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  color: var(--text);
+  font-size: 0.875rem;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.comment-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.comment-input::placeholder {
+  color: var(--text-muted);
+}
+
+.add-comment-form .btn-primary {
+  align-self: flex-end;
+}
+
+/* Task Activity Log */
+.task-activity-section {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.activity-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(51, 51, 64, 0.3);
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-user {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.activity-action {
+  color: var(--text-muted);
+}
+
+.activity-time {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* Task Detail Footer */
+.task-detail-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.task-created {
+  display: block;
+}
+
+/* ============================================================================
+   Mobile Responsive - Goals & Task Detail
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .goals-header {
+    padding: 0.75rem 1rem;
+    flex-wrap: wrap;
+  }
+
+  .goals-header h3 {
+    order: 2;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .goals-header .btn-primary {
+    order: 3;
+  }
+
+  .goals-content {
+    padding: 1rem;
+  }
+
+  .goal-card {
+    padding: 1rem;
+  }
+
+  .goal-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .goal-title {
+    min-width: auto;
+    font-size: 1rem;
+  }
+
+  .projects-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Task Detail Panel - Full screen on mobile */
+  .task-detail-panel {
+    width: 100%;
+  }
+
+  .task-detail-body {
+    padding: 1rem;
+  }
+
+  .property-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.375rem;
+  }
+
+  .property-label {
+    width: auto;
+  }
+
+  .property-value {
+    width: 100%;
+  }
+}

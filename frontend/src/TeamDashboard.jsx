@@ -241,6 +241,168 @@ const GET_DAILY_DIGEST = gql`
   }
 `;
 
+// Goals queries
+const GET_GOALS = gql`
+  query GetGoals($teamId: ID!, $status: String) {
+    getGoals(teamId: $teamId, status: $status) {
+      id
+      title
+      description
+      targetDate
+      startDate
+      status
+      progress
+      owner {
+        id
+        displayName
+        email
+      }
+      projects {
+        id
+        name
+        status
+        taskCount
+        completedTaskCount
+      }
+    }
+  }
+`;
+
+const CREATE_GOAL = gql`
+  mutation CreateGoal($teamId: ID!, $input: CreateGoalInput!) {
+    createGoal(teamId: $teamId, input: $input) {
+      id
+      title
+      description
+      status
+      progress
+    }
+  }
+`;
+
+const UPDATE_GOAL = gql`
+  mutation UpdateGoal($goalId: ID!, $input: UpdateGoalInput!) {
+    updateGoal(goalId: $goalId, input: $input) {
+      id
+      title
+      status
+      progress
+    }
+  }
+`;
+
+// Projects queries
+const GET_PROJECTS = gql`
+  query GetProjects($teamId: ID!, $goalId: ID) {
+    getProjects(teamId: $teamId, goalId: $goalId) {
+      id
+      name
+      description
+      status
+      color
+      dueDate
+      goalId
+      taskCount
+      completedTaskCount
+      owner {
+        id
+        displayName
+      }
+    }
+  }
+`;
+
+const CREATE_PROJECT = gql`
+  mutation CreateProject($teamId: ID!, $input: CreateProjectInput!) {
+    createProject(teamId: $teamId, input: $input) {
+      id
+      name
+      description
+      status
+      color
+    }
+  }
+`;
+
+// Task detail with comments
+const GET_TASK_DETAIL = gql`
+  query GetTask($taskId: ID!) {
+    getTask(taskId: $taskId) {
+      id
+      title
+      description
+      status
+      priority
+      dueAt
+      startDate
+      estimatedHours
+      actualHours
+      tags
+      assignedToUser {
+        id
+        displayName
+        email
+      }
+      createdByUser {
+        id
+        displayName
+      }
+      project {
+        id
+        name
+        color
+      }
+      comments {
+        id
+        content
+        createdAt
+        user {
+          id
+          displayName
+          email
+        }
+      }
+      activity {
+        id
+        action
+        oldValue
+        newValue
+        createdAt
+        user {
+          id
+          displayName
+        }
+      }
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+const ADD_TASK_COMMENT = gql`
+  mutation AddTaskComment($taskId: ID!, $input: CreateTaskCommentInput!) {
+    addTaskComment(taskId: $taskId, input: $input) {
+      id
+      content
+      createdAt
+      user {
+        id
+        displayName
+      }
+    }
+  }
+`;
+
+const REOPEN_TASK = gql`
+  mutation ReopenTask($taskId: ID!) {
+    reopenTask(taskId: $taskId) {
+      id
+      status
+      completedAt
+    }
+  }
+`;
+
 // ============================================================================
 // TeamDashboard Component
 // ============================================================================
@@ -261,7 +423,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [inviteSending, setInviteSending] = useState(false);
   const [lastInviteLink, setLastInviteLink] = useState(null);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
-  const [activeView, setActiveView] = useState('chat'); // 'chat', 'tasks', or 'ask'
+  const [activeView, setActiveView] = useState('chat'); // 'chat', 'tasks', 'goals', or 'ask'
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
   const [addingTask, setAddingTask] = useState(false);
@@ -283,6 +445,17 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [replyingTo, setReplyingTo] = useState(null);
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Goals state
+  const [showCreateGoal, setShowCreateGoal] = useState(false);
+  const [newGoalTitle, setNewGoalTitle] = useState('');
+  const [newGoalTargetDate, setNewGoalTargetDate] = useState('');
+  // Task detail panel state
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [taskComment, setTaskComment] = useState('');
+  // Projects state
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectGoalId, setNewProjectGoalId] = useState('');
 
   // Raven command suggestions
   const ravenCommands = [
@@ -355,6 +528,29 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   });
   const pendingAlerts = alertsData?.getAlerts || [];
 
+  // Fetch goals
+  const { data: goalsData, refetch: refetchGoals } = useQuery(GET_GOALS, {
+    variables: { teamId },
+    fetchPolicy: 'cache-and-network',
+    skip: activeView !== 'goals'
+  });
+  const goals = goalsData?.getGoals || [];
+
+  // Fetch projects
+  const { data: projectsData, refetch: refetchProjects } = useQuery(GET_PROJECTS, {
+    variables: { teamId },
+    fetchPolicy: 'cache-and-network'
+  });
+  const projects = projectsData?.getProjects || [];
+
+  // Fetch selected task details
+  const { data: taskDetailData, refetch: refetchTaskDetail } = useQuery(GET_TASK_DETAIL, {
+    variables: { taskId: selectedTaskId },
+    skip: !selectedTaskId,
+    fetchPolicy: 'cache-and-network'
+  });
+  const selectedTask = taskDetailData?.getTask;
+
   // Mutations
   const [sendMessage] = useMutation(SEND_MESSAGE);
   const [createChannel] = useMutation(CREATE_CHANNEL);
@@ -362,8 +558,13 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [createTaskDirect] = useMutation(CREATE_TASK_DIRECT);
   const [updateTask] = useMutation(UPDATE_TASK);
   const [completeTask] = useMutation(COMPLETE_TASK);
+  const [reopenTask] = useMutation(REOPEN_TASK);
   const [snoozeAlert] = useMutation(SNOOZE_ALERT);
   const [cancelAlert] = useMutation(CANCEL_ALERT);
+  const [createGoal] = useMutation(CREATE_GOAL);
+  const [updateGoal] = useMutation(UPDATE_GOAL);
+  const [createProject] = useMutation(CREATE_PROJECT);
+  const [addTaskComment] = useMutation(ADD_TASK_COMMENT);
   const [executeAskCompany] = useLazyQuery(ASK_COMPANY, {
     fetchPolicy: 'network-only'
   });
@@ -910,19 +1111,25 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
             className={`view-btn ${activeView === 'chat' ? 'active' : ''}`}
             onClick={() => setActiveView('chat')}
           >
-            Chat
+            💬 Chat
           </button>
           <button
             className={`view-btn ${activeView === 'tasks' ? 'active' : ''}`}
             onClick={() => setActiveView('tasks')}
           >
-            Tasks {tasks.length > 0 && `(${tasks.length})`}
+            ✓ Tasks {tasks.length > 0 && `(${tasks.length})`}
+          </button>
+          <button
+            className={`view-btn ${activeView === 'goals' ? 'active' : ''}`}
+            onClick={() => { setActiveView('goals'); refetchGoals(); }}
+          >
+            🎯 Goals
           </button>
           <button
             className={`view-btn ${activeView === 'ask' ? 'active' : ''}`}
             onClick={() => setActiveView('ask')}
           >
-            Ask
+            🔍 Ask
           </button>
           {pendingAlerts.length > 0 && (
             <div className="alerts-indicator" title={`${pendingAlerts.length} pending reminders`}>
@@ -1402,7 +1609,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                           >
                             <span className="checkbox-inner">▶</span>
                           </button>
-                          <div className="task-content">
+                          <div className="task-content" onClick={() => setSelectedTaskId(task.id)} style={{ cursor: 'pointer' }}>
                             <span className="task-title">{task.title}</span>
                             {task.description && (
                               <span className="task-description">{task.description}</span>
@@ -1462,7 +1669,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                           >
                             <span className="checkbox-inner"></span>
                           </button>
-                          <div className="task-content">
+                          <div className="task-content" onClick={() => setSelectedTaskId(task.id)} style={{ cursor: 'pointer' }}>
                             <span className="task-title">{task.title}</span>
                             {task.description && (
                               <span className="task-description">{task.description}</span>
@@ -1529,7 +1736,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                           >
                             <span className="checkbox-inner">✓</span>
                           </button>
-                          <div className="task-content">
+                          <div className="task-content" onClick={() => setSelectedTaskId(task.id)} style={{ cursor: 'pointer' }}>
                             <span className="task-title">{task.title}</span>
                             {task.completedAt && (
                               <span className="task-completed-at">
@@ -1675,7 +1882,459 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
             )}
           </div>
         </main>
+      ) : activeView === 'goals' ? (
+        <main className="goals-area">
+          {/* Goals Header */}
+          <header className="goals-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
+            <h3>Goals & Projects</h3>
+            <button className="btn-primary btn-small" onClick={() => setShowCreateGoal(true)}>
+              + New Goal
+            </button>
+          </header>
+
+          <div className="goals-content">
+            {/* Create Goal Modal */}
+            {showCreateGoal && (
+              <div className="modal-overlay" onClick={() => setShowCreateGoal(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <h3>Create Goal</h3>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newGoalTitle.trim()) return;
+                    try {
+                      await createGoal({
+                        variables: {
+                          teamId,
+                          input: {
+                            title: newGoalTitle.trim(),
+                            targetDate: newGoalTargetDate || null
+                          }
+                        }
+                      });
+                      setNewGoalTitle('');
+                      setNewGoalTargetDate('');
+                      setShowCreateGoal(false);
+                      refetchGoals();
+                    } catch (err) {
+                      alert('Failed to create goal: ' + err.message);
+                    }
+                  }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="Goal title (e.g., Launch Q1 product line)"
+                      value={newGoalTitle}
+                      onChange={(e) => setNewGoalTitle(e.target.value)}
+                      autoFocus
+                    />
+                    <input
+                      type="date"
+                      className="input-field"
+                      style={{ marginTop: '0.75rem' }}
+                      value={newGoalTargetDate}
+                      onChange={(e) => setNewGoalTargetDate(e.target.value)}
+                    />
+                    <div className="form-actions">
+                      <button type="button" className="btn-secondary" onClick={() => setShowCreateGoal(false)}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn-primary" disabled={!newGoalTitle.trim()}>
+                        Create Goal
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Create Project Modal */}
+            {showCreateProject && (
+              <div className="modal-overlay" onClick={() => setShowCreateProject(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <h3>Create Project</h3>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newProjectName.trim()) return;
+                    try {
+                      await createProject({
+                        variables: {
+                          teamId,
+                          input: {
+                            name: newProjectName.trim(),
+                            goalId: newProjectGoalId || null
+                          }
+                        }
+                      });
+                      setNewProjectName('');
+                      setNewProjectGoalId('');
+                      setShowCreateProject(false);
+                      refetchProjects();
+                      refetchGoals();
+                    } catch (err) {
+                      alert('Failed to create project: ' + err.message);
+                    }
+                  }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="Project name"
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      autoFocus
+                    />
+                    <select
+                      className="input-field"
+                      style={{ marginTop: '0.75rem' }}
+                      value={newProjectGoalId}
+                      onChange={(e) => setNewProjectGoalId(e.target.value)}
+                    >
+                      <option value="">No goal (standalone)</option>
+                      {goals.map(g => (
+                        <option key={g.id} value={g.id}>{g.title}</option>
+                      ))}
+                    </select>
+                    <div className="form-actions">
+                      <button type="button" className="btn-secondary" onClick={() => setShowCreateProject(false)}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn-primary" disabled={!newProjectName.trim()}>
+                        Create Project
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Goals List */}
+            {goals.length === 0 ? (
+              <div className="goals-empty">
+                <div className="goals-empty-icon">🎯</div>
+                <h4>No goals yet</h4>
+                <p>Goals help you track high-level objectives. Projects and tasks roll up to goals.</p>
+                <button className="btn-primary" onClick={() => setShowCreateGoal(true)}>
+                  Create Your First Goal
+                </button>
+              </div>
+            ) : (
+              <div className="goals-list">
+                {goals.map(goal => (
+                  <div key={goal.id} className={`goal-card ${goal.status}`}>
+                    <div className="goal-header">
+                      <div className="goal-status-badge">{goal.status}</div>
+                      <h4 className="goal-title">{goal.title}</h4>
+                      {goal.targetDate && (
+                        <span className="goal-target">
+                          Target: {new Date(goal.targetDate).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+
+                    {goal.description && (
+                      <p className="goal-description">{goal.description}</p>
+                    )}
+
+                    {/* Progress Bar */}
+                    <div className="goal-progress">
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${goal.progress}%` }}></div>
+                      </div>
+                      <span className="progress-text">{goal.progress}%</span>
+                    </div>
+
+                    {/* Linked Projects */}
+                    <div className="goal-projects">
+                      <div className="projects-header">
+                        <span className="projects-label">Projects ({goal.projects?.length || 0})</span>
+                        <button
+                          className="btn-link"
+                          onClick={() => {
+                            setNewProjectGoalId(goal.id);
+                            setShowCreateProject(true);
+                          }}
+                        >
+                          + Add Project
+                        </button>
+                      </div>
+                      {goal.projects?.length > 0 && (
+                        <div className="projects-list-compact">
+                          {goal.projects.map(proj => (
+                            <div key={proj.id} className="project-chip">
+                              <span className="project-name">{proj.name}</span>
+                              <span className="project-progress">
+                                {proj.completedTaskCount}/{proj.taskCount} tasks
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Goal Actions */}
+                    <div className="goal-actions">
+                      {goal.status === 'active' && (
+                        <>
+                          <button
+                            className="btn-small btn-success"
+                            onClick={async () => {
+                              await updateGoal({ variables: { goalId: goal.id, input: { status: 'achieved' } } });
+                              refetchGoals();
+                            }}
+                          >
+                            ✓ Mark Achieved
+                          </button>
+                          <button
+                            className="btn-small btn-secondary"
+                            onClick={async () => {
+                              await updateGoal({ variables: { goalId: goal.id, input: { status: 'paused' } } });
+                              refetchGoals();
+                            }}
+                          >
+                            Pause
+                          </button>
+                        </>
+                      )}
+                      {goal.status === 'paused' && (
+                        <button
+                          className="btn-small btn-primary"
+                          onClick={async () => {
+                            await updateGoal({ variables: { goalId: goal.id, input: { status: 'active' } } });
+                            refetchGoals();
+                          }}
+                        >
+                          Resume
+                        </button>
+                      )}
+                      {goal.status === 'achieved' && (
+                        <span className="achieved-badge">🏆 Achieved!</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Standalone Projects Section */}
+            {projects.filter(p => !p.goalId).length > 0 && (
+              <div className="standalone-projects">
+                <h4>Standalone Projects</h4>
+                <p className="section-subtitle">Projects not linked to any goal</p>
+                <div className="projects-grid">
+                  {projects.filter(p => !p.goalId).map(proj => (
+                    <div key={proj.id} className="project-card" style={{ borderColor: proj.color || '#5D4B8C' }}>
+                      <h5>{proj.name}</h5>
+                      <div className="project-meta">
+                        <span>{proj.completedTaskCount}/{proj.taskCount} tasks</span>
+                        {proj.dueDate && (
+                          <span>Due: {new Date(proj.dueDate).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="goals-footer">
+              <button className="btn-secondary" onClick={() => setShowCreateProject(true)}>
+                + New Project
+              </button>
+            </div>
+          </div>
+        </main>
       ) : null}
+
+      {/* Task Detail Panel (Slide-over) */}
+      {selectedTaskId && selectedTask && (
+        <div className="task-detail-overlay" onClick={() => setSelectedTaskId(null)}>
+          <div className="task-detail-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="task-detail-header">
+              <button className="close-btn" onClick={() => setSelectedTaskId(null)}>×</button>
+              <div className={`task-status-badge ${selectedTask.status}`}>{selectedTask.status.replace('_', ' ')}</div>
+              <h3>{selectedTask.title}</h3>
+            </div>
+
+            <div className="task-detail-body">
+              {/* Task Properties */}
+              <div className="task-properties">
+                <div className="property-row">
+                  <span className="property-label">Status</span>
+                  <select
+                    className="property-value"
+                    value={selectedTask.status}
+                    onChange={async (e) => {
+                      const newStatus = e.target.value;
+                      if (newStatus === 'done') {
+                        await completeTask({ variables: { taskId: selectedTaskId } });
+                      } else {
+                        await updateTask({ variables: { taskId: selectedTaskId, input: { status: newStatus } } });
+                      }
+                      refetchTaskDetail();
+                      refetchTasks();
+                    }}
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                  </select>
+                </div>
+
+                <div className="property-row">
+                  <span className="property-label">Priority</span>
+                  <select
+                    className="property-value"
+                    value={selectedTask.priority}
+                    onChange={async (e) => {
+                      await updateTask({ variables: { taskId: selectedTaskId, input: { priority: e.target.value } } });
+                      refetchTaskDetail();
+                      refetchTasks();
+                    }}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+
+                <div className="property-row">
+                  <span className="property-label">Assignee</span>
+                  <span className="property-value">
+                    {selectedTask.assignedToUser?.displayName || selectedTask.assignedToUser?.email || 'Unassigned'}
+                  </span>
+                </div>
+
+                <div className="property-row">
+                  <span className="property-label">Due Date</span>
+                  <input
+                    type="date"
+                    className="property-value"
+                    value={selectedTask.dueAt ? new Date(selectedTask.dueAt).toISOString().split('T')[0] : ''}
+                    onChange={async (e) => {
+                      await updateTask({
+                        variables: {
+                          taskId: selectedTaskId,
+                          input: { dueAt: e.target.value ? new Date(e.target.value).toISOString() : null }
+                        }
+                      });
+                      refetchTaskDetail();
+                      refetchTasks();
+                    }}
+                  />
+                </div>
+
+                {selectedTask.project && (
+                  <div className="property-row">
+                    <span className="property-label">Project</span>
+                    <span className="property-value project-badge" style={{ borderColor: selectedTask.project.color }}>
+                      {selectedTask.project.name}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Description */}
+              {selectedTask.description && (
+                <div className="task-description-section">
+                  <h4>Description</h4>
+                  <p>{selectedTask.description}</p>
+                </div>
+              )}
+
+              {/* Comments */}
+              <div className="task-comments-section">
+                <h4>Comments ({selectedTask.comments?.length || 0})</h4>
+
+                {selectedTask.comments?.length > 0 ? (
+                  <div className="comments-list">
+                    {selectedTask.comments.map(comment => (
+                      <div key={comment.id} className="comment-item">
+                        <div className="comment-header">
+                          <span className="comment-author">
+                            {comment.user?.displayName || comment.user?.email || 'Unknown'}
+                          </span>
+                          <span className="comment-time">
+                            {new Date(comment.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="comment-content">{comment.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="no-comments">No comments yet</p>
+                )}
+
+                {/* Add Comment Form */}
+                <form
+                  className="add-comment-form"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!taskComment.trim()) return;
+                    try {
+                      await addTaskComment({
+                        variables: {
+                          taskId: selectedTaskId,
+                          input: { content: taskComment.trim() }
+                        }
+                      });
+                      setTaskComment('');
+                      refetchTaskDetail();
+                    } catch (err) {
+                      alert('Failed to add comment: ' + err.message);
+                    }
+                  }}
+                >
+                  <textarea
+                    className="comment-input"
+                    placeholder="Add a comment..."
+                    value={taskComment}
+                    onChange={(e) => setTaskComment(e.target.value)}
+                    rows={2}
+                  />
+                  <button type="submit" className="btn-primary btn-small" disabled={!taskComment.trim()}>
+                    Comment
+                  </button>
+                </form>
+              </div>
+
+              {/* Activity Log */}
+              {selectedTask.activity?.length > 0 && (
+                <div className="task-activity-section">
+                  <h4>Activity</h4>
+                  <div className="activity-list">
+                    {selectedTask.activity.slice(0, 10).map(act => (
+                      <div key={act.id} className="activity-item">
+                        <span className="activity-user">{act.user?.displayName || 'System'}</span>
+                        <span className="activity-action">
+                          {act.action === 'status_changed' && `changed status from ${act.oldValue} to ${act.newValue}`}
+                          {act.action === 'created' && 'created this task'}
+                          {act.action === 'assigned' && `assigned to ${act.newValue}`}
+                          {act.action === 'commented' && 'added a comment'}
+                          {act.action === 'due_date_set' && `set due date to ${act.newValue}`}
+                        </span>
+                        <span className="activity-time">
+                          {new Date(act.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="task-detail-footer">
+              <span className="task-created">
+                Created {new Date(selectedTask.createdAt).toLocaleDateString()}
+                {selectedTask.createdByUser && ` by ${selectedTask.createdByUser.displayName}`}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
