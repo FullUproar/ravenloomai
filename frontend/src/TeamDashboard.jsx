@@ -252,6 +252,8 @@ const GET_GOALS = gql`
       startDate
       status
       progress
+      taskCount
+      completedTaskCount
       owner {
         id
         displayName
@@ -301,9 +303,14 @@ const GET_PROJECTS = gql`
       status
       color
       dueDate
-      goalId
+      goalsInherit
       taskCount
       completedTaskCount
+      goals {
+        id
+        title
+        status
+      }
       owner {
         id
         displayName
@@ -320,6 +327,25 @@ const CREATE_PROJECT = gql`
       description
       status
       color
+      goalsInherit
+    }
+  }
+`;
+
+const SET_PROJECT_GOALS = gql`
+  mutation SetProjectGoals($projectId: ID!, $goalIds: [ID!]!) {
+    setProjectGoals(projectId: $projectId, goalIds: $goalIds) {
+      id
+      title
+    }
+  }
+`;
+
+const SET_TASK_GOALS = gql`
+  mutation SetTaskGoals($taskId: ID!, $goalIds: [ID!]!) {
+    setTaskGoals(taskId: $taskId, goalIds: $goalIds) {
+      id
+      title
     }
   }
 `;
@@ -351,6 +377,18 @@ const GET_TASK_DETAIL = gql`
         id
         name
         color
+        goalsInherit
+      }
+      goals {
+        id
+        title
+        status
+        linkType
+      }
+      directGoals {
+        id
+        title
+        status
       }
       comments {
         id
@@ -534,11 +572,10 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   });
   const pendingAlerts = alertsData?.getAlerts || [];
 
-  // Fetch goals
+  // Fetch goals (always fetch for goal selectors throughout app)
   const { data: goalsData, refetch: refetchGoals } = useQuery(GET_GOALS, {
     variables: { teamId },
-    fetchPolicy: 'cache-and-network',
-    skip: activeView !== 'goals'
+    fetchPolicy: 'cache-and-network'
   });
   const goals = goalsData?.getGoals || [];
 
@@ -571,6 +608,8 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [updateGoal] = useMutation(UPDATE_GOAL);
   const [createProject] = useMutation(CREATE_PROJECT);
   const [addTaskComment] = useMutation(ADD_TASK_COMMENT);
+  const [setProjectGoals] = useMutation(SET_PROJECT_GOALS);
+  const [setTaskGoals] = useMutation(SET_TASK_GOALS);
   const [executeAskCompany] = useLazyQuery(ASK_COMPANY, {
     fetchPolicy: 'network-only'
   });
@@ -1328,6 +1367,16 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
               )}
             </div>
           </div>
+
+          {/* Help Link */}
+          <button
+            className="footer-help-btn"
+            onClick={() => navigate('/help')}
+            title="Help & Guide"
+          >
+            <span>?</span>
+            <span>Help</span>
+          </button>
 
           {/* User Info & Sign Out */}
           <div className="footer-user">
@@ -2356,6 +2405,80 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                     </span>
                   </div>
                 )}
+
+                {/* Goals */}
+                <div className="property-row property-row-goals">
+                  <span className="property-label">Goals</span>
+                  <div className="goals-tags-container">
+                    {/* Show effective goals (inherited + direct) */}
+                    {selectedTask.goals?.length > 0 ? (
+                      <div className="goals-tags">
+                        {selectedTask.goals.map(goal => (
+                          <span
+                            key={goal.id}
+                            className={`goal-tag ${goal.linkType}`}
+                            title={goal.linkType === 'inherited' ? 'Inherited from project' : 'Direct link'}
+                          >
+                            {goal.title}
+                            {goal.linkType === 'inherited' && <span className="inherited-indicator">↓</span>}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="no-goals-text">No goals linked</span>
+                    )}
+
+                    {/* Goal selector for direct links */}
+                    <select
+                      className="goal-selector"
+                      value=""
+                      onChange={async (e) => {
+                        if (!e.target.value) return;
+                        const currentDirectIds = selectedTask.directGoals?.map(g => g.id) || [];
+                        const newGoalIds = [...currentDirectIds, e.target.value];
+                        await setTaskGoals({
+                          variables: { taskId: selectedTaskId, goalIds: newGoalIds }
+                        });
+                        refetchTaskDetail();
+                        refetchGoals();
+                      }}
+                    >
+                      <option value="">+ Add goal...</option>
+                      {goals
+                        .filter(g => g.status === 'active')
+                        .filter(g => !selectedTask.directGoals?.some(dg => dg.id === g.id))
+                        .map(goal => (
+                          <option key={goal.id} value={goal.id}>{goal.title}</option>
+                        ))
+                      }
+                    </select>
+
+                    {/* Remove direct goal buttons */}
+                    {selectedTask.directGoals?.length > 0 && (
+                      <div className="direct-goals-remove">
+                        {selectedTask.directGoals.map(goal => (
+                          <button
+                            key={goal.id}
+                            className="remove-goal-btn"
+                            title={`Remove ${goal.title}`}
+                            onClick={async () => {
+                              const newGoalIds = selectedTask.directGoals
+                                .filter(g => g.id !== goal.id)
+                                .map(g => g.id);
+                              await setTaskGoals({
+                                variables: { taskId: selectedTaskId, goalIds: newGoalIds }
+                              });
+                              refetchTaskDetail();
+                              refetchGoals();
+                            }}
+                          >
+                            × {goal.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Description */}
