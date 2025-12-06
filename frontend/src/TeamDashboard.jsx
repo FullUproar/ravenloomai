@@ -445,6 +445,12 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [replyingTo, setReplyingTo] = useState(null);
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Sidebar tree expansion state
+  const [expandedSections, setExpandedSections] = useState({
+    channels: true,
+    tasks: false,
+    goals: false
+  });
   // Goals state
   const [showCreateGoal, setShowCreateGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
@@ -1062,6 +1068,23 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
     setReplyingTo(null);
   };
 
+  // Toggle sidebar section expansion
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // Handle section item click - expand section and set view
+  const handleSectionItemClick = (section, view) => {
+    setActiveView(view);
+    if (section === 'goals') {
+      refetchGoals();
+    }
+    setSidebarOpen(false); // Close mobile sidebar
+  };
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -1105,228 +1128,327 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
           <h2 className="team-name">{team.name}</h2>
         </div>
 
-        {/* View Toggle */}
-        <div className="view-toggle">
-          <button
-            className={`view-btn ${activeView === 'chat' ? 'active' : ''}`}
-            onClick={() => setActiveView('chat')}
-          >
-            💬 Chat
-          </button>
-          <button
-            className={`view-btn ${activeView === 'tasks' ? 'active' : ''}`}
-            onClick={() => setActiveView('tasks')}
-          >
-            ✓ Tasks {tasks.length > 0 && `(${tasks.length})`}
-          </button>
-          <button
-            className={`view-btn ${activeView === 'goals' ? 'active' : ''}`}
-            onClick={() => { setActiveView('goals'); refetchGoals(); }}
-          >
-            🎯 Goals
-          </button>
-          <button
-            className={`view-btn ${activeView === 'ask' ? 'active' : ''}`}
-            onClick={() => setActiveView('ask')}
-          >
-            🔍 Ask
-          </button>
-          {pendingAlerts.length > 0 && (
-            <div className="alerts-indicator" title={`${pendingAlerts.length} pending reminders`}>
-              {pendingAlerts.length}
-            </div>
-          )}
-        </div>
-
-        {/* Channels */}
-        <div className="channels-section">
-          <div className="section-header">
-            <span>Channels</span>
+        {/* Tree Navigation */}
+        <nav className="nav-tree">
+          {/* Channels Section */}
+          <div className={`nav-section ${expandedSections.channels ? 'expanded' : ''}`}>
             <button
-              onClick={() => setShowCreateChannel(true)}
-              className="add-btn"
-              title="Create channel"
+              className={`nav-section-header ${activeView === 'chat' ? 'active' : ''}`}
+              onClick={() => toggleSection('channels')}
             >
-              +
+              <span className="nav-expand-icon">{expandedSections.channels ? '▼' : '▶'}</span>
+              <span className="nav-icon">💬</span>
+              <span className="nav-label">Channels</span>
+              {channels.length > 0 && <span className="nav-count">{channels.length}</span>}
             </button>
-          </div>
-
-          <div className="channel-list">
-            {channels.map((channel) => (
-              <button
-                key={channel.id}
-                className={`channel-item ${channel.id === activeChannelId ? 'active' : ''}`}
-                onClick={() => handleSelectChannel(channel.id)}
-              >
-                # {channel.name}
-              </button>
-            ))}
-          </div>
-
-          {/* Create Channel Modal */}
-          {showCreateChannel && (
-            <div className="modal-overlay" onClick={() => setShowCreateChannel(false)}>
-              <div className="modal" onClick={(e) => e.stopPropagation()}>
-                <h3>Create Channel</h3>
-                <form onSubmit={handleCreateChannel}>
-                  <input
-                    type="text"
-                    value={newChannelName}
-                    onChange={(e) => setNewChannelName(e.target.value)}
-                    placeholder="channel-name"
-                    autoFocus
-                    className="input-field"
-                  />
-                  <div className="form-actions">
-                    <button type="submit" className="btn-primary">Create</button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCreateChannel(false);
-                        setNewChannelName('');
-                      }}
-                      className="btn-secondary"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+            {expandedSections.channels && (
+              <div className="nav-children">
+                {channels.map((channel) => (
+                  <button
+                    key={channel.id}
+                    className={`nav-item ${channel.id === activeChannelId && activeView === 'chat' ? 'active' : ''}`}
+                    onClick={() => {
+                      handleSelectChannel(channel.id);
+                      setActiveView('chat');
+                    }}
+                  >
+                    <span className="nav-item-icon">#</span>
+                    <span className="nav-item-label">{channel.name}</span>
+                  </button>
+                ))}
+                <button
+                  className="nav-item nav-action"
+                  onClick={() => setShowCreateChannel(true)}
+                >
+                  <span className="nav-item-icon">+</span>
+                  <span className="nav-item-label">New Channel</span>
+                </button>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Team Members Section */}
-        <div className="members-section">
-          <div className="section-header">
-            <span>Team ({team.members?.length || 0})</span>
-            <button
-              onClick={() => setShowInviteModal(true)}
-              className="add-btn"
-              title="Invite member"
-            >
-              +
-            </button>
-          </div>
-
-          <div className="member-list">
-            {team.members?.slice(0, 5).map((member) => (
-              <div key={member.id} className="member-item">
-                <span className="member-avatar">
-                  {(member.user?.displayName || member.user?.email || '?')[0].toUpperCase()}
-                </span>
-                <span className="member-name">
-                  {member.user?.displayName || member.user?.email}
-                </span>
-                {member.role === 'owner' && <span className="member-role">owner</span>}
-              </div>
-            ))}
-            {(team.members?.length || 0) > 5 && (
-              <button
-                className="show-more-btn"
-                onClick={() => setShowMembersPanel(true)}
-              >
-                +{team.members.length - 5} more
-              </button>
             )}
           </div>
 
-          {/* Pending Invites */}
-          {pendingInvites.length > 0 && (
-            <div className="pending-invites">
-              <span className="pending-label">Pending ({pendingInvites.length})</span>
-              {pendingInvites.slice(0, 3).map((invite) => (
-                <div key={invite.id} className="invite-item">
-                  <span className="invite-email">{invite.email}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Invite Modal */}
-          {showInviteModal && (
-            <div className="modal-overlay" onClick={() => { setShowInviteModal(false); setLastInviteLink(null); }}>
-              <div className="modal invite-modal" onClick={(e) => e.stopPropagation()}>
-                <h3>Invite Team Member</h3>
-
-                {lastInviteLink ? (
-                  <div className="invite-success">
-                    <p>Invite created! Share this link:</p>
-                    <div className="invite-link-box">
-                      <input
-                        type="text"
-                        value={lastInviteLink}
-                        readOnly
-                        className="input-field"
-                      />
-                      <button onClick={copyInviteLink} className="btn-primary">
-                        Copy
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => setLastInviteLink(null)}
-                      className="btn-secondary"
-                      style={{ marginTop: '10px' }}
-                    >
-                      Invite Another
-                    </button>
-                  </div>
-                ) : (
-                  <form onSubmit={handleInviteMember}>
-                    <input
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      placeholder="email@example.com"
-                      autoFocus
-                      className="input-field"
-                      required
-                    />
-                    <select
-                      value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value)}
-                      className="input-field"
-                    >
-                      <option value="member">Member</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                    <div className="form-actions">
-                      <button
-                        type="submit"
-                        className="btn-primary"
-                        disabled={inviteSending}
-                      >
-                        {inviteSending ? 'Sending...' : 'Send Invite'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowInviteModal(false);
-                          setInviteEmail('');
-                          setLastInviteLink(null);
-                        }}
-                        className="btn-secondary"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                )}
+          {/* Tasks Section */}
+          <div className={`nav-section ${expandedSections.tasks ? 'expanded' : ''}`}>
+            <button
+              className={`nav-section-header ${activeView === 'tasks' ? 'active' : ''}`}
+              onClick={() => toggleSection('tasks')}
+            >
+              <span className="nav-expand-icon">{expandedSections.tasks ? '▼' : '▶'}</span>
+              <span className="nav-icon">✓</span>
+              <span className="nav-label">Tasks</span>
+              {tasks.length > 0 && <span className="nav-count">{tasks.length}</span>}
+            </button>
+            {expandedSections.tasks && (
+              <div className="nav-children">
+                <button
+                  className={`nav-item ${activeView === 'tasks' && taskFilter === 'open' ? 'active' : ''}`}
+                  onClick={() => {
+                    handleSectionItemClick('tasks', 'tasks');
+                    setTaskFilter('open');
+                  }}
+                >
+                  <span className="nav-item-icon">○</span>
+                  <span className="nav-item-label">Open Tasks</span>
+                  {allTasks.filter(t => t.status !== 'done').length > 0 && (
+                    <span className="nav-item-count">{allTasks.filter(t => t.status !== 'done').length}</span>
+                  )}
+                </button>
+                <button
+                  className={`nav-item ${activeView === 'tasks' && taskFilter === 'my' ? 'active' : ''}`}
+                  onClick={() => {
+                    handleSectionItemClick('tasks', 'tasks');
+                    setTaskFilter('my');
+                  }}
+                >
+                  <span className="nav-item-icon">👤</span>
+                  <span className="nav-item-label">My Tasks</span>
+                </button>
+                <button
+                  className={`nav-item ${activeView === 'tasks' && taskFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => {
+                    handleSectionItemClick('tasks', 'tasks');
+                    setTaskFilter('all');
+                  }}
+                >
+                  <span className="nav-item-icon">☰</span>
+                  <span className="nav-item-label">All Tasks</span>
+                </button>
+                <button
+                  className="nav-item nav-action"
+                  onClick={() => {
+                    setActiveView('tasks');
+                    setAddingTask(true);
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <span className="nav-item-icon">+</span>
+                  <span className="nav-item-label">New Task</span>
+                </button>
               </div>
+            )}
+          </div>
+
+          {/* Goals Section */}
+          <div className={`nav-section ${expandedSections.goals ? 'expanded' : ''}`}>
+            <button
+              className={`nav-section-header ${activeView === 'goals' ? 'active' : ''}`}
+              onClick={() => toggleSection('goals')}
+            >
+              <span className="nav-expand-icon">{expandedSections.goals ? '▼' : '▶'}</span>
+              <span className="nav-icon">🎯</span>
+              <span className="nav-label">Goals</span>
+              {goals.length > 0 && <span className="nav-count">{goals.length}</span>}
+            </button>
+            {expandedSections.goals && (
+              <div className="nav-children">
+                <button
+                  className={`nav-item ${activeView === 'goals' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('goals', 'goals')}
+                >
+                  <span className="nav-item-icon">📊</span>
+                  <span className="nav-item-label">All Goals</span>
+                </button>
+                <button
+                  className="nav-item nav-action"
+                  onClick={() => {
+                    setActiveView('goals');
+                    setShowCreateGoal(true);
+                    refetchGoals();
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <span className="nav-item-icon">+</span>
+                  <span className="nav-item-label">New Goal</span>
+                </button>
+                <button
+                  className="nav-item nav-action"
+                  onClick={() => {
+                    setActiveView('goals');
+                    setShowCreateProject(true);
+                    refetchGoals();
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <span className="nav-item-icon">+</span>
+                  <span className="nav-item-label">New Project</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Ask - No expansion needed */}
+          <div className="nav-section">
+            <button
+              className={`nav-section-header nav-single ${activeView === 'ask' ? 'active' : ''}`}
+              onClick={() => handleSectionItemClick('ask', 'ask')}
+            >
+              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+              <span className="nav-icon">🔍</span>
+              <span className="nav-label">Ask the Team</span>
+            </button>
+          </div>
+
+          {/* Alerts indicator */}
+          {pendingAlerts.length > 0 && (
+            <div className="nav-alerts">
+              <span className="nav-alerts-icon">🔔</span>
+              <span className="nav-alerts-text">{pendingAlerts.length} pending reminder{pendingAlerts.length !== 1 ? 's' : ''}</span>
             </div>
           )}
-        </div>
+        </nav>
 
-        {/* User Info */}
+        {/* Sidebar Footer - Team & Settings */}
         <div className="sidebar-footer">
-          <div className="user-info">
-            <span className="user-name">{user.displayName || user.email}</span>
+          {/* Team Members Preview */}
+          <div className="footer-team">
+            <div className="footer-team-header">
+              <span className="footer-label">Team ({team.members?.length || 0})</span>
+              <button
+                onClick={() => setShowInviteModal(true)}
+                className="footer-add-btn"
+                title="Invite member"
+              >
+                +
+              </button>
+            </div>
+            <div className="footer-avatars">
+              {team.members?.slice(0, 4).map((member) => (
+                <span
+                  key={member.id}
+                  className="footer-avatar"
+                  title={member.user?.displayName || member.user?.email}
+                >
+                  {(member.user?.displayName || member.user?.email || '?')[0].toUpperCase()}
+                </span>
+              ))}
+              {(team.members?.length || 0) > 4 && (
+                <span className="footer-avatar footer-avatar-more">
+                  +{team.members.length - 4}
+                </span>
+              )}
+            </div>
           </div>
-          <button onClick={onSignOut} className="sign-out-btn">
-            Sign Out
-          </button>
+
+          {/* User Info & Sign Out */}
+          <div className="footer-user">
+            <div className="user-info">
+              <span className="user-avatar">
+                {(user.displayName || user.email || 'U')[0].toUpperCase()}
+              </span>
+              <span className="user-name">{user.displayName || user.email}</span>
+            </div>
+            <button onClick={onSignOut} className="sign-out-btn" title="Sign out">
+              ↪
+            </button>
+          </div>
         </div>
       </aside>
+
+      {/* Modals */}
+      {/* Create Channel Modal */}
+      {showCreateChannel && (
+        <div className="modal-overlay" onClick={() => setShowCreateChannel(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Create Channel</h3>
+            <form onSubmit={handleCreateChannel}>
+              <input
+                type="text"
+                value={newChannelName}
+                onChange={(e) => setNewChannelName(e.target.value)}
+                placeholder="channel-name"
+                autoFocus
+                className="input-field"
+              />
+              <div className="form-actions">
+                <button type="submit" className="btn-primary">Create</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateChannel(false);
+                    setNewChannelName('');
+                  }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <div className="modal-overlay" onClick={() => { setShowInviteModal(false); setLastInviteLink(null); }}>
+          <div className="modal invite-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Invite Team Member</h3>
+
+            {lastInviteLink ? (
+              <div className="invite-success">
+                <p>Invite created! Share this link:</p>
+                <div className="invite-link-box">
+                  <input
+                    type="text"
+                    value={lastInviteLink}
+                    readOnly
+                    className="input-field"
+                  />
+                  <button onClick={copyInviteLink} className="btn-primary">
+                    Copy
+                  </button>
+                </div>
+                <button
+                  onClick={() => setLastInviteLink(null)}
+                  className="btn-secondary"
+                  style={{ marginTop: '10px' }}
+                >
+                  Invite Another
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleInviteMember}>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  autoFocus
+                  className="input-field"
+                  required
+                />
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={inviteSending}
+                  >
+                    {inviteSending ? 'Sending...' : 'Send Invite'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowInviteModal(false);
+                      setInviteEmail('');
+                      setLastInviteLink(null);
+                    }}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       {activeView === 'chat' ? (
