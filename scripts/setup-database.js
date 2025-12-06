@@ -44,11 +44,26 @@ async function setup() {
     const result = await pool.query('SELECT NOW() as now, current_database() as db');
     console.log('✅ Connected to:', result.rows[0].db, 'at', result.rows[0].now);
 
-    // Read migration file
+    // Read all migration files in order
     console.log('');
-    console.log('📄 Reading migration file...');
-    const migrationPath = path.join(__dirname, '../backend/migrations/100_clean_slate_teams.sql');
-    let migration = fs.readFileSync(migrationPath, 'utf8');
+    console.log('📄 Reading migration files...');
+    const migrationsDir = path.join(__dirname, '../backend/migrations');
+    const migrationFiles = [
+      '100_clean_slate_teams.sql',
+      '101_add_fact_metadata.sql',
+      '102_add_threads_and_enhanced_facts.sql',
+      '103_goals_and_task_comments.sql',
+      '104_goal_associations.sql'
+    ];
+
+    let migration = '';
+    for (const file of migrationFiles) {
+      const filePath = path.join(migrationsDir, file);
+      if (fs.existsSync(filePath)) {
+        console.log(`   📄 ${file}`);
+        migration += fs.readFileSync(filePath, 'utf8') + '\n';
+      }
+    }
 
     // Remove vector columns (not supported on all platforms)
     migration = migration.replace(/,?\s*embedding vector\(1536\)/g, '');
