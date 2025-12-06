@@ -388,8 +388,9 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
     if (showMentions || showCommands) return;
 
     let content = messageInput.trim();
+    const replyToMessageId = replyingTo?.id || null;
 
-    // Prepend reply context if replying
+    // Prepend reply context if replying (for display purposes)
     if (replyingTo) {
       const replyAuthor = replyingTo.isAi ? 'Raven' : (replyingTo.user?.displayName || replyingTo.user?.email || 'User');
       const replyPreview = replyingTo.content.substring(0, 50) + (replyingTo.content.length > 50 ? '...' : '');
@@ -404,7 +405,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
       await sendMessage({
         variables: {
           channelId: activeChannelId,
-          input: { content }
+          input: { content, replyToMessageId }
         }
       });
       await refetchMessages();

@@ -242,6 +242,7 @@ export default gql`
 
   input SendMessageInput {
     content: String!
+    replyToMessageId: ID
   }
 
   input CreateFactInput {

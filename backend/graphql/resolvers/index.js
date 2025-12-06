@@ -245,7 +245,9 @@ const resolvers = {
     // Messages & AI
     sendMessage: async (_, { channelId, input }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      return MessageService.sendMessage(channelId, userId, input.content);
+      return MessageService.sendMessage(channelId, userId, input.content, {
+        replyToMessageId: input.replyToMessageId
+      });
     },
 
     sendThreadMessage: async (_, { threadId, input }, { userId }) => {
@@ -255,7 +257,9 @@ const resolvers = {
       if (!thread) throw new Error('Thread not found');
 
       // Use message service with thread context
-      return MessageService.sendThreadMessage(threadId, userId, input.content);
+      return MessageService.sendThreadMessage(threadId, userId, input.content, {
+        replyToMessageId: input.replyToMessageId
+      });
     },
 
     // Knowledge - Manual

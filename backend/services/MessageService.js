@@ -9,9 +9,25 @@ import AlertService from './AlertService.js';
 import TaskService from './TaskService.js';
 
 /**
+ * Get a message by ID
+ */
+async function getMessageById(messageId) {
+  const result = await db.query(
+    `SELECT m.*, u.display_name, u.email, u.avatar_url
+     FROM messages m
+     LEFT JOIN users u ON m.user_id = u.id
+     WHERE m.id = $1`,
+    [messageId]
+  );
+  return result.rows[0] ? mapMessage(result.rows[0]) : null;
+}
+
+/**
  * Send a message to a channel and process any AI commands
  */
-export async function sendMessage(channelId, userId, content) {
+export async function sendMessage(channelId, userId, content, options = {}) {
+  const { replyToMessageId } = options;
+
   // Get channel info for team context
   const channelResult = await db.query(
     'SELECT * FROM channels WHERE id = $1',
@@ -25,8 +41,26 @@ export async function sendMessage(channelId, userId, content) {
   const channel = channelResult.rows[0];
   const teamId = channel.team_id;
 
-  // Check if message mentions @raven
-  const mentionsAi = content.toLowerCase().includes('@raven');
+  // Check if message mentions @raven explicitly
+  let mentionsAi = content.toLowerCase().includes('@raven');
+  let replyContext = null;
+
+  // If replying to a message, check if it's a Raven message
+  if (replyToMessageId) {
+    const originalMessage = await getMessageById(replyToMessageId);
+    if (originalMessage) {
+      // If replying to Raven's message, auto-trigger AI processing
+      if (originalMessage.isAi && !mentionsAi) {
+        mentionsAi = true;
+        // Store context from the original message for AI processing
+        replyContext = {
+          originalMessage: originalMessage.content,
+          originalMetadata: originalMessage.metadata
+        };
+      }
+    }
+  }
+
   const command = mentionsAi ? AIService.parseRavenCommand(content) : null;
 
   // Save the user's message
@@ -57,8 +91,8 @@ export async function sendMessage(channelId, userId, content) {
     };
   }
 
-  // Process the AI command
-  const aiResponse = await processAICommand(command, teamId, channelId, userId);
+  // Process the AI command (with reply context if available)
+  const aiResponse = await processAICommand(command, teamId, channelId, userId, replyContext);
 
   // Save the AI response message
   const aiMessageResult = await db.query(
@@ -79,7 +113,12 @@ export async function sendMessage(channelId, userId, content) {
 /**
  * Process an AI command and return the response
  */
-async function processAICommand(command, teamId, channelId, userId) {
+async function processAICommand(command, teamId, channelId, userId, replyContext = null) {
+  // If no explicit command but we have reply context, treat as a query
+  if (!command && replyContext) {
+    return handleQuery('', teamId, channelId, replyContext);
+  }
+
   if (!command) {
     return {
       responseText: `I'm here! Commands I understand:
@@ -140,7 +179,7 @@ async function processAICommand(command, teamId, channelId, userId) {
 
     case 'query':
     default:
-      return handleQuery(command.query, teamId, channelId);
+      return handleQuery(command.query, teamId, channelId, replyContext);
   }
 }
 
@@ -491,7 +530,7 @@ async function handleDecision(content, teamId, userId) {
 /**
  * Handle query (question)
  */
-async function handleQuery(query, teamId, channelId) {
+async function handleQuery(query, teamId, channelId, replyContext = null) {
   try {
     // Get relevant knowledge
     const knowledge = await KnowledgeService.getKnowledgeContext(teamId, query);
@@ -506,15 +545,23 @@ async function handleQuery(query, teamId, channelId) {
     );
     const history = historyResult.rows.reverse().map(mapMessage);
 
+    // If this is a reply to a Raven message, include that context
+    let enhancedQuery = query;
+    if (replyContext?.originalMessage) {
+      // Prepend the context of what Raven said to help understand the user's response
+      enhancedQuery = `[Context: You previously said: "${replyContext.originalMessage}"]\n\nUser's reply: ${query || '(User replied without additional text)'}`;
+    }
+
     // Generate AI response
-    const response = await AIService.generateResponse(query, knowledge, history);
+    const response = await AIService.generateResponse(enhancedQuery, knowledge, history);
 
     return {
       responseText: response,
       metadata: {
         command: 'query',
         factsUsed: knowledge.facts.length,
-        decisionsUsed: knowledge.decisions.length
+        decisionsUsed: knowledge.decisions.length,
+        isReply: !!replyContext
       }
     };
   } catch (error) {
@@ -826,7 +873,9 @@ function mapMessage(row) {
 /**
  * Send a message to a thread and process any AI commands
  */
-export async function sendThreadMessage(threadId, userId, content) {
+export async function sendThreadMessage(threadId, userId, content, options = {}) {
+  const { replyToMessageId } = options;
+
   // Get thread and channel info
   const threadResult = await db.query(
     `SELECT t.*, c.team_id, c.ai_mode
@@ -844,8 +893,25 @@ export async function sendThreadMessage(threadId, userId, content) {
   const teamId = thread.team_id;
   const channelId = thread.channel_id;
 
-  // Check if message mentions @raven
-  const mentionsAi = content.toLowerCase().includes('@raven');
+  // Check if message mentions @raven explicitly
+  let mentionsAi = content.toLowerCase().includes('@raven');
+  let replyContext = null;
+
+  // If replying to a message, check if it's a Raven message
+  if (replyToMessageId) {
+    const originalMessage = await getMessageById(replyToMessageId);
+    if (originalMessage) {
+      // If replying to Raven's message, auto-trigger AI processing
+      if (originalMessage.isAi && !mentionsAi) {
+        mentionsAi = true;
+        replyContext = {
+          originalMessage: originalMessage.content,
+          originalMetadata: originalMessage.metadata
+        };
+      }
+    }
+  }
+
   const command = mentionsAi ? AIService.parseRavenCommand(content) : null;
 
   // Save the user's message to the thread
@@ -868,8 +934,8 @@ export async function sendThreadMessage(threadId, userId, content) {
     };
   }
 
-  // Process the AI command
-  const aiResponse = await processAICommand(command, teamId, channelId, userId);
+  // Process the AI command (with reply context if available)
+  const aiResponse = await processAICommand(command, teamId, channelId, userId, replyContext);
 
   // Save the AI response message to the same thread
   const aiMessageResult = await db.query(
