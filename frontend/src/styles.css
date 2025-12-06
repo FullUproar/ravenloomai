@@ -522,6 +522,34 @@ body {
   padding: 0;
 }
 
+/* Reply quote styling - makes replies look like connected references */
+.message-content blockquote {
+  margin: 0 0 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--primary);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-style: normal;
+  position: relative;
+}
+
+.message-content blockquote p {
+  margin: 0;
+}
+
+.message-content blockquote::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  bottom: -8px;
+  width: 3px;
+  height: 8px;
+  background: var(--primary);
+  opacity: 0.5;
+}
+
 /* Message Form */
 .message-form {
   display: flex;
