@@ -84,15 +84,17 @@ export async function getDirectGoalsForTask(taskId) {
 // Get effective goals for a task (direct + inherited)
 export async function getEffectiveGoalsForTask(taskId) {
   const result = await pool.query(
-    `SELECT DISTINCT g.*,
-       CASE WHEN gt.id IS NOT NULL THEN 'direct' ELSE 'inherited' END as link_type
-     FROM goals g
-     LEFT JOIN goal_tasks gt ON gt.goal_id = g.id AND gt.task_id = $1
-     LEFT JOIN tasks t ON t.id = $1
-     LEFT JOIN projects p ON t.project_id = p.id AND p.goals_inherit = true
-     LEFT JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = g.id
-     WHERE gt.task_id = $1 OR (gp.project_id IS NOT NULL AND p.goals_inherit = true)
-     ORDER BY g.title`,
+    `SELECT * FROM (
+       SELECT DISTINCT ON (g.id) g.*,
+         CASE WHEN gt.id IS NOT NULL THEN 'direct' ELSE 'inherited' END as link_type
+       FROM goals g
+       LEFT JOIN goal_tasks gt ON gt.goal_id = g.id AND gt.task_id = $1
+       LEFT JOIN tasks t ON t.id = $1
+       LEFT JOIN projects p ON t.project_id = p.id AND p.goals_inherit = true
+       LEFT JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = g.id
+       WHERE gt.task_id = $1 OR (gp.project_id IS NOT NULL AND p.goals_inherit = true)
+       ORDER BY g.id
+     ) sub ORDER BY title`,
     [taskId]
   );
   return result.rows.map(row => ({
@@ -104,15 +106,17 @@ export async function getEffectiveGoalsForTask(taskId) {
 // Get all tasks linked to a goal (direct + inherited)
 export async function getTasksForGoal(goalId, teamId) {
   const result = await pool.query(
-    `SELECT DISTINCT t.*,
-       CASE WHEN gt.id IS NOT NULL THEN 'direct' ELSE 'inherited' END as link_type
-     FROM tasks t
-     LEFT JOIN goal_tasks gt ON gt.task_id = t.id AND gt.goal_id = $1
-     LEFT JOIN projects p ON t.project_id = p.id AND p.goals_inherit = true
-     LEFT JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = $1
-     WHERE t.team_id = $2
-       AND (gt.goal_id = $1 OR gp.goal_id = $1)
-     ORDER BY t.created_at DESC`,
+    `SELECT * FROM (
+       SELECT DISTINCT ON (t.id) t.*,
+         CASE WHEN gt.id IS NOT NULL THEN 'direct' ELSE 'inherited' END as link_type
+       FROM tasks t
+       LEFT JOIN goal_tasks gt ON gt.task_id = t.id AND gt.goal_id = $1
+       LEFT JOIN projects p ON t.project_id = p.id AND p.goals_inherit = true
+       LEFT JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = $1
+       WHERE t.team_id = $2
+         AND (gt.goal_id = $1 OR gp.goal_id = $1)
+       ORDER BY t.id
+     ) sub ORDER BY created_at DESC`,
     [goalId, teamId]
   );
   return result.rows.map(row => ({

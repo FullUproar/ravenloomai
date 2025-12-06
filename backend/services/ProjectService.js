@@ -47,26 +47,32 @@ export async function getProjectById(projectId) {
  * Get projects for a team
  */
 export async function getProjects(teamId, { goalId, status } = {}) {
-  let query = `SELECT DISTINCT p.* FROM projects p`;
+  // Build inner query with DISTINCT ON
+  let innerQuery = `SELECT DISTINCT ON (p.id) p.* FROM projects p`;
   const params = [teamId];
   let paramIndex = 2;
 
   // Join with goal_projects if filtering by goal
   if (goalId) {
-    query += ` INNER JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = $${paramIndex}`;
+    innerQuery += ` INNER JOIN goal_projects gp ON gp.project_id = p.id AND gp.goal_id = $${paramIndex}`;
     params.push(goalId);
     paramIndex++;
   }
 
-  query += ` WHERE p.team_id = $1`;
+  innerQuery += ` WHERE p.team_id = $1`;
 
   if (status) {
-    query += ` AND p.status = $${paramIndex}`;
+    innerQuery += ` AND p.status = $${paramIndex}`;
     params.push(status);
     paramIndex++;
   }
 
-  query += ` ORDER BY p.status = 'active' DESC, p.updated_at DESC`;
+  innerQuery += ` ORDER BY p.id`;
+
+  // Wrap in subquery to apply custom ordering
+  const query = `
+    SELECT * FROM (${innerQuery}) sub
+    ORDER BY status = 'active' DESC, updated_at DESC`;
 
   const result = await db.query(query, params);
   return result.rows.map(mapProject);

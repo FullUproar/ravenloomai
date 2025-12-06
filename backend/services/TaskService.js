@@ -132,8 +132,9 @@ export async function getTaskById(taskId) {
  * Get tasks for a team
  */
 export async function getTasks(teamId, { projectId = null, goalId = null, status = null, assignedTo = null, limit = 100 } = {}) {
-  let query = `
-    SELECT DISTINCT t.*, u.display_name as assigned_to_name, u.email as assigned_to_email
+  // Build inner query with DISTINCT
+  let innerQuery = `
+    SELECT DISTINCT ON (t.id) t.*, u.display_name as assigned_to_name, u.email as assigned_to_email
     FROM tasks t
     LEFT JOIN users u ON t.assigned_to = u.id
   `;
@@ -142,44 +143,50 @@ export async function getTasks(teamId, { projectId = null, goalId = null, status
 
   // Join with goal_tasks if filtering by goal
   if (goalId) {
-    query += `
+    innerQuery += `
       LEFT JOIN goal_tasks gt ON gt.task_id = t.id
       LEFT JOIN goal_projects gp ON gp.project_id = t.project_id
     `;
   }
 
-  query += ` WHERE t.team_id = $1`;
+  innerQuery += ` WHERE t.team_id = $1`;
 
   if (projectId) {
-    query += ` AND t.project_id = $${paramIndex}`;
+    innerQuery += ` AND t.project_id = $${paramIndex}`;
     params.push(projectId);
     paramIndex++;
   }
 
   // Filter by goal - include tasks directly linked OR tasks in projects linked to the goal
   if (goalId) {
-    query += ` AND (gt.goal_id = $${paramIndex} OR gp.goal_id = $${paramIndex})`;
+    innerQuery += ` AND (gt.goal_id = $${paramIndex} OR gp.goal_id = $${paramIndex})`;
     params.push(goalId);
     paramIndex++;
   }
 
   if (status) {
-    query += ` AND t.status = $${paramIndex}`;
+    innerQuery += ` AND t.status = $${paramIndex}`;
     params.push(status);
     paramIndex++;
   }
 
   if (assignedTo) {
-    query += ` AND t.assigned_to = $${paramIndex}`;
+    innerQuery += ` AND t.assigned_to = $${paramIndex}`;
     params.push(assignedTo);
     paramIndex++;
   }
 
-  query += ` ORDER BY
-    CASE WHEN t.status = 'done' THEN 1 ELSE 0 END,
-    CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-    t.due_at ASC NULLS LAST,
-    t.created_at DESC
+  // DISTINCT ON requires ORDER BY to start with the DISTINCT columns
+  innerQuery += ` ORDER BY t.id`;
+
+  // Wrap in subquery to apply custom ordering
+  const query = `
+    SELECT * FROM (${innerQuery}) sub
+    ORDER BY
+      CASE WHEN status = 'done' THEN 1 ELSE 0 END,
+      CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+      due_at ASC NULLS LAST,
+      created_at DESC
     LIMIT $${paramIndex}`;
   params.push(limit);
 
