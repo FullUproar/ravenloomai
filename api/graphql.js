@@ -23,8 +23,14 @@ const { Pool } = pg;
 let pool;
 function getPool() {
   if (!pool) {
+    const connString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    console.log('🔌 DB config:', {
+      POSTGRES_URL: process.env.POSTGRES_URL ? 'SET (' + process.env.POSTGRES_URL.substring(0, 25) + '...)' : 'NOT SET',
+      DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
+      NODE_ENV: process.env.NODE_ENV
+    });
     pool = new Pool({
-      connectionString: process.env.POSTGRES_URL || process.env.DATABASE_URL,
+      connectionString: connString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
       max: 1, // Serverless functions should use minimal connections
       connectionTimeoutMillis: 10000,
