@@ -445,10 +445,21 @@ const REOPEN_TASK = gql`
 // TeamDashboard Component
 // ============================================================================
 
-function TeamDashboard({ teamId, channelId, user, onSignOut }) {
+function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) {
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Determine initial view from URL or default to 'chat'
+  const getInitialView = () => {
+    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask') {
+      return initialView;
+    }
+    if (initialView === 'channel' || initialView === 'chat') {
+      return 'chat';
+    }
+    return 'chat';
+  };
 
   // UI state
   const [messageInput, setMessageInput] = useState('');
@@ -461,8 +472,10 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [inviteSending, setInviteSending] = useState(false);
   const [lastInviteLink, setLastInviteLink] = useState(null);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
-  const [activeView, setActiveView] = useState('chat'); // 'chat', 'tasks', 'goals', or 'ask'
+  const [activeView, setActiveViewState] = useState(getInitialView);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskProjectId, setNewTaskProjectId] = useState('');
+  const [newTaskGoalId, setNewTaskGoalId] = useState('');
   const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
   const [addingTask, setAddingTask] = useState(false);
   const taskInputRef = useRef(null);
@@ -502,6 +515,30 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [newProjectGoalId, setNewProjectGoalId] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState('');
 
+  // Active channel (from URL itemId when view is chat/channel)
+  const [activeChannelIdState, setActiveChannelIdState] = useState(
+    (initialView === 'channel' || initialView === 'chat') ? initialItemId : null
+  );
+
+  // Wrapper to update URL when view changes
+  const setActiveView = (view, itemId = null) => {
+    setActiveViewState(view);
+
+    // Build the new URL
+    let newPath = `/team/${teamId}`;
+    if (view === 'chat' && itemId) {
+      newPath = `/team/${teamId}/channel/${itemId}`;
+    } else if (view !== 'chat') {
+      newPath = `/team/${teamId}/${view}`;
+      if (itemId) {
+        newPath += `/${itemId}`;
+      }
+    }
+
+    // Update URL without full navigation
+    navigate(newPath, { replace: true });
+  };
+
   // Raven command suggestions
   const ravenCommands = [
     { cmd: '@raven remember', desc: 'Save a fact to knowledge base', example: '@raven remember our API rate limit is 100/min' },
@@ -523,8 +560,11 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const team = teamData?.getTeam;
   const channels = team?.channels || [];
 
-  // Determine active channel
-  const activeChannelId = channelId || channels.find(c => c.isDefault)?.id || channels[0]?.id;
+  // Determine active channel - use state, URL itemId, or default
+  const activeChannelId = activeChannelIdState ||
+    ((initialView === 'channel' || !initialView) ? initialItemId : null) ||
+    channels.find(c => c.isDefault)?.id ||
+    channels[0]?.id;
   const activeChannel = channels.find(c => c.id === activeChannelId);
 
   // Fetch messages for active channel
@@ -745,7 +785,8 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   };
 
   const handleSelectChannel = (id) => {
-    navigate(`/team/${teamId}/channel/${id}`);
+    setActiveChannelIdState(id);
+    setActiveView('chat', id);
     setSidebarOpen(false); // Close sidebar on mobile after selection
   };
 
@@ -799,12 +840,16 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
           input: {
             title: newTaskTitle.trim(),
             priority: 'medium',
-            channelId: activeChannelId
+            channelId: activeChannelId,
+            projectId: newTaskProjectId || null,
+            goalIds: newTaskGoalId ? [newTaskGoalId] : []
           }
         }
       });
 
       setNewTaskTitle('');
+      setNewTaskProjectId('');
+      setNewTaskGoalId('');
       setAddingTask(false);
       await refetchTasks();
     } catch (error) {
@@ -1704,35 +1749,54 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
             {/* Inline Add Task */}
             <div className="task-add-section">
               {addingTask ? (
-                <div className="task-add-input-row">
-                  <span className="task-add-icon">○</span>
-                  <input
-                    ref={taskInputRef}
-                    type="text"
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                    onKeyDown={handleTaskInputKeyDown}
-                    onBlur={() => {
-                      if (!newTaskTitle.trim()) {
-                        setAddingTask(false);
-                      }
-                    }}
-                    placeholder="Write a task name..."
-                    className="task-add-input"
-                  />
+                <div className="task-add-form">
+                  <div className="task-add-input-row">
+                    <span className="task-add-icon">○</span>
+                    <input
+                      ref={taskInputRef}
+                      type="text"
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      onKeyDown={handleTaskInputKeyDown}
+                      placeholder="Write a task name..."
+                      className="task-add-input"
+                    />
+                  </div>
+                  <div className="task-add-options">
+                    <select
+                      className="task-add-select"
+                      value={newTaskProjectId}
+                      onChange={(e) => setNewTaskProjectId(e.target.value)}
+                    >
+                      <option value="">No project</option>
+                      {projects.filter(p => p.status === 'active').map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="task-add-select"
+                      value={newTaskGoalId}
+                      onChange={(e) => setNewTaskGoalId(e.target.value)}
+                    >
+                      <option value="">No goal</option>
+                      {goals.filter(g => g.status === 'active').map(g => (
+                        <option key={g.id} value={g.id}>{g.title}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="task-add-actions">
+                    <button
+                      className="task-cancel-btn"
+                      onClick={() => { setAddingTask(false); setNewTaskTitle(''); setNewTaskProjectId(''); setNewTaskGoalId(''); }}
+                    >
+                      Cancel
+                    </button>
                     <button
                       className="task-add-btn"
                       onClick={handleCreateTask}
                       disabled={!newTaskTitle.trim()}
                     >
-                      Add
-                    </button>
-                    <button
-                      className="task-cancel-btn"
-                      onClick={() => { setAddingTask(false); setNewTaskTitle(''); }}
-                    >
-                      ×
+                      Add Task
                     </button>
                   </div>
                 </div>
@@ -1772,25 +1836,36 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                       {inProgressTasks.map((task) => (
                         <div
                           key={task.id}
-                          className={`task-item in_progress priority-${task.priority}`}
+                          className={`task-item in_progress priority-${task.priority} ${selectedTaskId === task.id ? 'selected' : ''}`}
+                          onClick={() => setSelectedTaskId(task.id)}
                         >
-                          <button
-                            className="task-checkbox"
-                            onClick={() => handleCompleteTask(task.id)}
-                            title="Mark complete"
+                          <select
+                            className="task-status-select in_progress"
+                            value={task.status}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              if (e.target.value === 'done') {
+                                handleCompleteTask(task.id);
+                              } else {
+                                handleToggleTaskStatus({ ...task, status: e.target.value });
+                              }
+                            }}
                           >
-                            <span className="checkbox-inner">▶</span>
-                          </button>
-                          <div className="task-content" onClick={() => setSelectedTaskId(task.id)} style={{ cursor: 'pointer' }}>
+                            <option value="todo">To Do</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="done">Done</option>
+                          </select>
+                          <div className="task-content">
                             <span className="task-title">{task.title}</span>
-                            {task.description && (
-                              <span className="task-description">{task.description}</span>
-                            )}
                             <div className="task-meta">
                               {task.priority !== 'medium' && (
                                 <span className={`task-priority priority-${task.priority}`}>
                                   {task.priority}
                                 </span>
+                              )}
+                              {task.project && (
+                                <span className="task-project">{task.project.name}</span>
                               )}
                               {task.assignedToUser && (
                                 <span className="task-assignee">
@@ -1799,20 +1874,10 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                               )}
                               {task.dueAt && (
                                 <span className={`task-due ${new Date(task.dueAt) < new Date() ? 'overdue' : ''}`}>
-                                  {new Date(task.dueAt) < new Date() ? 'Overdue: ' : 'Due: '}
                                   {new Date(task.dueAt).toLocaleDateString()}
                                 </span>
                               )}
                             </div>
-                          </div>
-                          <div className="task-hover-actions">
-                            <button
-                              className="task-action-btn complete"
-                              onClick={() => handleCompleteTask(task.id)}
-                              title="Mark complete"
-                            >
-                              ✓
-                            </button>
                           </div>
                         </div>
                       ))}
@@ -1832,25 +1897,36 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                       {todoTasks.map((task) => (
                         <div
                           key={task.id}
-                          className={`task-item todo priority-${task.priority}`}
+                          className={`task-item todo priority-${task.priority} ${selectedTaskId === task.id ? 'selected' : ''}`}
+                          onClick={() => setSelectedTaskId(task.id)}
                         >
-                          <button
-                            className="task-checkbox"
-                            onClick={() => handleCompleteTask(task.id)}
-                            title="Mark complete"
+                          <select
+                            className="task-status-select todo"
+                            value={task.status}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              if (e.target.value === 'done') {
+                                handleCompleteTask(task.id);
+                              } else {
+                                handleToggleTaskStatus({ ...task, status: e.target.value });
+                              }
+                            }}
                           >
-                            <span className="checkbox-inner"></span>
-                          </button>
-                          <div className="task-content" onClick={() => setSelectedTaskId(task.id)} style={{ cursor: 'pointer' }}>
+                            <option value="todo">To Do</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="done">Done</option>
+                          </select>
+                          <div className="task-content">
                             <span className="task-title">{task.title}</span>
-                            {task.description && (
-                              <span className="task-description">{task.description}</span>
-                            )}
                             <div className="task-meta">
                               {task.priority !== 'medium' && (
                                 <span className={`task-priority priority-${task.priority}`}>
                                   {task.priority}
                                 </span>
+                              )}
+                              {task.project && (
+                                <span className="task-project">{task.project.name}</span>
                               )}
                               {task.assignedToUser && (
                                 <span className="task-assignee">
@@ -1859,27 +1935,10 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                               )}
                               {task.dueAt && (
                                 <span className={`task-due ${new Date(task.dueAt) < new Date() ? 'overdue' : ''}`}>
-                                  {new Date(task.dueAt) < new Date() ? 'Overdue: ' : 'Due: '}
                                   {new Date(task.dueAt).toLocaleDateString()}
                                 </span>
                               )}
                             </div>
-                          </div>
-                          <div className="task-hover-actions">
-                            <button
-                              className="task-action-btn start"
-                              onClick={() => handleToggleTaskStatus(task)}
-                              title="Start working"
-                            >
-                              ▶
-                            </button>
-                            <button
-                              className="task-action-btn complete"
-                              onClick={() => handleCompleteTask(task.id)}
-                              title="Mark complete"
-                            >
-                              ✓
-                            </button>
                           </div>
                         </div>
                       ))}
@@ -1899,31 +1958,29 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                       {doneTasks.map((task) => (
                         <div
                           key={task.id}
-                          className="task-item done"
+                          className={`task-item done ${selectedTaskId === task.id ? 'selected' : ''}`}
+                          onClick={() => setSelectedTaskId(task.id)}
                         >
-                          <button
-                            className="task-checkbox"
-                            onClick={() => handleToggleTaskStatus(task)}
-                            title="Reopen task"
+                          <select
+                            className="task-status-select done"
+                            value={task.status}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleToggleTaskStatus({ ...task, status: e.target.value });
+                            }}
                           >
-                            <span className="checkbox-inner">✓</span>
-                          </button>
-                          <div className="task-content" onClick={() => setSelectedTaskId(task.id)} style={{ cursor: 'pointer' }}>
+                            <option value="todo">To Do</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="done">Done</option>
+                          </select>
+                          <div className="task-content">
                             <span className="task-title">{task.title}</span>
                             {task.completedAt && (
                               <span className="task-completed-at">
                                 Completed {new Date(task.completedAt).toLocaleDateString()}
                               </span>
                             )}
-                          </div>
-                          <div className="task-hover-actions">
-                            <button
-                              className="task-action-btn reopen"
-                              onClick={() => handleToggleTaskStatus(task)}
-                              title="Reopen task"
-                            >
-                              ↩
-                            </button>
                           </div>
                         </div>
                       ))}

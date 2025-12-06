@@ -69,7 +69,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Routes>
           <Route path="/help" element={<HelpPage />} />
           <Route path="/invite/:token" element={<InviteAccept apolloClient={client} />} />
-          <Route path="/team/:teamId/channel/:channelId" element={<App apolloClient={client} />} />
+          {/* Team routes with view support */}
+          <Route path="/team/:teamId/:view" element={<App apolloClient={client} />} />
+          <Route path="/team/:teamId/:view/:itemId" element={<App apolloClient={client} />} />
           <Route path="/team/:teamId" element={<App apolloClient={client} />} />
           <Route path="*" element={<App apolloClient={client} />} />
         </Routes>

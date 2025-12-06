@@ -46,7 +46,7 @@ const CREATE_OR_UPDATE_USER = gql`
 
 function App({ apolloClient }) {
   const navigate = useNavigate();
-  const { teamId: urlTeamId, channelId: urlChannelId } = useParams();
+  const { teamId: urlTeamId, view: urlView, itemId: urlItemId } = useParams();
 
   // Auth state
   const [user, setUser] = useState(undefined); // undefined = loading, null = logged out
@@ -176,7 +176,8 @@ function App({ apolloClient }) {
     return (
       <TeamDashboard
         teamId={urlTeamId}
-        channelId={urlChannelId}
+        initialView={urlView}
+        initialItemId={urlItemId}
         user={user}
         onSignOut={handleSignOut}
       />
