@@ -74,17 +74,21 @@ function App({ apolloClient }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // User is signed in
+        console.log('Firebase auth successful, uid:', firebaseUser.uid);
         localStorage.setItem('userId', firebaseUser.uid);
+        console.log('localStorage userId set:', localStorage.getItem('userId'));
 
         // Create/update user in our database
         try {
-          await createOrUpdateUser({
+          console.log('Calling createOrUpdateUser mutation...');
+          const result = await createOrUpdateUser({
             variables: {
               email: firebaseUser.email,
               displayName: firebaseUser.displayName,
               avatarUrl: firebaseUser.photoURL
             }
           });
+          console.log('createOrUpdateUser result:', result);
         } catch (err) {
           console.error('Error syncing user:', err);
         }
