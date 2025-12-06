@@ -129,6 +129,15 @@ async function processAICommand(command, teamId, channelId, userId) {
     case 'list_reminders':
       return handleListReminders(teamId);
 
+    case 'confirm_update':
+      return handleConfirmUpdate(teamId, channelId, userId);
+
+    case 'save_anyway':
+      return handleSaveAnyway(teamId, channelId, userId);
+
+    case 'cancel_action':
+      return handleCancelAction(channelId);
+
     case 'query':
     default:
       return handleQuery(command.query, teamId, channelId);
@@ -136,14 +145,67 @@ async function processAICommand(command, teamId, channelId, userId) {
 }
 
 /**
- * Handle "remember" command
+ * Handle "remember" command with smart conflict detection
  */
 async function handleRemember(content, teamId, channelId, userId) {
   try {
     // Extract structured fact from content with rich metadata
     const extracted = await AIService.extractFact(content);
 
-    // Save the fact with metadata
+    // Get existing facts to check for conflicts
+    const existingFacts = await KnowledgeService.getFacts(teamId, { limit: 100 });
+
+    // Check for conflicts/duplicates with original user content for context
+    const conflictCheck = await AIService.checkFactConflict(
+      { ...extracted, originalContent: content },
+      existingFacts
+    );
+
+    // Handle based on conflict check result
+    if (conflictCheck.action === 'ask_confirmation') {
+      // There's a potential conflict - ask user to confirm
+      const relatedFact = existingFacts.find(f => f.id === conflictCheck.relatedFactId);
+      return {
+        responseText: `I noticed something similar already stored:\n> "${relatedFact?.content || conflictCheck.relatedFactContent}"\n\nDid you want to update this? Reply with:\n• \`@raven yes, update\` to replace the old fact\n• \`@raven save anyway\` to keep both\n• \`@raven nevermind\` to cancel`,
+        metadata: {
+          command: 'remember',
+          pendingAction: 'confirm_update',
+          newFact: extracted,
+          relatedFactId: conflictCheck.relatedFactId,
+          conflictType: conflictCheck.conflictType
+        }
+      };
+    }
+
+    if (conflictCheck.action === 'update' && conflictCheck.relatedFactId) {
+      // Explicit update - replace the old fact
+      const oldFact = existingFacts.find(f => f.id === conflictCheck.relatedFactId);
+
+      // Create new fact
+      const newFact = await KnowledgeService.createFact(teamId, {
+        content: extracted.content,
+        category: extracted.category,
+        sourceType: 'conversation',
+        createdBy: userId,
+        metadata: extracted.metadata
+      });
+
+      // Mark old fact as superseded
+      await KnowledgeService.invalidateFact(conflictCheck.relatedFactId, newFact.id);
+
+      return {
+        responseText: `Updated: "${oldFact?.content}" → "${extracted.content}"`,
+        factsCreated: [newFact],
+        metadata: {
+          command: 'remember',
+          action: 'updated',
+          oldFactId: conflictCheck.relatedFactId,
+          newFactId: newFact.id
+        }
+      };
+    }
+
+    // Default: Save as new fact
     const fact = await KnowledgeService.createFact(teamId, {
       content: extracted.content,
       category: extracted.category,
@@ -172,6 +234,144 @@ async function handleRemember(content, teamId, channelId, userId) {
       responseText: `I had trouble saving that. Error: ${error.message}`
     };
   }
+}
+
+/**
+ * Get the pending action from the last AI message in the channel
+ */
+async function getPendingAction(channelId) {
+  const result = await db.query(
+    `SELECT metadata FROM messages
+     WHERE channel_id = $1 AND is_ai = true
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [channelId]
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const metadata = result.rows[0].metadata;
+  if (typeof metadata === 'string') {
+    try {
+      return JSON.parse(metadata);
+    } catch {
+      return null;
+    }
+  }
+  return metadata;
+}
+
+/**
+ * Handle "yes, update" - confirm replacing an old fact
+ */
+async function handleConfirmUpdate(teamId, channelId, userId) {
+  try {
+    const pendingAction = await getPendingAction(channelId);
+
+    if (!pendingAction || pendingAction.pendingAction !== 'confirm_update') {
+      return {
+        responseText: "I don't have a pending update to confirm. What would you like me to remember?"
+      };
+    }
+
+    const { newFact, relatedFactId } = pendingAction;
+
+    // Get the old fact content for the response
+    const existingFacts = await KnowledgeService.getFacts(teamId, { limit: 100 });
+    const oldFact = existingFacts.find(f => f.id === relatedFactId);
+
+    // Create the new fact
+    const fact = await KnowledgeService.createFact(teamId, {
+      content: newFact.content,
+      category: newFact.category,
+      sourceType: 'conversation',
+      createdBy: userId,
+      metadata: newFact.metadata
+    });
+
+    // Mark old fact as superseded
+    await KnowledgeService.invalidateFact(relatedFactId, fact.id);
+
+    return {
+      responseText: `Updated: "${oldFact?.content}" → "${newFact.content}"`,
+      factsCreated: [fact],
+      metadata: {
+        command: 'confirm_update',
+        action: 'updated',
+        oldFactId: relatedFactId,
+        newFactId: fact.id
+      }
+    };
+  } catch (error) {
+    console.error('Confirm update error:', error);
+    return {
+      responseText: `Error updating: ${error.message}`
+    };
+  }
+}
+
+/**
+ * Handle "save anyway" - keep both old and new fact
+ */
+async function handleSaveAnyway(teamId, channelId, userId) {
+  try {
+    const pendingAction = await getPendingAction(channelId);
+
+    if (!pendingAction || pendingAction.pendingAction !== 'confirm_update') {
+      return {
+        responseText: "I don't have a pending fact to save. What would you like me to remember?"
+      };
+    }
+
+    const { newFact } = pendingAction;
+
+    // Save the new fact without invalidating the old one
+    const fact = await KnowledgeService.createFact(teamId, {
+      content: newFact.content,
+      category: newFact.category,
+      sourceType: 'conversation',
+      createdBy: userId,
+      metadata: newFact.metadata
+    });
+
+    return {
+      responseText: `Saved as additional fact: "${newFact.content}" [${newFact.category}]`,
+      factsCreated: [fact],
+      metadata: {
+        command: 'save_anyway',
+        action: 'saved_both',
+        newFactId: fact.id
+      }
+    };
+  } catch (error) {
+    console.error('Save anyway error:', error);
+    return {
+      responseText: `Error saving: ${error.message}`
+    };
+  }
+}
+
+/**
+ * Handle "nevermind" / "cancel" - abandon the pending action
+ */
+async function handleCancelAction(channelId) {
+  const pendingAction = await getPendingAction(channelId);
+
+  if (!pendingAction || !pendingAction.pendingAction) {
+    return {
+      responseText: "No problem. Let me know if you need anything else."
+    };
+  }
+
+  return {
+    responseText: "Okay, cancelled. The original fact remains unchanged.",
+    metadata: {
+      command: 'cancel_action',
+      action: 'cancelled'
+    }
+  };
 }
 
 /**

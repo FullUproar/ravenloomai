@@ -148,6 +148,19 @@ export function parseRavenCommand(content) {
     return { type: 'list_reminders' };
   }
 
+  // Confirmation commands for pending actions
+  if (lowerAfterRaven === 'yes, update' || lowerAfterRaven === 'yes update' || lowerAfterRaven.startsWith('yes,') || lowerAfterRaven === 'yes') {
+    return { type: 'confirm_update' };
+  }
+
+  if (lowerAfterRaven === 'save anyway' || lowerAfterRaven === 'save both' || lowerAfterRaven === 'keep both') {
+    return { type: 'save_anyway' };
+  }
+
+  if (lowerAfterRaven === 'nevermind' || lowerAfterRaven === 'cancel' || lowerAfterRaven === 'no' || lowerAfterRaven === 'nope') {
+    return { type: 'cancel_action' };
+  }
+
   // Default: treat as a query
   return {
     type: 'query',
@@ -557,6 +570,73 @@ Return ONLY valid JSON.`
 }
 
 /**
+ * Check if a new fact conflicts with or duplicates existing facts
+ * Returns: { action: 'save' | 'update' | 'ask_confirmation', ... }
+ */
+export async function checkFactConflict(newFact, existingFacts) {
+  if (existingFacts.length === 0) {
+    return { action: 'save', reason: 'No existing facts to compare' };
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You analyze whether a new fact conflicts with, duplicates, or updates existing knowledge.
+
+EXISTING FACTS:
+${existingFacts.map(f => `- ID: ${f.id} | "${f.content}" [${f.category}]`).join('\n')}
+
+NEW FACT TO SAVE: "${newFact.content}" [${newFact.category}]
+
+Analyze and return JSON:
+{
+  "action": "save" | "update" | "ask_confirmation",
+  "reason": "brief explanation",
+  "relatedFactId": "ID of related fact if any, null otherwise",
+  "relatedFactContent": "content of the related fact if any",
+  "isExplicitUpdate": true/false (true if user's phrasing indicates they're intentionally updating info, like "update X to Y", "change X", "actually it's Y"),
+  "conflictType": "duplicate" | "contradiction" | "update" | "none"
+}
+
+Decision rules:
+1. SAVE (action: "save"):
+   - New fact is about a different topic/entity than all existing facts
+   - New fact adds additional information (not contradicting existing)
+
+2. UPDATE (action: "update"):
+   - User's phrasing explicitly indicates an update: "update X to Y", "change X", "actually X is Y"
+   - Same topic, clearly newer/corrected information that should replace old
+
+3. ASK_CONFIRMATION (action: "ask_confirmation"):
+   - Facts appear to contradict without explicit update language
+   - Example: "The sky is red" when we have "The sky is blue" stored
+   - This prevents accidentally overwriting correct info with mistakes
+
+Return ONLY valid JSON.`
+    },
+    {
+      role: 'user',
+      content: `Check this new fact against existing knowledge`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 300,
+      temperature: 0
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    console.error('Fact conflict check error:', error);
+    // Default to saving if we can't check
+    return { action: 'save', reason: 'Could not check conflicts' };
+  }
+}
+
+/**
  * Extract facts from a regular message (for learning mode)
  */
 export async function extractFactsFromMessage(content) {
@@ -713,6 +793,7 @@ export default {
   extractDecision,
   findFactToForget,
   extractCorrection,
+  checkFactConflict,
   extractFactsFromMessage,
   callOpenAI,
   generateCompanyAnswer
