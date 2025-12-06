@@ -117,7 +117,11 @@ function App({ apolloClient }) {
 
   const handleCreateTeam = async (e) => {
     e.preventDefault();
-    if (!newTeamName.trim()) return;
+    console.log('handleCreateTeam called, team name:', newTeamName);
+    if (!newTeamName.trim()) {
+      console.log('Team name is empty, returning');
+      return;
+    }
 
     try {
       const { data } = await createTeam({
@@ -247,7 +251,10 @@ function App({ apolloClient }) {
             </form>
           ) : (
             <button
-              onClick={() => setShowCreateTeam(true)}
+              onClick={() => {
+                console.log('Create Team button clicked, showing form');
+                setShowCreateTeam(true);
+              }}
               className="btn-primary create-team-btn"
             >
               + Create Team
