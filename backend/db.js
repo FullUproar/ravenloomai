@@ -8,8 +8,11 @@ if (!process.env.VERCEL) {
 
 const { Pool } = pkg;
 
+// Vercel Postgres uses DB_POSTGRES_URL prefix when linked to project
+const connectionString = process.env.POSTGRES_URL || process.env.DB_POSTGRES_URL || process.env.DATABASE_URL;
+
 const db = new Pool({
-  connectionString: process.env.POSTGRES_URL || process.env.DATABASE_URL,
+  connectionString,
   ssl: process.env.NODE_ENV === 'production' || process.env.VERCEL ? { rejectUnauthorized: false } : false
 });
 

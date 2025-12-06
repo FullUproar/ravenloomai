@@ -23,16 +23,13 @@ const { Pool } = pg;
 let pool;
 function getPool() {
   if (!pool) {
-    const connString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
-    console.log('🔌 DB config:', {
-      POSTGRES_URL: process.env.POSTGRES_URL ? 'SET (' + process.env.POSTGRES_URL.substring(0, 25) + '...)' : 'NOT SET',
-      DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
-      NODE_ENV: process.env.NODE_ENV
-    });
+    // Vercel Postgres uses DB_POSTGRES_URL prefix when linked
+    const connString = process.env.POSTGRES_URL || process.env.DB_POSTGRES_URL || process.env.DATABASE_URL;
+    console.log('🔌 DB connected:', connString ? 'yes' : 'NO CONNECTION STRING!');
     pool = new Pool({
       connectionString: connString,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 1, // Serverless functions should use minimal connections
+      ssl: { rejectUnauthorized: false },
+      max: 1,
       connectionTimeoutMillis: 10000,
     });
   }
