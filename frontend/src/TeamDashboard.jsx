@@ -262,10 +262,10 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [lastInviteLink, setLastInviteLink] = useState(null);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const [activeView, setActiveView] = useState('chat'); // 'chat', 'tasks', or 'ask'
-  const [showCreateTask, setShowCreateTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState('medium');
   const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
+  const [addingTask, setAddingTask] = useState(false);
+  const taskInputRef = useRef(null);
   // Q&A state
   const [askQuestion, setAskQuestion] = useState('');
   const [askAnswer, setAskAnswer] = useState(null);
@@ -376,6 +376,60 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
     inputRef.current?.focus();
   }, [activeChannelId]);
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Don't trigger shortcuts if typing in an input
+      const isTyping = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+
+      // "/" to focus message input (when not already typing)
+      if (e.key === '/' && !isTyping && activeView === 'chat') {
+        e.preventDefault();
+        inputRef.current?.focus();
+        return;
+      }
+
+      // "Escape" to close popups or cancel reply
+      if (e.key === 'Escape') {
+        if (showMentions) {
+          setShowMentions(false);
+        } else if (showCommands) {
+          setShowCommands(false);
+        } else if (replyingTo) {
+          setReplyingTo(null);
+        } else if (showCreateChannel) {
+          setShowCreateChannel(false);
+        } else if (showInviteModal) {
+          setShowInviteModal(false);
+        }
+        return;
+      }
+
+      // Cmd/Ctrl + Enter to send (when in input)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && isTyping) {
+        // Form submit will handle this
+        return;
+      }
+
+      // Keyboard navigation between views
+      if (e.altKey && !isTyping) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveView('chat');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          setActiveView('tasks');
+        } else if (e.key === '3') {
+          e.preventDefault();
+          setActiveView('ask');
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [activeView, showMentions, showCommands, replyingTo, showCreateChannel, showInviteModal]);
+
   // ============================================================================
   // Handlers
   // ============================================================================
@@ -485,7 +539,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   };
 
   const handleCreateTask = async (e) => {
-    e.preventDefault();
+    e?.preventDefault();
     if (!newTaskTitle.trim()) return;
 
     try {
@@ -494,21 +548,42 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
           teamId,
           input: {
             title: newTaskTitle.trim(),
-            priority: newTaskPriority,
+            priority: 'medium',
             channelId: activeChannelId
           }
         }
       });
 
-      setShowCreateTask(false);
       setNewTaskTitle('');
-      setNewTaskPriority('medium');
+      setAddingTask(false);
       await refetchTasks();
     } catch (error) {
       console.error('Error creating task:', error);
       alert('Failed to create task: ' + error.message);
     }
   };
+
+  // Focus task input when adding
+  useEffect(() => {
+    if (addingTask && taskInputRef.current) {
+      taskInputRef.current.focus();
+    }
+  }, [addingTask]);
+
+  // Handle task input keyboard
+  const handleTaskInputKeyDown = (e) => {
+    if (e.key === 'Enter' && newTaskTitle.trim()) {
+      handleCreateTask();
+    } else if (e.key === 'Escape') {
+      setNewTaskTitle('');
+      setAddingTask(false);
+    }
+  };
+
+  // Group tasks by status for Asana-like sections
+  const todoTasks = tasks.filter(t => t.status === 'todo');
+  const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
+  const doneTasks = tasks.filter(t => t.status === 'done');
 
   const handleToggleTaskStatus = async (task) => {
     try {
@@ -1055,41 +1130,70 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
               <div className="messages-loading">Loading messages...</div>
             ) : messages.length === 0 ? (
               <div className="messages-empty">
-                <p>No messages yet.</p>
-                <p className="hint">
-                  Try: <code>@raven remember [something]</code> to save a fact
-                </p>
-                <p className="hint">
-                  Or: <code>@raven [question]</code> to ask something
-                </p>
+                <div className="empty-icon">💬</div>
+                <h4>No messages yet</h4>
+                <p>Start a conversation or ask Raven something</p>
+                <div className="empty-suggestions">
+                  <button className="suggestion-btn" onClick={() => setMessageInput('@raven remember ')}>
+                    @raven remember...
+                  </button>
+                  <button className="suggestion-btn" onClick={() => setMessageInput('@raven ')}>
+                    Ask Raven a question
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="messages-list">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`message ${message.isAi ? 'ai-message' : 'user-message'}`}
-                  >
-                    <div className="message-header">
-                      <span className="message-author">
-                        {message.isAi ? '🪶 Raven' : (message.user?.displayName || message.user?.email || 'User')}
-                      </span>
-                      <span className="message-time">
-                        {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <button
-                        className="message-reply-btn"
-                        onClick={() => handleReplyTo(message)}
-                        title="Reply to this message"
-                      >
-                        ↩
-                      </button>
+                {messages.map((message, index) => {
+                  // Check if this message should be grouped with previous
+                  const prevMessage = messages[index - 1];
+                  const isGrouped = prevMessage &&
+                    !message.isAi && !prevMessage.isAi &&
+                    message.user?.id === prevMessage.user?.id &&
+                    (new Date(message.createdAt) - new Date(prevMessage.createdAt)) < 5 * 60 * 1000; // 5 minutes
+
+                  // Check if this is the start of a new group (for AI messages)
+                  const isAiGrouped = prevMessage &&
+                    message.isAi && prevMessage.isAi &&
+                    (new Date(message.createdAt) - new Date(prevMessage.createdAt)) < 60 * 1000; // 1 minute for AI
+
+                  const shouldShowHeader = !isGrouped && !isAiGrouped;
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`message ${message.isAi ? 'ai-message' : 'user-message'} ${!shouldShowHeader ? 'grouped' : ''}`}
+                    >
+                      {shouldShowHeader && (
+                        <div className="message-header">
+                          <span className="message-avatar">
+                            {message.isAi ? '🪶' : (message.user?.displayName || message.user?.email || 'U')[0].toUpperCase()}
+                          </span>
+                          <span className="message-author">
+                            {message.isAi ? 'Raven' : (message.user?.displayName || message.user?.email || 'User')}
+                          </span>
+                          <span className="message-time">
+                            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      )}
+                      <div className={`message-body ${!shouldShowHeader ? 'no-header' : ''}`}>
+                        <div className="message-content">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                        </div>
+                        <div className="message-actions">
+                          <button
+                            className="action-btn reply-btn"
+                            onClick={() => handleReplyTo(message)}
+                            title="Reply"
+                          >
+                            ↩
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="message-content">
-                      <ReactMarkdown>{message.content}</ReactMarkdown>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={messagesEndRef} />
               </div>
             )}
@@ -1185,7 +1289,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                 className={`filter-btn ${taskFilter === 'open' ? 'active' : ''}`}
                 onClick={() => setTaskFilter('open')}
               >
-                Open
+                Open ({allTasks.filter(t => t.status !== 'done').length})
               </button>
               <button
                 className={`filter-btn ${taskFilter === 'my' ? 'active' : ''}`}
@@ -1200,125 +1304,242 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                 All
               </button>
             </div>
-            <button
-              className="btn-primary"
-              onClick={() => setShowCreateTask(true)}
-            >
-              + New Task
-            </button>
           </header>
 
           {/* Tasks List */}
           <div className="tasks-container">
-            {tasks.length === 0 ? (
-              <div className="tasks-empty">
-                <p>No tasks yet.</p>
-                <p className="hint">Create a task or use <code>@raven task [description]</code> in chat</p>
-              </div>
-            ) : (
-              <div className="tasks-list">
-                {tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className={`task-item ${task.status} priority-${task.priority}`}
-                  >
-                    <button
-                      className="task-checkbox"
-                      onClick={() => task.status === 'done' ? handleToggleTaskStatus(task) : handleCompleteTask(task.id)}
-                      title={task.status === 'done' ? 'Reopen task' : 'Complete task'}
-                    >
-                      {task.status === 'done' ? '✓' : task.status === 'in_progress' ? '▶' : '○'}
-                    </button>
-                    <div className="task-content">
-                      <span className="task-title">{task.title}</span>
-                      {task.description && (
-                        <span className="task-description">{task.description}</span>
-                      )}
-                      <div className="task-meta">
-                        {task.priority !== 'medium' && (
-                          <span className={`task-priority priority-${task.priority}`}>
-                            {task.priority}
-                          </span>
-                        )}
-                        {task.assignedToUser && (
-                          <span className="task-assignee">
-                            {task.assignedToUser.displayName || task.assignedToUser.email}
-                          </span>
-                        )}
-                        {task.dueAt && (
-                          <span className="task-due">
-                            Due: {new Date(task.dueAt).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="task-actions">
-                      {task.status === 'todo' && (
-                        <button
-                          className="task-action-btn"
-                          onClick={() => handleToggleTaskStatus(task)}
-                          title="Start working"
-                        >
-                          Start
-                        </button>
-                      )}
-                      {task.status === 'in_progress' && (
-                        <button
-                          className="task-action-btn"
-                          onClick={() => handleCompleteTask(task.id)}
-                          title="Mark complete"
-                        >
-                          Done
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Create Task Modal */}
-          {showCreateTask && (
-            <div className="modal-overlay" onClick={() => setShowCreateTask(false)}>
-              <div className="modal" onClick={(e) => e.stopPropagation()}>
-                <h3>New Task</h3>
-                <form onSubmit={handleCreateTask}>
+            {/* Inline Add Task */}
+            <div className="task-add-section">
+              {addingTask ? (
+                <div className="task-add-input-row">
+                  <span className="task-add-icon">○</span>
                   <input
+                    ref={taskInputRef}
                     type="text"
                     value={newTaskTitle}
                     onChange={(e) => setNewTaskTitle(e.target.value)}
-                    placeholder="Task title..."
-                    autoFocus
-                    className="input-field"
+                    onKeyDown={handleTaskInputKeyDown}
+                    onBlur={() => {
+                      if (!newTaskTitle.trim()) {
+                        setAddingTask(false);
+                      }
+                    }}
+                    placeholder="Write a task name..."
+                    className="task-add-input"
                   />
-                  <select
-                    value={newTaskPriority}
-                    onChange={(e) => setNewTaskPriority(e.target.value)}
-                    className="input-field"
-                  >
-                    <option value="low">Low Priority</option>
-                    <option value="medium">Medium Priority</option>
-                    <option value="high">High Priority</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                  <div className="form-actions">
-                    <button type="submit" className="btn-primary">Create Task</button>
+                  <div className="task-add-actions">
                     <button
-                      type="button"
-                      onClick={() => {
-                        setShowCreateTask(false);
-                        setNewTaskTitle('');
-                      }}
-                      className="btn-secondary"
+                      className="task-add-btn"
+                      onClick={handleCreateTask}
+                      disabled={!newTaskTitle.trim()}
                     >
-                      Cancel
+                      Add
+                    </button>
+                    <button
+                      className="task-cancel-btn"
+                      onClick={() => { setAddingTask(false); setNewTaskTitle(''); }}
+                    >
+                      ×
                     </button>
                   </div>
-                </form>
-              </div>
+                </div>
+              ) : (
+                <button className="task-add-trigger" onClick={() => setAddingTask(true)}>
+                  <span className="task-add-icon">+</span>
+                  <span>Add task...</span>
+                </button>
+              )}
             </div>
-          )}
+
+            {tasks.length === 0 && !addingTask ? (
+              <div className="tasks-empty">
+                <div className="tasks-empty-icon">✓</div>
+                <h4>No tasks yet</h4>
+                <p>Add a task above or use <code>@raven task</code> in chat</p>
+                <div className="tasks-empty-suggestions">
+                  <button className="suggestion-btn" onClick={() => setAddingTask(true)}>
+                    Create your first task
+                  </button>
+                  <button className="suggestion-btn" onClick={() => { setActiveView('chat'); setMessageInput('@raven task '); }}>
+                    Ask Raven to create a task
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="tasks-sections">
+                {/* In Progress Section */}
+                {inProgressTasks.length > 0 && (
+                  <div className="task-section">
+                    <div className="task-section-header">
+                      <span className="section-indicator in-progress"></span>
+                      <span className="section-title">In Progress</span>
+                      <span className="section-count">{inProgressTasks.length}</span>
+                    </div>
+                    <div className="tasks-list">
+                      {inProgressTasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className={`task-item in_progress priority-${task.priority}`}
+                        >
+                          <button
+                            className="task-checkbox"
+                            onClick={() => handleCompleteTask(task.id)}
+                            title="Mark complete"
+                          >
+                            <span className="checkbox-inner">▶</span>
+                          </button>
+                          <div className="task-content">
+                            <span className="task-title">{task.title}</span>
+                            {task.description && (
+                              <span className="task-description">{task.description}</span>
+                            )}
+                            <div className="task-meta">
+                              {task.priority !== 'medium' && (
+                                <span className={`task-priority priority-${task.priority}`}>
+                                  {task.priority}
+                                </span>
+                              )}
+                              {task.assignedToUser && (
+                                <span className="task-assignee">
+                                  {task.assignedToUser.displayName || task.assignedToUser.email}
+                                </span>
+                              )}
+                              {task.dueAt && (
+                                <span className={`task-due ${new Date(task.dueAt) < new Date() ? 'overdue' : ''}`}>
+                                  {new Date(task.dueAt) < new Date() ? 'Overdue: ' : 'Due: '}
+                                  {new Date(task.dueAt).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="task-hover-actions">
+                            <button
+                              className="task-action-btn complete"
+                              onClick={() => handleCompleteTask(task.id)}
+                              title="Mark complete"
+                            >
+                              ✓
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* To Do Section */}
+                {todoTasks.length > 0 && (
+                  <div className="task-section">
+                    <div className="task-section-header">
+                      <span className="section-indicator todo"></span>
+                      <span className="section-title">To Do</span>
+                      <span className="section-count">{todoTasks.length}</span>
+                    </div>
+                    <div className="tasks-list">
+                      {todoTasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className={`task-item todo priority-${task.priority}`}
+                        >
+                          <button
+                            className="task-checkbox"
+                            onClick={() => handleCompleteTask(task.id)}
+                            title="Mark complete"
+                          >
+                            <span className="checkbox-inner"></span>
+                          </button>
+                          <div className="task-content">
+                            <span className="task-title">{task.title}</span>
+                            {task.description && (
+                              <span className="task-description">{task.description}</span>
+                            )}
+                            <div className="task-meta">
+                              {task.priority !== 'medium' && (
+                                <span className={`task-priority priority-${task.priority}`}>
+                                  {task.priority}
+                                </span>
+                              )}
+                              {task.assignedToUser && (
+                                <span className="task-assignee">
+                                  {task.assignedToUser.displayName || task.assignedToUser.email}
+                                </span>
+                              )}
+                              {task.dueAt && (
+                                <span className={`task-due ${new Date(task.dueAt) < new Date() ? 'overdue' : ''}`}>
+                                  {new Date(task.dueAt) < new Date() ? 'Overdue: ' : 'Due: '}
+                                  {new Date(task.dueAt).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="task-hover-actions">
+                            <button
+                              className="task-action-btn start"
+                              onClick={() => handleToggleTaskStatus(task)}
+                              title="Start working"
+                            >
+                              ▶
+                            </button>
+                            <button
+                              className="task-action-btn complete"
+                              onClick={() => handleCompleteTask(task.id)}
+                              title="Mark complete"
+                            >
+                              ✓
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Completed Section (only in "all" filter) */}
+                {taskFilter === 'all' && doneTasks.length > 0 && (
+                  <div className="task-section completed-section">
+                    <div className="task-section-header">
+                      <span className="section-indicator done"></span>
+                      <span className="section-title">Completed</span>
+                      <span className="section-count">{doneTasks.length}</span>
+                    </div>
+                    <div className="tasks-list">
+                      {doneTasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className="task-item done"
+                        >
+                          <button
+                            className="task-checkbox"
+                            onClick={() => handleToggleTaskStatus(task)}
+                            title="Reopen task"
+                          >
+                            <span className="checkbox-inner">✓</span>
+                          </button>
+                          <div className="task-content">
+                            <span className="task-title">{task.title}</span>
+                            {task.completedAt && (
+                              <span className="task-completed-at">
+                                Completed {new Date(task.completedAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="task-hover-actions">
+                            <button
+                              className="task-action-btn reopen"
+                              onClick={() => handleToggleTaskStatus(task)}
+                              title="Reopen task"
+                            >
+                              ↩
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </main>
       ) : activeView === 'ask' ? (
         <main className="ask-area">
