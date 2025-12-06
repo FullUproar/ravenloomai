@@ -50,11 +50,15 @@ const server = new ApolloServer({
   },
 });
 
-// Create context with database connection
+// Create context with database connection and user ID
 const createContext = async (req) => {
+  // Extract user ID from x-user-id header (set by Apollo Client on frontend)
+  const userId = req.headers['x-user-id'] || null;
+
   return {
     req,
     db: getPool(),
+    userId,
   };
 };
 
@@ -79,7 +83,7 @@ const handler = async (req, res) => {
 
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Apollo-Require-Preflight');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Apollo-Require-Preflight, x-user-id');
 
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
