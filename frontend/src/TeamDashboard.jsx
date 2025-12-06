@@ -2137,7 +2137,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
                           input: {
                             name: newProjectName.trim(),
                             goalIds: newProjectGoalId ? [newProjectGoalId] : [],
-                            dueDate: newProjectDueDate || null
+                            dueDate: newProjectDueDate ? new Date(newProjectDueDate).toISOString() : null
                           }
                         }
                       });
