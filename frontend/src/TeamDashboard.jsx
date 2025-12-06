@@ -281,6 +281,8 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
   const [commandIndex, setCommandIndex] = useState(0);
   // Reply-to state
   const [replyingTo, setReplyingTo] = useState(null);
+  // Mobile sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Raven command suggestions
   const ravenCommands = [
@@ -497,6 +499,7 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
 
   const handleSelectChannel = (id) => {
     navigate(`/team/${teamId}/channel/${id}`);
+    setSidebarOpen(false); // Close sidebar on mobile after selection
   };
 
   const handleBackToTeams = () => {
@@ -888,8 +891,13 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
 
   return (
     <div className="team-dashboard">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         {/* Team Header */}
         <div className="sidebar-header">
           <button onClick={handleBackToTeams} className="back-btn">←</button>
@@ -1118,6 +1126,9 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
         <main className="chat-area">
           {/* Channel Header */}
           <header className="chat-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
             <h3># {activeChannel?.name || 'Select a channel'}</h3>
             {activeChannel?.description && (
               <p className="channel-description">{activeChannel.description}</p>
@@ -1283,6 +1294,9 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
         <main className="tasks-area">
           {/* Tasks Header */}
           <header className="tasks-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
             <h3>Tasks</h3>
             <div className="tasks-filters">
               <button
@@ -1545,6 +1559,9 @@ function TeamDashboard({ teamId, channelId, user, onSignOut }) {
         <main className="ask-area">
           {/* Ask Header */}
           <header className="ask-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
             <h3>Ask the Company</h3>
             <p className="ask-subtitle">Ask questions about your team's knowledge base</p>
           </header>
