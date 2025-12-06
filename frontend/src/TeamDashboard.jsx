@@ -2212,25 +2212,79 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   </div>
                 )}
 
-                {/* Low confidence - offer to post question to team */}
-                {askAnswer.confidence < 0.5 && !askAnswer.posted && (
-                  <div className="low-confidence-action">
-                    <p className="low-confidence-message">
-                      Raven isn't confident about this answer. Would you like to ask your team?
-                    </p>
-                    {!showPostQuestion ? (
-                      <button
-                        className="btn-primary"
-                        onClick={() => setShowPostQuestion(true)}
-                      >
-                        Post Question to Team
-                      </button>
+                {/* Post question to team - prominent when low confidence, subtle when high */}
+                {!askAnswer.posted && (
+                  askAnswer.confidence < 0.5 ? (
+                    // Low confidence - prominent prompt
+                    <div className="low-confidence-action">
+                      <p className="low-confidence-message">
+                        Raven isn't confident about this answer. Would you like to ask your team?
+                      </p>
+                      {!showPostQuestion ? (
+                        <button
+                          className="btn-primary"
+                          onClick={() => setShowPostQuestion(true)}
+                        >
+                          Post Question to Team
+                        </button>
+                      ) : (
+                        <div className="post-question-form">
+                          <textarea
+                            value={questionContext}
+                            onChange={(e) => setQuestionContext(e.target.value)}
+                            placeholder="Add any context that might help (optional)"
+                            className="question-context-input"
+                            rows={2}
+                          />
+                          <div className="assignee-select">
+                            <label>Assign to (optional):</label>
+                            <div className="assignee-options">
+                              {members.map(member => (
+                                <label key={member.userId} className="assignee-option">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedAssignees.includes(member.userId)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedAssignees([...selectedAssignees, member.userId]);
+                                      } else {
+                                        setSelectedAssignees(selectedAssignees.filter(id => id !== member.userId));
+                                      }
+                                    }}
+                                  />
+                                  {member.user?.displayName || member.user?.email}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="post-question-actions">
+                            <button className="btn-secondary" onClick={() => setShowPostQuestion(false)}>
+                              Cancel
+                            </button>
+                            <button className="btn-primary" onClick={handlePostQuestion}>
+                              Post Question
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // High confidence - subtle link (always available)
+                    !showPostQuestion ? (
+                      <div className="post-question-subtle">
+                        <button
+                          className="btn-link"
+                          onClick={() => setShowPostQuestion(true)}
+                        >
+                          Not satisfied? Post to team for verification
+                        </button>
+                      </div>
                     ) : (
-                      <div className="post-question-form">
+                      <div className="post-question-form compact">
                         <textarea
                           value={questionContext}
                           onChange={(e) => setQuestionContext(e.target.value)}
-                          placeholder="Add any context that might help (optional)"
+                          placeholder="Add any context (optional)"
                           className="question-context-input"
                           rows={2}
                         />
@@ -2264,8 +2318,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                           </button>
                         </div>
                       </div>
-                    )}
-                  </div>
+                    )
+                  )
                 )}
 
                 {/* Posted confirmation */}

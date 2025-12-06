@@ -3144,6 +3144,36 @@ button:active:not(:disabled),
   text-align: center;
 }
 
+/* Subtle post-to-team link (when confidence is high) */
+.post-question-subtle {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.post-question-subtle .btn-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  transition: color 0.15s;
+}
+
+.post-question-subtle .btn-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.post-question-form.compact {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+
 /* Team Questions Section */
 .team-questions-section {
   margin-top: 2rem;
