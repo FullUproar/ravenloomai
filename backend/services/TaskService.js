@@ -131,19 +131,35 @@ export async function getTaskById(taskId) {
 /**
  * Get tasks for a team
  */
-export async function getTasks(teamId, { projectId = null, status = null, assignedTo = null, limit = 100 } = {}) {
+export async function getTasks(teamId, { projectId = null, goalId = null, status = null, assignedTo = null, limit = 100 } = {}) {
   let query = `
-    SELECT t.*, u.display_name as assigned_to_name, u.email as assigned_to_email
+    SELECT DISTINCT t.*, u.display_name as assigned_to_name, u.email as assigned_to_email
     FROM tasks t
     LEFT JOIN users u ON t.assigned_to = u.id
-    WHERE t.team_id = $1
   `;
   const params = [teamId];
   let paramIndex = 2;
 
+  // Join with goal_tasks if filtering by goal
+  if (goalId) {
+    query += `
+      LEFT JOIN goal_tasks gt ON gt.task_id = t.id
+      LEFT JOIN goal_projects gp ON gp.project_id = t.project_id
+    `;
+  }
+
+  query += ` WHERE t.team_id = $1`;
+
   if (projectId) {
     query += ` AND t.project_id = $${paramIndex}`;
     params.push(projectId);
+    paramIndex++;
+  }
+
+  // Filter by goal - include tasks directly linked OR tasks in projects linked to the goal
+  if (goalId) {
+    query += ` AND (gt.goal_id = $${paramIndex} OR gp.goal_id = $${paramIndex})`;
+    params.push(goalId);
     paramIndex++;
   }
 
