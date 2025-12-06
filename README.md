@@ -153,6 +153,14 @@ Key tables:
 - Mobile app (Capacitor)
 - Proactive daily digests
 
+## Documentation
+
+- [Deployment Guide](DEPLOYMENT.md) - Deploy to Vercel
+- [Google Sign-In Setup](docs/GOOGLE_SIGNIN.md) - Firebase auth configuration
+- [Mobile Build Guide](docs/MOBILE_BUILD.md) - Android app build process
+- [Privacy Policy](PRIVACY_POLICY.md)
+- [Terms of Service](TERMS_OF_SERVICE.md)
+
 ## License
 
 MIT
