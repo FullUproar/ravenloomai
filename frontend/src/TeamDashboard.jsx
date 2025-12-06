@@ -2160,7 +2160,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
               <span></span><span></span><span></span>
             </button>
-            <h3>Goals & Projects</h3>
+            <h3>Goals</h3>
             <button className="btn-primary btn-small" onClick={() => setShowCreateGoal(true)}>
               + New Goal
             </button>

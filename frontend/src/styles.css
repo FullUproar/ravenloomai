@@ -2075,6 +2075,9 @@ button:active:not(:disabled),
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .tasks-header h3 {
@@ -3083,6 +3086,9 @@ button:active:not(:disabled),
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .goals-header h3 {
@@ -3402,6 +3408,9 @@ button:active:not(:disabled),
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .projects-header h3 {
