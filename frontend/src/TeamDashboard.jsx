@@ -715,12 +715,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     fetchPolicy: 'network-only'
   });
 
-  // Team questions
-  const { data: questionsData, refetch: refetchQuestions } = useQuery(GET_TEAM_QUESTIONS, {
+  // Team questions - with error handling for when table doesn't exist
+  const { data: questionsData, refetch: refetchQuestions, error: questionsError } = useQuery(GET_TEAM_QUESTIONS, {
     variables: { teamId, status: showOpenQuestions ? 'open' : null },
-    skip: !teamId || activeView !== 'ask'
+    skip: !teamId || activeView !== 'ask',
+    errorPolicy: 'all'
   });
   const teamQuestions = questionsData?.getTeamQuestions || [];
+  const teamQuestionsAvailable = !questionsError;
 
   const [createTeamQuestion] = useMutation(CREATE_TEAM_QUESTION);
   const [answerTeamQuestion] = useMutation(ANSWER_TEAM_QUESTION);
@@ -2213,7 +2215,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 )}
 
                 {/* Post question to team - prominent when low confidence, subtle when high */}
-                {!askAnswer.posted && (
+                {teamQuestionsAvailable && !askAnswer.posted && (
                   askAnswer.confidence < 0.5 ? (
                     // Low confidence - prominent prompt
                     <div className="low-confidence-action">
@@ -2395,7 +2397,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
 
-            {/* Team Questions Section */}
+            {/* Team Questions Section - only show if feature is available */}
+            {teamQuestionsAvailable && (
             <div className="team-questions-section">
               <div className="team-questions-header">
                 <h4>Team Questions</h4>
@@ -2489,6 +2492,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 </div>
               )}
             </div>
+            )}
           </div>
         </main>
       ) : activeView === 'goals' ? (
