@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS team_questions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    asked_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    asked_by VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     question TEXT NOT NULL,
 
     -- The AI's initial answer attempt (if any)
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS team_questions (
 
     -- The accepted human answer
     answer TEXT,
-    answered_by UUID REFERENCES users(id),
+    answered_by VARCHAR(128) REFERENCES users(id),
     answered_at TIMESTAMPTZ,
 
     -- Optional context
@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS team_questions (
 CREATE TABLE IF NOT EXISTS question_assignees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     question_id UUID NOT NULL REFERENCES team_questions(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    assigned_by UUID REFERENCES users(id),
+    user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    assigned_by VARCHAR(128) REFERENCES users(id),
     assigned_at TIMESTAMPTZ DEFAULT NOW(),
     notified BOOLEAN DEFAULT false,
     UNIQUE(question_id, user_id)
