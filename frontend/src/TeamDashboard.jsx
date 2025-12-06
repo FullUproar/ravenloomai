@@ -476,6 +476,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskProjectId, setNewTaskProjectId] = useState('');
   const [newTaskGoalId, setNewTaskGoalId] = useState('');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('');
+  const [statusPopupTaskId, setStatusPopupTaskId] = useState(null);
   const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
   const [addingTask, setAddingTask] = useState(false);
   const taskInputRef = useRef(null);
@@ -500,7 +502,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [expandedSections, setExpandedSections] = useState({
     channels: true,
     tasks: false,
-    goals: false
+    goals: false,
+    projects: false
   });
   // Goals state
   const [showCreateGoal, setShowCreateGoal] = useState(false);
@@ -842,7 +845,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             priority: 'medium',
             channelId: activeChannelId,
             projectId: newTaskProjectId || null,
-            goalIds: newTaskGoalId ? [newTaskGoalId] : []
+            goalIds: newTaskGoalId ? [newTaskGoalId] : [],
+            dueAt: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null
           }
         }
       });
@@ -850,6 +854,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       setNewTaskTitle('');
       setNewTaskProjectId('');
       setNewTaskGoalId('');
+      setNewTaskDueDate('');
       setAddingTask(false);
       await refetchTasks();
     } catch (error) {
@@ -876,9 +881,39 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   };
 
   // Group tasks by status for Asana-like sections
+  const backlogTasks = tasks.filter(t => t.status === 'backlog');
   const todoTasks = tasks.filter(t => t.status === 'todo');
   const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
+  const blockedTasks = tasks.filter(t => t.status === 'blocked');
   const doneTasks = tasks.filter(t => t.status === 'done');
+
+  // Status icons and colors
+  const statusConfig = {
+    backlog: { icon: '📋', label: 'Backlog', color: 'var(--text-muted)' },
+    todo: { icon: '○', label: 'To Do', color: 'var(--text-muted)' },
+    in_progress: { icon: '◐', label: 'In Progress', color: 'var(--cta)' },
+    blocked: { icon: '⛔', label: 'Blocked', color: 'var(--pop)' },
+    done: { icon: '✓', label: 'Done', color: 'var(--success)' }
+  };
+
+  const handleStatusChange = async (taskId, newStatus) => {
+    setStatusPopupTaskId(null);
+    try {
+      if (newStatus === 'done') {
+        await completeTask({ variables: { taskId } });
+      } else {
+        await updateTask({
+          variables: {
+            taskId,
+            input: { status: newStatus }
+          }
+        });
+      }
+      await refetchTasks();
+    } catch (error) {
+      console.error('Error updating task status:', error);
+    }
+  };
 
   const handleToggleTaskStatus = async (task) => {
     try {
@@ -1345,12 +1380,36 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <span className="nav-item-icon">+</span>
                   <span className="nav-item-label">New Goal</span>
                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* Projects Section */}
+          <div className={`nav-section ${expandedSections.projects ? 'expanded' : ''}`}>
+            <button
+              className={`nav-section-header ${activeView === 'projects' ? 'active' : ''}`}
+              onClick={() => toggleSection('projects')}
+            >
+              <span className="nav-expand-icon">{expandedSections.projects ? '▼' : '▶'}</span>
+              <span className="nav-icon">📁</span>
+              <span className="nav-label">Projects</span>
+              {projects.length > 0 && <span className="nav-count">{projects.length}</span>}
+            </button>
+            {expandedSections.projects && (
+              <div className="nav-children">
+                <button
+                  className={`nav-item ${activeView === 'projects' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('projects', 'projects')}
+                >
+                  <span className="nav-item-icon">📊</span>
+                  <span className="nav-item-label">All Projects</span>
+                </button>
                 <button
                   className="nav-item nav-action"
                   onClick={() => {
-                    setActiveView('goals');
+                    setActiveView('projects');
                     setShowCreateProject(true);
-                    refetchGoals();
+                    refetchProjects();
                     setSidebarOpen(false);
                   }}
                 >
@@ -1783,11 +1842,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                         <option key={g.id} value={g.id}>{g.title}</option>
                       ))}
                     </select>
+                    <input
+                      type="date"
+                      className="task-add-date"
+                      value={newTaskDueDate}
+                      onChange={(e) => setNewTaskDueDate(e.target.value)}
+                      placeholder="Due date"
+                    />
                   </div>
                   <div className="task-add-actions">
                     <button
                       className="task-cancel-btn"
-                      onClick={() => { setAddingTask(false); setNewTaskTitle(''); setNewTaskProjectId(''); setNewTaskGoalId(''); }}
+                      onClick={() => { setAddingTask(false); setNewTaskTitle(''); setNewTaskProjectId(''); setNewTaskGoalId(''); setNewTaskDueDate(''); }}
                     >
                       Cancel
                     </button>
@@ -1824,169 +1890,145 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             ) : (
               <div className="tasks-sections">
-                {/* In Progress Section */}
-                {inProgressTasks.length > 0 && (
-                  <div className="task-section">
-                    <div className="task-section-header">
-                      <span className="section-indicator in-progress"></span>
-                      <span className="section-title">In Progress</span>
-                      <span className="section-count">{inProgressTasks.length}</span>
-                    </div>
-                    <div className="tasks-list">
-                      {inProgressTasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className={`task-item in_progress priority-${task.priority} ${selectedTaskId === task.id ? 'selected' : ''}`}
-                          onClick={() => setSelectedTaskId(task.id)}
-                        >
-                          <select
-                            className="task-status-select in_progress"
-                            value={task.status}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              if (e.target.value === 'done') {
-                                handleCompleteTask(task.id);
-                              } else {
-                                handleToggleTaskStatus({ ...task, status: e.target.value });
-                              }
-                            }}
-                          >
-                            <option value="todo">To Do</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="done">Done</option>
-                          </select>
-                          <div className="task-content">
-                            <span className="task-title">{task.title}</span>
-                            <div className="task-meta">
-                              {task.priority !== 'medium' && (
-                                <span className={`task-priority priority-${task.priority}`}>
-                                  {task.priority}
-                                </span>
-                              )}
-                              {task.project && (
-                                <span className="task-project">{task.project.name}</span>
-                              )}
-                              {task.assignedToUser && (
-                                <span className="task-assignee">
-                                  {task.assignedToUser.displayName || task.assignedToUser.email}
-                                </span>
-                              )}
-                              {task.dueAt && (
-                                <span className={`task-due ${new Date(task.dueAt) < new Date() ? 'overdue' : ''}`}>
-                                  {new Date(task.dueAt).toLocaleDateString()}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                {/* Task Item Renderer */}
+                {(() => {
+                  const renderTaskItem = (task) => (
+                    <div
+                      key={task.id}
+                      className={`task-item ${task.status} priority-${task.priority || 'medium'} ${selectedTaskId === task.id ? 'selected' : ''}`}
+                      onClick={() => setSelectedTaskId(task.id)}
+                    >
+                      <div className="task-content">
+                        <span className="task-title">{task.title}</span>
+                        <div className="task-meta">
+                          {task.priority && task.priority !== 'medium' && (
+                            <span className={`task-priority priority-${task.priority}`}>
+                              {task.priority}
+                            </span>
+                          )}
+                          {task.project && (
+                            <span className="task-project">{task.project.name}</span>
+                          )}
+                          {task.assignedToUser && (
+                            <span className="task-assignee">
+                              {task.assignedToUser.displayName || task.assignedToUser.email}
+                            </span>
+                          )}
+                          {task.dueAt && (
+                            <span className={`task-due ${new Date(task.dueAt) < new Date() ? 'overdue' : ''}`}>
+                              {new Date(task.dueAt).toLocaleDateString()}
+                            </span>
+                          )}
+                          {task.status === 'done' && task.completedAt && (
+                            <span className="task-completed-at">
+                              Completed {new Date(task.completedAt).toLocaleDateString()}
+                            </span>
+                          )}
                         </div>
-                      ))}
+                      </div>
+                      <div className="task-status-wrapper">
+                        <button
+                          className={`task-status-icon ${task.status}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setStatusPopupTaskId(statusPopupTaskId === task.id ? null : task.id);
+                          }}
+                          title={statusConfig[task.status]?.label || task.status}
+                        >
+                          {statusConfig[task.status]?.icon || '○'}
+                        </button>
+                        {statusPopupTaskId === task.id && (
+                          <div className="status-popup" onClick={(e) => e.stopPropagation()}>
+                            {Object.entries(statusConfig).map(([status, config]) => (
+                              <button
+                                key={status}
+                                className={`status-option ${task.status === status ? 'active' : ''}`}
+                                onClick={() => handleStatusChange(task.id, status)}
+                              >
+                                <span className="status-option-icon" style={{ color: config.color }}>{config.icon}</span>
+                                <span className="status-option-label">{config.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
 
-                {/* To Do Section */}
-                {todoTasks.length > 0 && (
-                  <div className="task-section">
-                    <div className="task-section-header">
-                      <span className="section-indicator todo"></span>
-                      <span className="section-title">To Do</span>
-                      <span className="section-count">{todoTasks.length}</span>
-                    </div>
-                    <div className="tasks-list">
-                      {todoTasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className={`task-item todo priority-${task.priority} ${selectedTaskId === task.id ? 'selected' : ''}`}
-                          onClick={() => setSelectedTaskId(task.id)}
-                        >
-                          <select
-                            className="task-status-select todo"
-                            value={task.status}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              if (e.target.value === 'done') {
-                                handleCompleteTask(task.id);
-                              } else {
-                                handleToggleTaskStatus({ ...task, status: e.target.value });
-                              }
-                            }}
-                          >
-                            <option value="todo">To Do</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="done">Done</option>
-                          </select>
-                          <div className="task-content">
-                            <span className="task-title">{task.title}</span>
-                            <div className="task-meta">
-                              {task.priority !== 'medium' && (
-                                <span className={`task-priority priority-${task.priority}`}>
-                                  {task.priority}
-                                </span>
-                              )}
-                              {task.project && (
-                                <span className="task-project">{task.project.name}</span>
-                              )}
-                              {task.assignedToUser && (
-                                <span className="task-assignee">
-                                  {task.assignedToUser.displayName || task.assignedToUser.email}
-                                </span>
-                              )}
-                              {task.dueAt && (
-                                <span className={`task-due ${new Date(task.dueAt) < new Date() ? 'overdue' : ''}`}>
-                                  {new Date(task.dueAt).toLocaleDateString()}
-                                </span>
-                              )}
-                            </div>
+                  return (
+                    <>
+                      {/* Blocked Section */}
+                      {blockedTasks.length > 0 && (
+                        <div className="task-section">
+                          <div className="task-section-header">
+                            <span className="section-indicator blocked"></span>
+                            <span className="section-title">Blocked</span>
+                            <span className="section-count">{blockedTasks.length}</span>
+                          </div>
+                          <div className="tasks-list">
+                            {blockedTasks.map(renderTaskItem)}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      )}
 
-                {/* Completed Section (only in "all" filter) */}
-                {taskFilter === 'all' && doneTasks.length > 0 && (
-                  <div className="task-section completed-section">
-                    <div className="task-section-header">
-                      <span className="section-indicator done"></span>
-                      <span className="section-title">Completed</span>
-                      <span className="section-count">{doneTasks.length}</span>
-                    </div>
-                    <div className="tasks-list">
-                      {doneTasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className={`task-item done ${selectedTaskId === task.id ? 'selected' : ''}`}
-                          onClick={() => setSelectedTaskId(task.id)}
-                        >
-                          <select
-                            className="task-status-select done"
-                            value={task.status}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              handleToggleTaskStatus({ ...task, status: e.target.value });
-                            }}
-                          >
-                            <option value="todo">To Do</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="done">Done</option>
-                          </select>
-                          <div className="task-content">
-                            <span className="task-title">{task.title}</span>
-                            {task.completedAt && (
-                              <span className="task-completed-at">
-                                Completed {new Date(task.completedAt).toLocaleDateString()}
-                              </span>
-                            )}
+                      {/* In Progress Section */}
+                      {inProgressTasks.length > 0 && (
+                        <div className="task-section">
+                          <div className="task-section-header">
+                            <span className="section-indicator in-progress"></span>
+                            <span className="section-title">In Progress</span>
+                            <span className="section-count">{inProgressTasks.length}</span>
+                          </div>
+                          <div className="tasks-list">
+                            {inProgressTasks.map(renderTaskItem)}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      )}
+
+                      {/* To Do Section */}
+                      {todoTasks.length > 0 && (
+                        <div className="task-section">
+                          <div className="task-section-header">
+                            <span className="section-indicator todo"></span>
+                            <span className="section-title">To Do</span>
+                            <span className="section-count">{todoTasks.length}</span>
+                          </div>
+                          <div className="tasks-list">
+                            {todoTasks.map(renderTaskItem)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Backlog Section */}
+                      {backlogTasks.length > 0 && (
+                        <div className="task-section">
+                          <div className="task-section-header">
+                            <span className="section-indicator backlog"></span>
+                            <span className="section-title">Backlog</span>
+                            <span className="section-count">{backlogTasks.length}</span>
+                          </div>
+                          <div className="tasks-list">
+                            {backlogTasks.map(renderTaskItem)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Completed Section (only in "all" filter) */}
+                      {taskFilter === 'all' && doneTasks.length > 0 && (
+                        <div className="task-section completed-section">
+                          <div className="task-section-header">
+                            <span className="section-indicator done"></span>
+                            <span className="section-title">Completed</span>
+                            <span className="section-count">{doneTasks.length}</span>
+                          </div>
+                          <div className="tasks-list">
+                            {doneTasks.map(renderTaskItem)}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -2384,6 +2426,145 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </div>
         </main>
+      ) : activeView === 'projects' ? (
+        <main className="projects-area">
+          {/* Projects Header */}
+          <header className="projects-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
+            <h3>Projects</h3>
+            <button className="btn-primary btn-small" onClick={() => setShowCreateProject(true)}>
+              + New Project
+            </button>
+          </header>
+
+          <div className="projects-content">
+            {/* Create Project Modal */}
+            {showCreateProject && (
+              <div className="modal-overlay" onClick={() => setShowCreateProject(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <h3>Create Project</h3>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newProjectName.trim()) return;
+                    try {
+                      await createProject({
+                        variables: {
+                          teamId,
+                          input: {
+                            name: newProjectName.trim(),
+                            goalIds: newProjectGoalId ? [newProjectGoalId] : [],
+                            dueDate: newProjectDueDate ? new Date(newProjectDueDate).toISOString() : null
+                          }
+                        }
+                      });
+                      setNewProjectName('');
+                      setNewProjectGoalId('');
+                      setNewProjectDueDate('');
+                      setShowCreateProject(false);
+                      refetchProjects();
+                    } catch (err) {
+                      alert('Failed to create project: ' + err.message);
+                    }
+                  }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="Project name"
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      autoFocus
+                    />
+                    <input
+                      type="date"
+                      className="input-field"
+                      style={{ marginTop: '0.75rem' }}
+                      placeholder="Due date (optional)"
+                      value={newProjectDueDate}
+                      onChange={(e) => setNewProjectDueDate(e.target.value)}
+                    />
+                    <select
+                      className="input-field"
+                      style={{ marginTop: '0.75rem' }}
+                      value={newProjectGoalId}
+                      onChange={(e) => setNewProjectGoalId(e.target.value)}
+                    >
+                      <option value="">No goal (standalone)</option>
+                      {goals.map(g => (
+                        <option key={g.id} value={g.id}>{g.title}</option>
+                      ))}
+                    </select>
+                    <div className="form-actions">
+                      <button type="button" className="btn-secondary" onClick={() => setShowCreateProject(false)}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn-primary" disabled={!newProjectName.trim()}>
+                        Create Project
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Projects List */}
+            {projects.length === 0 ? (
+              <div className="projects-empty">
+                <div className="projects-empty-icon">📁</div>
+                <h4>No projects yet</h4>
+                <p>Projects help you organize tasks and track progress toward goals.</p>
+                <button className="btn-primary" onClick={() => setShowCreateProject(true)}>
+                  Create Your First Project
+                </button>
+              </div>
+            ) : (
+              <div className="all-projects-grid">
+                {projects.map(proj => (
+                  <div key={proj.id} className={`project-card-full ${proj.status}`} style={{ borderLeftColor: proj.color || '#5D4B8C' }}>
+                    <div className="project-card-header">
+                      <h4>{proj.name}</h4>
+                      <span className={`project-status-badge ${proj.status}`}>{proj.status}</span>
+                    </div>
+                    {proj.description && (
+                      <p className="project-description">{proj.description}</p>
+                    )}
+                    <div className="project-stats">
+                      <div className="stat">
+                        <span className="stat-value">{proj.taskCount || 0}</span>
+                        <span className="stat-label">Tasks</span>
+                      </div>
+                      <div className="stat">
+                        <span className="stat-value">{proj.completedTaskCount || 0}</span>
+                        <span className="stat-label">Done</span>
+                      </div>
+                      {proj.dueDate && (
+                        <div className="stat">
+                          <span className="stat-value">{new Date(proj.dueDate).toLocaleDateString()}</span>
+                          <span className="stat-label">Due</span>
+                        </div>
+                      )}
+                    </div>
+                    {proj.goals?.length > 0 && (
+                      <div className="project-goals">
+                        <span className="goals-label">Goals:</span>
+                        {proj.goals.map(g => (
+                          <span key={g.id} className="goal-tag">{g.title}</span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="project-progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${proj.taskCount ? (proj.completedTaskCount / proj.taskCount) * 100 : 0}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
       ) : null}
 
       {/* Task Detail Panel (Slide-over) */}
@@ -2415,8 +2596,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       refetchTasks();
                     }}
                   >
+                    <option value="backlog">Backlog</option>
                     <option value="todo">To Do</option>
                     <option value="in_progress">In Progress</option>
+                    <option value="blocked">Blocked</option>
                     <option value="done">Done</option>
                   </select>
                 </div>
