@@ -135,7 +135,10 @@ const resolvers = {
 
     // Goals
     getGoals: async (_, { teamId, status }) => {
-      return GoalService.getGoals(teamId, status);
+      console.log('[getGoals] teamId:', teamId, 'status:', status);
+      const goals = await GoalService.getGoals(teamId, status);
+      console.log('[getGoals] returning', goals.length, 'goals');
+      return goals;
     },
 
     getGoal: async (_, { goalId }) => {
@@ -148,7 +151,10 @@ const resolvers = {
 
     // Projects & Tasks
     getProjects: async (_, { teamId, goalId, status }) => {
-      return ProjectService.getProjects(teamId, { goalId, status });
+      console.log('[getProjects] teamId:', teamId, 'goalId:', goalId, 'status:', status);
+      const projects = await ProjectService.getProjects(teamId, { goalId, status });
+      console.log('[getProjects] returning', projects.length, 'projects');
+      return projects;
     },
 
     getProject: async (_, { projectId }) => {
@@ -156,7 +162,10 @@ const resolvers = {
     },
 
     getTasks: async (_, { teamId, projectId, goalId, status, assignedTo }) => {
-      return TaskService.getTasks(teamId, { projectId, goalId, status, assignedTo });
+      console.log('[getTasks] teamId:', teamId, 'projectId:', projectId, 'goalId:', goalId, 'status:', status);
+      const tasks = await TaskService.getTasks(teamId, { projectId, goalId, status, assignedTo });
+      console.log('[getTasks] returning', tasks.length, 'tasks');
+      return tasks;
     },
 
     getTask: async (_, { taskId }) => {
