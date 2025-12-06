@@ -16,6 +16,7 @@ import ProjectService from '../../services/ProjectService.js';
 import ThreadService from '../../services/ThreadService.js';
 import DigestService from '../../services/DigestService.js';
 import AIService from '../../services/AIService.js';
+import * as GoalService from '../../services/GoalService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -132,9 +133,18 @@ const resolvers = {
       return AlertService.getPendingAlerts(teamId);
     },
 
+    // Goals
+    getGoals: async (_, { teamId, status }) => {
+      return GoalService.getGoals(teamId, status);
+    },
+
+    getGoal: async (_, { goalId }) => {
+      return GoalService.getGoal(goalId);
+    },
+
     // Projects & Tasks
-    getProjects: async (_, { teamId }) => {
-      return ProjectService.getProjects(teamId);
+    getProjects: async (_, { teamId, goalId, status }) => {
+      return ProjectService.getProjects(teamId, { goalId, status });
     },
 
     getProject: async (_, { projectId }) => {
@@ -147,6 +157,14 @@ const resolvers = {
 
     getTask: async (_, { taskId }) => {
       return TaskService.getTaskById(taskId);
+    },
+
+    getTaskComments: async (_, { taskId }) => {
+      return TaskService.getTaskComments(taskId);
+    },
+
+    getTaskActivity: async (_, { taskId }) => {
+      return TaskService.getTaskActivity(taskId);
     },
 
     // Team Invites
@@ -299,6 +317,20 @@ const resolvers = {
       return AlertService.cancelAlert(alertId);
     },
 
+    // Goals
+    createGoal: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return GoalService.createGoal(teamId, input, userId);
+    },
+
+    updateGoal: async (_, { goalId, input }, { userId }) => {
+      return GoalService.updateGoal(goalId, input, userId);
+    },
+
+    deleteGoal: async (_, { goalId }) => {
+      return GoalService.deleteGoal(goalId);
+    },
+
     // Projects
     createProject: async (_, { teamId, input }, { userId }) => {
       return ProjectService.createProject(teamId, { ...input, createdBy: userId });
@@ -317,16 +349,38 @@ const resolvers = {
       return TaskService.createTask(teamId, { ...input, createdBy: userId });
     },
 
-    updateTask: async (_, { taskId, input }) => {
+    updateTask: async (_, { taskId, input }, { userId }) => {
       return TaskService.updateTask(taskId, input);
     },
 
-    completeTask: async (_, { taskId }) => {
-      return TaskService.completeTask(taskId);
+    completeTask: async (_, { taskId }, { userId }) => {
+      return TaskService.completeTask(taskId, userId);
+    },
+
+    reopenTask: async (_, { taskId }, { userId }) => {
+      return TaskService.reopenTask(taskId, userId);
     },
 
     deleteTask: async (_, { taskId }) => {
       return TaskService.deleteTask(taskId);
+    },
+
+    reorderTasks: async (_, { projectId, taskIds }) => {
+      return TaskService.reorderTasks(projectId, taskIds);
+    },
+
+    // Task Comments
+    addTaskComment: async (_, { taskId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TaskService.addTaskComment(taskId, userId, input.content, input.parentCommentId);
+    },
+
+    updateTaskComment: async (_, { commentId, content }) => {
+      return TaskService.updateTaskComment(commentId, content);
+    },
+
+    deleteTaskComment: async (_, { commentId }) => {
+      return TaskService.deleteTaskComment(commentId);
     }
   },
 
@@ -372,9 +426,98 @@ const resolvers = {
     }
   },
 
+  Goal: {
+    owner: async (goal) => {
+      if (!goal.ownerId) return null;
+      return UserService.getUserById(goal.ownerId);
+    },
+
+    parentGoal: async (goal) => {
+      if (!goal.parentGoalId) return null;
+      return GoalService.getGoal(goal.parentGoalId);
+    },
+
+    childGoals: async (goal) => {
+      return GoalService.getChildGoals(goal.id);
+    },
+
+    projects: async (goal) => {
+      return GoalService.getProjectsForGoal(goal.id);
+    }
+  },
+
   Project: {
+    goal: async (project) => {
+      if (!project.goalId) return null;
+      return GoalService.getGoal(project.goalId);
+    },
+
+    owner: async (project) => {
+      if (!project.ownerId) return null;
+      return UserService.getUserById(project.ownerId);
+    },
+
     tasks: async (project) => {
       return TaskService.getTasks(project.teamId, { projectId: project.id });
+    },
+
+    taskCount: async (project) => {
+      const tasks = await TaskService.getTasks(project.teamId, { projectId: project.id });
+      return tasks.length;
+    },
+
+    completedTaskCount: async (project) => {
+      const tasks = await TaskService.getTasks(project.teamId, { projectId: project.id, status: 'done' });
+      return tasks.length;
+    }
+  },
+
+  Task: {
+    project: async (task) => {
+      if (!task.projectId) return null;
+      return ProjectService.getProjectById(task.projectId);
+    },
+
+    assignedToUser: async (task) => {
+      if (!task.assignedTo) return null;
+      return UserService.getUserById(task.assignedTo);
+    },
+
+    createdByUser: async (task) => {
+      if (!task.createdBy) return null;
+      return UserService.getUserById(task.createdBy);
+    },
+
+    comments: async (task) => {
+      return TaskService.getTaskComments(task.id);
+    },
+
+    commentCount: async (task) => {
+      return TaskService.getTaskCommentCount(task.id);
+    },
+
+    activity: async (task) => {
+      return TaskService.getTaskActivity(task.id);
+    }
+  },
+
+  TaskComment: {
+    user: async (comment) => {
+      if (!comment.userId) return null;
+      return UserService.getUserById(comment.userId);
+    },
+
+    replies: async (comment) => {
+      // Get replies to this comment
+      const allComments = await TaskService.getTaskComments(comment.taskId);
+      return allComments.filter(c => c.parentCommentId === comment.id);
+    }
+  },
+
+  TaskActivity: {
+    user: async (activity) => {
+      if (!activity.userId) return null;
+      return UserService.getUserById(activity.userId);
     }
   },
 

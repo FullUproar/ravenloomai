@@ -181,17 +181,45 @@ export default gql`
   }
 
   # ============================================================================
-  # PROJECT & TASK TYPES (Simplified)
+  # GOALS, PROJECTS & TASKS
   # ============================================================================
+
+  type Goal {
+    id: ID!
+    teamId: ID!
+    title: String!
+    description: String
+    targetDate: DateTime
+    startDate: DateTime
+    status: String!  # active, achieved, abandoned, paused
+    progress: Int!   # 0-100
+    owner: User
+    ownerId: String
+    createdBy: String
+    parentGoalId: ID
+    parentGoal: Goal
+    childGoals: [Goal!]!
+    projects: [Project!]!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
 
   type Project {
     id: ID!
     teamId: ID!
+    goalId: ID
+    goal: Goal
     name: String!
     description: String
     status: String!  # active, completed, archived
+    color: String
+    dueDate: DateTime
+    owner: User
+    ownerId: String
     createdBy: String
     tasks: [Task!]!
+    taskCount: Int!
+    completedTaskCount: Int!
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -200,6 +228,7 @@ export default gql`
     id: ID!
     teamId: ID!
     projectId: ID
+    project: Project
     channelId: ID
     title: String!
     description: String
@@ -208,11 +237,43 @@ export default gql`
     assignedTo: String
     assignedToUser: User
     dueAt: DateTime
+    startDate: DateTime
     completedAt: DateTime
+    estimatedHours: Float
+    actualHours: Float
+    tags: [String!]
+    sortOrder: Int
     createdBy: String
+    createdByUser: User
     sourceMessageId: ID
+    comments: [TaskComment!]!
+    commentCount: Int!
+    activity: [TaskActivity!]!
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  type TaskComment {
+    id: ID!
+    taskId: ID!
+    userId: String!
+    user: User!
+    content: String!
+    parentCommentId: ID
+    replies: [TaskComment!]
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  type TaskActivity {
+    id: ID!
+    taskId: ID!
+    userId: String
+    user: User
+    action: String!  # created, status_changed, assigned, commented, due_date_set
+    oldValue: String
+    newValue: String
+    createdAt: DateTime!
   }
 
   # ============================================================================
@@ -286,15 +347,42 @@ export default gql`
     relatedFactId: ID
   }
 
+  input CreateGoalInput {
+    title: String!
+    description: String
+    targetDate: DateTime
+    startDate: DateTime
+    ownerId: String
+    parentGoalId: ID
+  }
+
+  input UpdateGoalInput {
+    title: String
+    description: String
+    targetDate: DateTime
+    startDate: DateTime
+    status: String
+    progress: Int
+    ownerId: String
+  }
+
   input CreateProjectInput {
     name: String!
     description: String
+    goalId: ID
+    color: String
+    dueDate: DateTime
+    ownerId: String
   }
 
   input UpdateProjectInput {
     name: String
     description: String
     status: String
+    goalId: ID
+    color: String
+    dueDate: DateTime
+    ownerId: String
   }
 
   input CreateTaskInput {
@@ -305,6 +393,9 @@ export default gql`
     priority: String
     assignedTo: String
     dueAt: DateTime
+    startDate: DateTime
+    estimatedHours: Float
+    tags: [String!]
   }
 
   input UpdateTaskInput {
@@ -312,8 +403,19 @@ export default gql`
     description: String
     status: String
     priority: String
+    projectId: ID
     assignedTo: String
     dueAt: DateTime
+    startDate: DateTime
+    estimatedHours: Float
+    actualHours: Float
+    tags: [String!]
+    sortOrder: Int
+  }
+
+  input CreateTaskCommentInput {
+    content: String!
+    parentCommentId: ID
   }
 
   # ============================================================================
@@ -385,11 +487,17 @@ export default gql`
     getAlerts(teamId: ID!, status: String): [Alert!]!
     getPendingAlerts(teamId: ID!): [Alert!]!
 
+    # Goals
+    getGoals(teamId: ID!, status: String): [Goal!]!
+    getGoal(goalId: ID!): Goal
+
     # Projects & Tasks
-    getProjects(teamId: ID!): [Project!]!
+    getProjects(teamId: ID!, goalId: ID, status: String): [Project!]!
     getProject(projectId: ID!): Project
     getTasks(teamId: ID!, projectId: ID, status: String, assignedTo: String): [Task!]!
     getTask(taskId: ID!): Task
+    getTaskComments(taskId: ID!): [TaskComment!]!
+    getTaskActivity(taskId: ID!): [TaskActivity!]!
 
     # Team Invites
     getTeamInvites(teamId: ID!): [TeamInvite!]!
@@ -443,6 +551,11 @@ export default gql`
     snoozeAlert(alertId: ID!, until: DateTime!): Alert!
     cancelAlert(alertId: ID!): Alert!
 
+    # Goals
+    createGoal(teamId: ID!, input: CreateGoalInput!): Goal!
+    updateGoal(goalId: ID!, input: UpdateGoalInput!): Goal!
+    deleteGoal(goalId: ID!): Boolean!
+
     # Projects
     createProject(teamId: ID!, input: CreateProjectInput!): Project!
     updateProject(projectId: ID!, input: UpdateProjectInput!): Project!
@@ -452,6 +565,13 @@ export default gql`
     createTask(teamId: ID!, input: CreateTaskInput!): Task!
     updateTask(taskId: ID!, input: UpdateTaskInput!): Task!
     completeTask(taskId: ID!): Task!
+    reopenTask(taskId: ID!): Task!
     deleteTask(taskId: ID!): Boolean!
+    reorderTasks(projectId: ID!, taskIds: [ID!]!): [Task!]!
+
+    # Task Comments
+    addTaskComment(taskId: ID!, input: CreateTaskCommentInput!): TaskComment!
+    updateTaskComment(commentId: ID!, content: String!): TaskComment!
+    deleteTaskComment(commentId: ID!): Boolean!
   }
 `;
