@@ -2168,7 +2168,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
               <span></span><span></span><span></span>
             </button>
-            <h3>Ask the Company</h3>
+            <h3>Ask the Team</h3>
             <p className="ask-subtitle">Ask questions about your team's knowledge base</p>
           </header>
 
@@ -2366,7 +2366,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             {!askAnswer && !askLoading && (
               <div className="ask-empty">
                 <div className="ask-empty-icon">?</div>
-                <p>Ask anything about your company's knowledge</p>
+                <p>Ask anything about your team's knowledge</p>
                 <div className="ask-examples">
                   <p className="examples-label">Try asking:</p>
                   <button className="example-btn" onClick={() => setAskQuestion("What products do we make?")}>
