@@ -852,7 +852,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Learning Objectives
   const { data: losData, refetch: refetchLOs, error: losError } = useQuery(GET_LEARNING_OBJECTIVES, {
     variables: { teamId },
-    skip: !teamId || activeView !== 'ask',
+    skip: !teamId || (activeView !== 'ask' && activeView !== 'learning'),
     errorPolicy: 'all',
     onError: (err) => console.log('Learning objectives query error:', err.message)
   });
@@ -1749,6 +1749,21 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
           </div>
 
+          {/* Learning Objectives / Research */}
+          <div className="nav-section">
+            <button
+              className={`nav-section-header nav-single ${activeView === 'learning' ? 'active' : ''}`}
+              onClick={() => handleSectionItemClick('learning', 'learning')}
+            >
+              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+              <span className="nav-icon">📚</span>
+              <span className="nav-label">Research</span>
+              {losAvailable && learningObjectives.filter(lo => lo.status === 'active').length > 0 && (
+                <span className="nav-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
+              )}
+            </button>
+          </div>
+
           {/* Alerts indicator */}
           {pendingAlerts.length > 0 && (
             <div className="nav-alerts">
@@ -2361,30 +2376,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <p className="ask-subtitle">Ask questions about your team's knowledge base</p>
           </header>
 
-          {/* Tab Navigation */}
-          <div className="ask-tabs">
-            <button
-              className={`ask-tab ${askTab === 'questions' ? 'active' : ''}`}
-              onClick={() => { setAskTab('questions'); setSelectedLOId(null); }}
-            >
-              Questions
-            </button>
-            <button
-              className={`ask-tab ${askTab === 'learning' ? 'active' : ''}`}
-              onClick={() => setAskTab('learning')}
-            >
-              Learning Objectives
-              {losAvailable && learningObjectives.filter(lo => lo.status === 'active').length > 0 && (
-                <span className="tab-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
-              )}
-            </button>
-          </div>
-
-          {/* Questions Tab Content */}
-          {askTab === 'questions' && (
-            <>
-              {/* Ask Form */}
-              <form id="ask-form" onSubmit={handleAskCompany} className="ask-form">
+          {/* Ask Form */}
+          <form id="ask-form" onSubmit={handleAskCompany} className="ask-form">
             <input
               type="text"
               value={askQuestion}
@@ -2713,285 +2706,326 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
             )}
           </div>
-            </>
-          )}
+        </main>
+      ) : activeView === 'learning' ? (
+        <main className="learning-area">
+          {/* Learning Objectives Header */}
+          <header className="learning-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
+            <h3>Research</h3>
+            <button className="btn-primary btn-small" onClick={() => setShowCreateLO(true)}>
+              + New Learning Objective
+            </button>
+          </header>
 
-          {/* Learning Objectives Tab Content */}
-          {askTab === 'learning' && (
-            <div className="learning-objectives-content">
-              {/* Header with create button */}
-              <div className="lo-header">
-                <button
-                  className="btn-primary btn-small"
-                  onClick={() => setShowCreateLO(true)}
-                >
-                  + New Learning Objective
-                </button>
-              </div>
+          <div className="learning-objectives-content">
+            {/* Create LO Modal */}
+            {showCreateLO && (
+              <div className="modal-overlay" onClick={() => setShowCreateLO(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <h3>Create Learning Objective</h3>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newLOTitle.trim()) return;
+                    try {
+                      await createLearningObjective({
+                        variables: {
+                          teamId,
+                          input: {
+                            title: newLOTitle.trim(),
+                            description: newLODescription.trim() || null,
+                            assignedTo: newLOAssignedTo,
+                            maxQuestions: newLOMaxQuestions
+                          }
+                        }
+                      });
+                      setNewLOTitle('');
+                      setNewLODescription('');
+                      setNewLOAssignedTo(null);
+                      setNewLOMaxQuestions(5);
+                      setShowCreateLO(false);
+                      refetchLOs();
+                    } catch (err) {
+                      alert('Failed to create learning objective: ' + err.message);
+                    }
+                  }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="What do you want to learn about?"
+                      value={newLOTitle}
+                      onChange={(e) => setNewLOTitle(e.target.value)}
+                      autoFocus
+                    />
+                    <textarea
+                      className="input-field"
+                      placeholder="Description (optional) - What's the context?"
+                      value={newLODescription}
+                      onChange={(e) => setNewLODescription(e.target.value)}
+                      rows={3}
+                      style={{ marginTop: '0.75rem' }}
+                    />
 
-              {/* Create LO Modal */}
-              {showCreateLO && (
-                <div className="modal-overlay" onClick={() => setShowCreateLO(false)}>
-                  <div className="modal" onClick={(e) => e.stopPropagation()}>
-                    <h3>Create Learning Objective</h3>
-                    <p className="modal-subtitle">Research projects help you systematically explore a topic with Raven's help.</p>
-                    <form onSubmit={handleCreateLO}>
-                      <input
-                        type="text"
-                        className="input-field"
-                        placeholder="What do you want to learn about? (e.g., 'Our competitor analysis')"
-                        value={newLOTitle}
-                        onChange={(e) => setNewLOTitle(e.target.value)}
-                        autoFocus
-                      />
-                      <textarea
-                        className="input-field"
-                        style={{ marginTop: '0.75rem', minHeight: '60px' }}
-                        placeholder="Add more context (optional)"
-                        value={newLODescription}
-                        onChange={(e) => setNewLODescription(e.target.value)}
-                      />
-                      <div className="lo-assign-section" style={{ marginTop: '0.75rem' }}>
-                        <label>Who will research this?</label>
-                        <div className="lo-assign-options">
-                          <label className="lo-assign-option">
+                    <div className="lo-assign-section" style={{ marginTop: '1rem' }}>
+                      <label className="form-label">Who should research this?</label>
+                      <div className="lo-assign-options">
+                        <label className={`lo-assign-option ${newLOAssignedTo === null ? 'selected' : ''}`}>
+                          <input
+                            type="radio"
+                            name="loAssignee"
+                            checked={newLOAssignedTo === null}
+                            onChange={() => setNewLOAssignedTo(null)}
+                          />
+                          <span className="option-icon">🐦</span>
+                          <span className="option-label">Raven</span>
+                          <span className="option-desc">AI generates questions, team answers</span>
+                        </label>
+                        {teamMembers?.map(member => (
+                          <label
+                            key={member.userId}
+                            className={`lo-assign-option ${newLOAssignedTo === member.userId ? 'selected' : ''}`}
+                          >
                             <input
                               type="radio"
-                              name="loAssign"
-                              value="raven"
-                              checked={newLOAssignedTo === 'raven'}
-                              onChange={() => setNewLOAssignedTo('raven')}
+                              name="loAssignee"
+                              checked={newLOAssignedTo === member.userId}
+                              onChange={() => setNewLOAssignedTo(member.userId)}
                             />
                             <span className="option-label">
-                              <strong>Raven</strong> - AI generates questions, you answer
+                              {member.user?.displayName || member.user?.email}
                             </span>
                           </label>
-                          {members.map(member => (
-                            <label key={member.userId} className="lo-assign-option">
-                              <input
-                                type="radio"
-                                name="loAssign"
-                                value={member.userId}
-                                checked={newLOAssignedTo === member.userId}
-                                onChange={() => setNewLOAssignedTo(member.userId)}
-                              />
-                              <span className="option-label">
-                                {member.user?.displayName || member.user?.email}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
+                        ))}
                       </div>
-                      <div className="form-actions">
-                        <button type="button" className="btn-secondary" onClick={() => setShowCreateLO(false)}>
-                          Cancel
-                        </button>
-                        <button type="submit" className="btn-primary" disabled={!newLOTitle.trim()}>
-                          Create
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-              {/* Selected LO Detail View */}
-              {selectedLOId && selectedLO ? (
-                <div className="lo-detail-view">
-                  <button className="btn-link back-btn" onClick={() => setSelectedLOId(null)}>
-                    ← Back to all
-                  </button>
-                  <div className="lo-detail-header">
-                    <h4>{selectedLO.title}</h4>
-                    <span className={`lo-status ${selectedLO.status}`}>{selectedLO.status}</span>
-                  </div>
-                  {selectedLO.description && (
-                    <p className="lo-description">{selectedLO.description}</p>
-                  )}
-                  <div className="lo-meta">
-                    <span>Researcher: {selectedLO.assignedToName || 'Raven'}</span>
-                    <span>Progress: {selectedLO.answeredCount}/{selectedLO.questionCount} answered</span>
-                    {selectedLO.assignedTo === null && (
-                      <span>Questions: {selectedLO.questionsAsked}/{selectedLO.maxQuestions}</span>
-                    )}
-                  </div>
-
-                  {/* Questions in this LO */}
-                  <div className="lo-questions">
-                    <h5>Questions</h5>
-                    {selectedLO.questions?.length === 0 ? (
-                      <p className="no-questions">No questions yet. Raven is generating them...</p>
-                    ) : (
-                      selectedLO.questions?.map(q => (
-                        <div key={q.id} className={`lo-question-card ${q.status}`}>
-                          <div className="question-header">
-                            <span className="question-source">
-                              {q.askedByRaven ? 'Raven asked' : q.askedByName || 'Team member asked'}
-                            </span>
-                            <span className={`question-status ${q.status}`}>{q.status}</span>
-                          </div>
-                          <p className="question-text">{q.question}</p>
-
-                          {q.status === 'answered' && q.answer && (
-                            <div className="question-answer">
-                              <span className="answer-label">Answer by {q.answeredByName || 'Team'}:</span>
-                              <ReactMarkdown>{q.answer}</ReactMarkdown>
-
-                              {/* Ask Follow-up Button */}
-                              <button
-                                className="btn-link followup-btn"
-                                onClick={() => handleAskFollowUp(q.id)}
-                                disabled={requestingFollowUp === q.id}
-                              >
-                                {requestingFollowUp === q.id ? 'Generating...' : 'Ask Raven to follow up'}
-                              </button>
-                            </div>
-                          )}
-
-                          {q.status === 'open' && (
-                            answeringQuestionId === q.id ? (
-                              <div className="answer-form">
-                                <textarea
-                                  value={questionAnswerText}
-                                  onChange={(e) => setQuestionAnswerText(e.target.value)}
-                                  placeholder="Share your knowledge..."
-                                  rows={3}
-                                  className="answer-input"
-                                />
-                                <div className="answer-form-actions">
-                                  <button
-                                    className="btn-secondary"
-                                    onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); }}
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    className="btn-primary"
-                                    onClick={async () => {
-                                      await answerTeamQuestion({
-                                        variables: {
-                                          questionId: q.id,
-                                          input: { answer: questionAnswerText.trim(), addToKnowledge: true }
-                                        }
-                                      });
-                                      setAnsweringQuestionId(null);
-                                      setQuestionAnswerText('');
-                                      refetchSelectedLO();
-                                    }}
-                                    disabled={!questionAnswerText.trim()}
-                                  >
-                                    Submit Answer
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                className="btn-secondary answer-btn"
-                                onClick={() => setAnsweringQuestionId(q.id)}
-                              >
-                                Answer this
-                              </button>
-                            )
-                          )}
-
-                          {/* Follow-up questions */}
-                          {q.followUpQuestions?.length > 0 && (
-                            <div className="followup-questions-list">
-                              {q.followUpQuestions.map(fq => (
-                                <div key={fq.id} className={`followup-question ${fq.status}`}>
-                                  <span className="followup-indicator">↳ Follow-up</span>
-                                  <p className="question-text">{fq.question}</p>
-                                  {fq.answer && (
-                                    <div className="question-answer">
-                                      <ReactMarkdown>{fq.answer}</ReactMarkdown>
-                                    </div>
-                                  )}
-                                  {fq.status === 'open' && (
-                                    <button
-                                      className="btn-secondary btn-small answer-btn"
-                                      onClick={() => setAnsweringQuestionId(fq.id)}
-                                    >
-                                      Answer
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ) : (
-                /* Learning Objectives List */
-                <div className="lo-list">
-                  {!losAvailable ? (
-                    <p className="lo-loading">Loading...</p>
-                  ) : learningObjectives.length === 0 ? (
-                    <div className="lo-empty">
-                      <p>No learning objectives yet.</p>
-                      <p className="lo-empty-hint">Create one to start researching a topic with Raven's help!</p>
                     </div>
-                  ) : (
-                    <>
-                      {/* Active LOs */}
-                      {learningObjectives.filter(lo => lo.status === 'active').length > 0 && (
-                        <div className="lo-section">
-                          <h5>Active Research</h5>
-                          {learningObjectives.filter(lo => lo.status === 'active').map(lo => (
-                            <div
-                              key={lo.id}
-                              className="lo-card active"
-                              onClick={() => setSelectedLOId(lo.id)}
-                            >
-                              <div className="lo-card-header">
-                                <span className="lo-title">{lo.title}</span>
-                                <span className="lo-researcher">{lo.assignedToName || 'Raven'}</span>
-                              </div>
-                              <div className="lo-progress">
-                                <div
-                                  className="lo-progress-bar"
-                                  style={{ width: `${(lo.answeredCount / Math.max(lo.questionCount, 1)) * 100}%` }}
-                                />
-                              </div>
-                              <div className="lo-stats">
-                                <span>{lo.answeredCount}/{lo.questionCount} answered</span>
-                                <span>{new Date(lo.createdAt).toLocaleDateString()}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
 
-                      {/* Completed LOs */}
-                      {learningObjectives.filter(lo => lo.status === 'completed').length > 0 && (
-                        <div className="lo-section">
-                          <h5>Completed</h5>
-                          {learningObjectives.filter(lo => lo.status === 'completed').map(lo => (
-                            <div
-                              key={lo.id}
-                              className="lo-card completed"
-                              onClick={() => setSelectedLOId(lo.id)}
-                            >
-                              <div className="lo-card-header">
-                                <span className="lo-title">{lo.title}</span>
-                                <span className="lo-checkmark">✓</span>
-                              </div>
-                              <div className="lo-stats">
-                                <span>{lo.answeredCount} questions answered</span>
-                                <span>Completed {new Date(lo.completedAt).toLocaleDateString()}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
+                    {newLOAssignedTo === null && (
+                      <div className="lo-max-questions" style={{ marginTop: '1rem' }}>
+                        <label className="form-label">Max questions Raven can ask:</label>
+                        <select
+                          className="input-field"
+                          value={newLOMaxQuestions}
+                          onChange={(e) => setNewLOMaxQuestions(parseInt(e.target.value))}
+                        >
+                          <option value={3}>3 questions</option>
+                          <option value={5}>5 questions</option>
+                          <option value={10}>10 questions</option>
+                          <option value={20}>20 questions</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="form-actions">
+                      <button type="button" className="btn-secondary" onClick={() => setShowCreateLO(false)}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn-primary" disabled={!newLOTitle.trim()}>
+                        Create
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Selected LO Detail View */}
+            {selectedLOId && selectedLO ? (
+              <div className="lo-detail-view">
+                <button className="btn-link back-btn" onClick={() => setSelectedLOId(null)}>
+                  ← Back to all
+                </button>
+                <div className="lo-detail-header">
+                  <h4>{selectedLO.title}</h4>
+                  <span className={`lo-status ${selectedLO.status}`}>{selectedLO.status}</span>
+                </div>
+                {selectedLO.description && (
+                  <p className="lo-description">{selectedLO.description}</p>
+                )}
+                <div className="lo-meta">
+                  <span>Researcher: {selectedLO.assignedToName || 'Raven'}</span>
+                  <span>Progress: {selectedLO.answeredCount}/{selectedLO.questionCount} answered</span>
+                  {selectedLO.assignedTo === null && (
+                    <span>Questions: {selectedLO.questionsAsked}/{selectedLO.maxQuestions}</span>
                   )}
                 </div>
-              )}
-            </div>
-          )}
+
+                {/* Questions in this LO */}
+                <div className="lo-questions">
+                  <h5>Questions</h5>
+                  {selectedLO.questions?.length === 0 ? (
+                    <p className="no-questions">No questions yet. Raven is generating them...</p>
+                  ) : (
+                    selectedLO.questions?.map(q => (
+                      <div key={q.id} className={`lo-question-card ${q.status}`}>
+                        <div className="question-header">
+                          <span className="question-source">
+                            {q.askedByRaven ? 'Raven asked' : q.askedByName || 'Team member asked'}
+                          </span>
+                          <span className={`question-status ${q.status}`}>{q.status}</span>
+                        </div>
+                        <p className="question-text">{q.question}</p>
+
+                        {q.status === 'answered' && q.answer && (
+                          <div className="question-answer">
+                            <span className="answer-label">Answer by {q.answeredByName || 'Team'}:</span>
+                            <ReactMarkdown>{q.answer}</ReactMarkdown>
+
+                            {/* Ask Follow-up Button */}
+                            <button
+                              className="btn-link followup-btn"
+                              onClick={() => handleAskFollowUp(q.id)}
+                              disabled={requestingFollowUp === q.id}
+                            >
+                              {requestingFollowUp === q.id ? 'Generating...' : 'Ask Raven to follow up'}
+                            </button>
+                          </div>
+                        )}
+
+                        {q.status === 'open' && (
+                          answeringQuestionId === q.id ? (
+                            <div className="answer-form">
+                              <textarea
+                                value={questionAnswerText}
+                                onChange={(e) => setQuestionAnswerText(e.target.value)}
+                                placeholder="Share your knowledge..."
+                                rows={3}
+                                className="answer-input"
+                              />
+                              <div className="answer-form-actions">
+                                <button
+                                  className="btn-secondary"
+                                  onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  className="btn-primary"
+                                  onClick={async () => {
+                                    await answerTeamQuestion({
+                                      variables: {
+                                        questionId: q.id,
+                                        input: { answer: questionAnswerText.trim(), addToKnowledge: true }
+                                      }
+                                    });
+                                    setAnsweringQuestionId(null);
+                                    setQuestionAnswerText('');
+                                    refetchSelectedLO();
+                                  }}
+                                  disabled={!questionAnswerText.trim()}
+                                >
+                                  Submit Answer
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              className="btn-secondary answer-btn"
+                              onClick={() => setAnsweringQuestionId(q.id)}
+                            >
+                              Answer this
+                            </button>
+                          )
+                        )}
+
+                        {/* Follow-up questions */}
+                        {q.followUpQuestions?.length > 0 && (
+                          <div className="followup-questions-list">
+                            {q.followUpQuestions.map(fq => (
+                              <div key={fq.id} className={`followup-question ${fq.status}`}>
+                                <span className="followup-indicator">↳ Follow-up</span>
+                                <p className="question-text">{fq.question}</p>
+                                {fq.answer && (
+                                  <div className="question-answer">
+                                    <ReactMarkdown>{fq.answer}</ReactMarkdown>
+                                  </div>
+                                )}
+                                {fq.status === 'open' && (
+                                  <button
+                                    className="btn-secondary btn-small answer-btn"
+                                    onClick={() => setAnsweringQuestionId(fq.id)}
+                                  >
+                                    Answer
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Learning Objectives List */
+              <div className="lo-list">
+                {!losAvailable ? (
+                  <p className="lo-loading">Loading...</p>
+                ) : learningObjectives.length === 0 ? (
+                  <div className="lo-empty">
+                    <p>No learning objectives yet.</p>
+                    <p className="lo-empty-hint">Create one to start researching a topic with Raven's help!</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Active LOs */}
+                    {learningObjectives.filter(lo => lo.status === 'active').length > 0 && (
+                      <div className="lo-section">
+                        <h5>Active Research</h5>
+                        {learningObjectives.filter(lo => lo.status === 'active').map(lo => (
+                          <div
+                            key={lo.id}
+                            className="lo-card active"
+                            onClick={() => setSelectedLOId(lo.id)}
+                          >
+                            <div className="lo-card-header">
+                              <span className="lo-title">{lo.title}</span>
+                              <span className="lo-researcher">{lo.assignedToName || 'Raven'}</span>
+                            </div>
+                            <div className="lo-progress">
+                              <div
+                                className="lo-progress-bar"
+                                style={{ width: `${(lo.answeredCount / Math.max(lo.questionCount, 1)) * 100}%` }}
+                              />
+                            </div>
+                            <div className="lo-stats">
+                              <span>{lo.answeredCount}/{lo.questionCount} answered</span>
+                              <span>{new Date(lo.createdAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Completed LOs */}
+                    {learningObjectives.filter(lo => lo.status === 'completed').length > 0 && (
+                      <div className="lo-section">
+                        <h5>Completed</h5>
+                        {learningObjectives.filter(lo => lo.status === 'completed').map(lo => (
+                          <div
+                            key={lo.id}
+                            className="lo-card completed"
+                            onClick={() => setSelectedLOId(lo.id)}
+                          >
+                            <div className="lo-card-header">
+                              <span className="lo-title">{lo.title}</span>
+                              <span className="lo-checkmark">✓</span>
+                            </div>
+                            <div className="lo-stats">
+                              <span>{lo.answeredCount} questions answered</span>
+                              <span>Completed {new Date(lo.completedAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </main>
       ) : activeView === 'goals' ? (
         <main className="goals-area">
