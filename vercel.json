@@ -12,6 +12,18 @@
       "destination": "/api/check-alerts"
     },
     {
+      "source": "/api/upload",
+      "destination": "/api/upload"
+    },
+    {
+      "source": "/api/oauth/google/start",
+      "destination": "/api/oauth/google/start"
+    },
+    {
+      "source": "/api/oauth/google/callback",
+      "destination": "/api/oauth/google/callback"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
@@ -22,6 +34,15 @@
     },
     "api/check-alerts.js": {
       "maxDuration": 60
+    },
+    "api/upload.js": {
+      "maxDuration": 30
+    },
+    "api/oauth/google/start.js": {
+      "maxDuration": 10
+    },
+    "api/oauth/google/callback.js": {
+      "maxDuration": 10
     }
   },
   "crons": [

@@ -3,6 +3,11 @@ import { useState, useEffect, useRef, Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 
+// API base URL - uses /api prefix in production, localhost in development
+const API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? '/api'
+  : 'http://localhost:4000';
+
 // Error Boundary for catching render errors
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -1304,7 +1309,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Google Drive handlers
   const handleConnectGoogleDrive = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/oauth/google/start?userId=${user.id}`);
+      const response = await fetch(`${API_BASE_URL}/oauth/google/start?userId=${user.id}`);
       const data = await response.json();
       if (data.authUrl) {
         window.location.href = data.authUrl;
@@ -1423,7 +1428,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
     setImageUploading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/upload`, {
+      const response = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
