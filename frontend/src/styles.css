@@ -3347,6 +3347,20 @@ button:active:not(:disabled),
   justify-content: flex-end;
 }
 
+.answer-input-container {
+  position: relative;
+}
+
+.answer-mention-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
 .answer-note {
   font-size: 0.75rem;
   color: var(--text-muted);

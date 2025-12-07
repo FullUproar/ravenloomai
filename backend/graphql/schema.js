@@ -556,6 +556,7 @@ export default gql`
     title: String!
     description: String
     assignedTo: ID  # null = assign to Raven
+    maxQuestions: Int
   }
 
   input UpdateLearningObjectiveInput {

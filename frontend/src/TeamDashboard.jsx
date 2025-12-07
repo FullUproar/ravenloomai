@@ -626,7 +626,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   // Determine initial view from URL or default to 'chat'
   const getInitialView = () => {
-    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask') {
+    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects') {
       return initialView;
     }
     if (initialView === 'channel' || initialView === 'chat') {
@@ -673,13 +673,20 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [selectedLOId, setSelectedLOId] = useState(null);
   const [newLOTitle, setNewLOTitle] = useState('');
   const [newLODescription, setNewLODescription] = useState('');
-  const [newLOAssignedTo, setNewLOAssignedTo] = useState('raven'); // 'raven' or a user ID
+  const [newLOAssignedTo, setNewLOAssignedTo] = useState(null); // null = Raven, or a user ID
+  const [newLOMaxQuestions, setNewLOMaxQuestions] = useState(5);
   const [requestingFollowUp, setRequestingFollowUp] = useState(null); // question ID
-  // @mentions autocomplete state
+  // @mentions autocomplete state (for chat input)
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionStartPos, setMentionStartPos] = useState(null);
+  // @mentions for answer textarea
+  const [answerShowMentions, setAnswerShowMentions] = useState(false);
+  const [answerMentionQuery, setAnswerMentionQuery] = useState('');
+  const [answerMentionIndex, setAnswerMentionIndex] = useState(0);
+  const [answerMentionStartPos, setAnswerMentionStartPos] = useState(null);
+  const answerTextareaRef = useRef(null);
   // @ravenloom command suggestions state
   const [showCommands, setShowCommands] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
@@ -1462,6 +1469,101 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     }
     setShowCommands(false);
     setCommandIndex(0);
+  };
+
+  // Get filtered mention options for answer textarea (same list, different query)
+  const getAnswerMentionOptions = () => {
+    const members = team?.members || [];
+    const options = [];
+
+    // Add team members (no Raven AI in answers - these are human answers)
+    members.forEach(member => {
+      if (member.user) {
+        options.push({
+          type: 'member',
+          id: member.userId,
+          name: member.user.displayName || member.user.email?.split('@')[0] || 'User',
+          displayName: member.user.displayName || member.user.email,
+          email: member.user.email
+        });
+      }
+    });
+
+    if (answerMentionQuery) {
+      const query = answerMentionQuery.toLowerCase();
+      return options.filter(opt =>
+        opt.name.toLowerCase().includes(query) ||
+        opt.displayName.toLowerCase().includes(query) ||
+        (opt.email && opt.email.toLowerCase().includes(query))
+      );
+    }
+    return options;
+  };
+
+  // Handle answer input change to detect @mentions
+  const handleAnswerInputChange = (e) => {
+    const value = e.target.value;
+    setQuestionAnswerText(value);
+
+    const cursorPos = e.target.selectionStart;
+    const textBeforeCursor = value.substring(0, cursorPos);
+
+    // Find the last @ before cursor
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
+      // Check if it's a valid mention context (@ followed by word chars, no spaces)
+      if (/^[\w]*$/.test(textAfterAt)) {
+        setAnswerMentionQuery(textAfterAt.toLowerCase());
+        setAnswerMentionStartPos(lastAtIndex);
+        setAnswerShowMentions(true);
+        setAnswerMentionIndex(0);
+        return;
+      }
+    }
+
+    setAnswerShowMentions(false);
+    setAnswerMentionQuery('');
+    setAnswerMentionStartPos(null);
+  };
+
+  // Select a mention in answer textarea
+  const handleAnswerSelectMention = (option) => {
+    const beforeAt = questionAnswerText.substring(0, answerMentionStartPos);
+    const afterQuery = questionAnswerText.substring(answerMentionStartPos + 1 + answerMentionQuery.length);
+    const mentionText = `@${option.name} `;
+    const newValue = beforeAt + mentionText + afterQuery;
+    setQuestionAnswerText(newValue);
+    setAnswerShowMentions(false);
+    setAnswerMentionQuery('');
+    setAnswerMentionStartPos(null);
+
+    // Focus textarea and set cursor after mention
+    setTimeout(() => {
+      answerTextareaRef.current?.focus();
+      const newCursorPos = beforeAt.length + mentionText.length;
+      answerTextareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
+  // Handle keyboard navigation in answer mentions
+  const handleAnswerKeyDown = (e) => {
+    const options = getAnswerMentionOptions();
+
+    if (answerShowMentions && options.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAnswerMentionIndex(i => (i + 1) % options.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAnswerMentionIndex(i => (i - 1 + options.length) % options.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        handleAnswerSelectMention(options[answerMentionIndex]);
+      } else if (e.key === 'Escape') {
+        setAnswerShowMentions(false);
+      }
+    }
   };
 
   // Handle keyboard navigation in popups
@@ -2673,17 +2775,40 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       {q.status === 'open' && (
                         answeringQuestionId === q.id ? (
                           <div className="answer-form">
-                            <textarea
-                              value={questionAnswerText}
-                              onChange={(e) => setQuestionAnswerText(e.target.value)}
-                              placeholder="Share your knowledge..."
-                              rows={3}
-                              className="answer-input"
-                            />
+                            <div className="answer-input-container">
+                              <textarea
+                                ref={answerTextareaRef}
+                                value={questionAnswerText}
+                                onChange={handleAnswerInputChange}
+                                onKeyDown={handleAnswerKeyDown}
+                                placeholder="Share your knowledge... (type @ to mention someone)"
+                                rows={3}
+                                className="answer-input"
+                              />
+                              {answerShowMentions && (
+                                <div className="mention-popup answer-mention-popup">
+                                  {getAnswerMentionOptions().length > 0 ? (
+                                    getAnswerMentionOptions().map((option, i) => (
+                                      <button
+                                        key={option.id}
+                                        className={`mention-option ${i === answerMentionIndex ? 'selected' : ''}`}
+                                        onClick={() => handleAnswerSelectMention(option)}
+                                        onMouseEnter={() => setAnswerMentionIndex(i)}
+                                      >
+                                        <span className="mention-avatar">{option.name[0].toUpperCase()}</span>
+                                        <span className="mention-name">{option.displayName}</span>
+                                      </button>
+                                    ))
+                                  ) : (
+                                    <div className="mention-empty">No matches found</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             <div className="answer-form-actions">
                               <button
                                 className="btn-secondary"
-                                onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); }}
+                                onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); setAnswerShowMentions(false); }}
                               >
                                 Cancel
                               </button>
@@ -2695,7 +2820,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                                 Submit Answer
                               </button>
                             </div>
-                            <p className="answer-note">Your answer will be added to the knowledge base.</p>
+                            <p className="answer-note">Your answer will be added to the knowledge base. @mention team members to tag them.</p>
                           </div>
                         ) : (
                           <button
@@ -2946,17 +3071,40 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                         {q.status === 'open' && (
                           answeringQuestionId === q.id ? (
                             <div className="answer-form">
-                              <textarea
-                                value={questionAnswerText}
-                                onChange={(e) => setQuestionAnswerText(e.target.value)}
-                                placeholder="Share your knowledge..."
-                                rows={3}
-                                className="answer-input"
-                              />
+                              <div className="answer-input-container">
+                                <textarea
+                                  ref={answerTextareaRef}
+                                  value={questionAnswerText}
+                                  onChange={handleAnswerInputChange}
+                                  onKeyDown={handleAnswerKeyDown}
+                                  placeholder="Share your knowledge... (type @ to mention someone)"
+                                  rows={3}
+                                  className="answer-input"
+                                />
+                                {answerShowMentions && (
+                                  <div className="mention-popup answer-mention-popup">
+                                    {getAnswerMentionOptions().length > 0 ? (
+                                      getAnswerMentionOptions().map((option, i) => (
+                                        <button
+                                          key={option.id}
+                                          className={`mention-option ${i === answerMentionIndex ? 'selected' : ''}`}
+                                          onClick={() => handleAnswerSelectMention(option)}
+                                          onMouseEnter={() => setAnswerMentionIndex(i)}
+                                        >
+                                          <span className="mention-avatar">{option.name[0].toUpperCase()}</span>
+                                          <span className="mention-name">{option.displayName}</span>
+                                        </button>
+                                      ))
+                                    ) : (
+                                      <div className="mention-empty">No matches found</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                               <div className="answer-form-actions">
                                 <button
                                   className="btn-secondary"
-                                  onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); }}
+                                  onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); setAnswerShowMentions(false); }}
                                 >
                                   Cancel
                                 </button>
@@ -2971,6 +3119,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                                     });
                                     setAnsweringQuestionId(null);
                                     setQuestionAnswerText('');
+                                    setAnswerShowMentions(false);
                                     refetchSelectedLO();
                                   }}
                                   disabled={!questionAnswerText.trim()}
