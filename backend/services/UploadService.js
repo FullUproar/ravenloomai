@@ -1,6 +1,8 @@
 /**
  * UploadService - Handles file uploads and storage
  * Currently uses local file storage, can be extended for S3/GCS
+ *
+ * Note: In serverless environments (Vercel), uses /tmp which is ephemeral
  */
 
 import db from '../db.js';
@@ -10,11 +12,25 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 
-// Ensure upload directory exists
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// Use /tmp in serverless environments (Vercel), local uploads folder otherwise
+const IS_SERVERLESS = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+const UPLOAD_DIR = IS_SERVERLESS
+  ? '/tmp/uploads'
+  : path.join(__dirname, '..', 'uploads');
+
+// Lazy directory creation - only when needed
+let uploadDirCreated = false;
+function ensureUploadDir() {
+  if (!uploadDirCreated && !fs.existsSync(UPLOAD_DIR)) {
+    try {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+      uploadDirCreated = true;
+    } catch (err) {
+      console.error('Failed to create upload directory:', err);
+      throw new Error('File upload not available in this environment');
+    }
+  }
 }
 
 // Allowed image types
@@ -65,6 +81,9 @@ export async function saveFile(userId, teamId, { data, originalName, mimeType })
   if (buffer.length > MAX_FILE_SIZE) {
     throw new Error(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
   }
+
+  // Ensure upload directory exists (lazy creation)
+  ensureUploadDir();
 
   // Generate unique filename
   const filename = generateFilename(originalName, mimeType);
