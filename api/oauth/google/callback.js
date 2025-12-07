@@ -10,19 +10,29 @@ export default async function handler(req, res) {
   }
 
   const { code, state } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL || 'https://ravenloom-ai-site.vercel.app';
+
+  // Parse state to get origin (where to redirect back to)
+  let stateData = {};
+  try {
+    stateData = JSON.parse(state || '{}');
+  } catch (e) {
+    stateData = {};
+  }
+
+  // Use origin from state, fallback to env var, then to default
+  const frontendUrl = stateData.origin || process.env.FRONTEND_URL || 'https://ravenloom-ai-site.vercel.app';
 
   if (!code) {
     return res.redirect(`${frontendUrl}?error=no_code`);
   }
 
-  try {
-    const stateData = JSON.parse(state || '{}');
-    const userId = stateData.userId;
+  const userId = stateData.userId;
 
-    if (!userId) {
-      return res.redirect(`${frontendUrl}?error=no_user`);
-    }
+  if (!userId) {
+    return res.redirect(`${frontendUrl}?error=no_user`);
+  }
+
+  try {
 
     // Exchange code for tokens
     const tokens = await GoogleDriveService.exchangeCodeForTokens(code);

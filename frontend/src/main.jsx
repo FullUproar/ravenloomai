@@ -4,6 +4,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import App from './App.jsx';
 import InviteAccept from './InviteAccept.jsx';
 import HelpPage from './HelpPage.jsx';
+import PrivacyPolicy from './PrivacyPolicy.jsx';
+import TermsOfService from './TermsOfService.jsx';
 import './styles.css';
 
 import {
@@ -68,6 +70,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <ApolloProvider client={client}>
         <Routes>
           <Route path="/help" element={<HelpPage />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
           <Route path="/invite/:token" element={<InviteAccept apolloClient={client} />} />
           {/* Team routes with view support */}
           <Route path="/team/:teamId/:view" element={<App apolloClient={client} />} />

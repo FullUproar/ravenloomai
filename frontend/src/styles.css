@@ -5696,3 +5696,121 @@ input[type="date"].property-value {
     text-align: center;
   }
 }
+
+/* ============================================================================
+   Legal Pages (Privacy Policy & Terms of Service)
+   ============================================================================ */
+
+.legal-page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  padding: 2rem;
+}
+
+.legal-container {
+  max-width: 800px;
+  margin: 0 auto;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 3rem;
+  border: 1px solid var(--border);
+}
+
+.legal-container .back-link {
+  display: inline-block;
+  color: var(--primary);
+  text-decoration: none;
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
+}
+
+.legal-container .back-link:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.legal-container h1 {
+  font-family: var(--font-header);
+  font-size: 2rem;
+  margin: 0 0 0.5rem 0;
+  color: var(--text);
+}
+
+.legal-container .effective-date {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+}
+
+.legal-container h2 {
+  font-family: var(--font-header);
+  font-size: 1.3rem;
+  margin: 2.5rem 0 1rem 0;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.legal-container h3 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.75rem 0;
+  color: var(--text);
+}
+
+.legal-container p {
+  line-height: 1.7;
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+}
+
+.legal-container ul {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.legal-container li {
+  line-height: 1.7;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.legal-container a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.legal-container a:hover {
+  text-decoration: underline;
+}
+
+.legal-footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.legal-footer .separator {
+  margin: 0 1rem;
+  color: var(--border);
+}
+
+@media (max-width: 768px) {
+  .legal-page {
+    padding: 1rem;
+  }
+
+  .legal-container {
+    padding: 1.5rem;
+  }
+
+  .legal-container h1 {
+    font-size: 1.5rem;
+  }
+
+  .legal-container h2 {
+    font-size: 1.15rem;
+  }
+}

@@ -19,12 +19,15 @@ export default async function handler(req, res) {
   }
 
   const userId = req.query.userId;
+  const origin = req.query.origin; // Frontend passes its origin for redirect
+
   if (!userId) {
     return res.status(401).json({ error: 'User ID required' });
   }
 
   try {
-    const authUrl = GoogleDriveService.getAuthUrl(userId);
+    // Pass origin in state so callback knows where to redirect
+    const authUrl = GoogleDriveService.getAuthUrl(userId, { origin });
     res.json({ authUrl });
   } catch (error) {
     console.error('OAuth start error:', error);

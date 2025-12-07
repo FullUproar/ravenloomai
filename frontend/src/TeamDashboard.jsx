@@ -1309,7 +1309,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Google Drive handlers
   const handleConnectGoogleDrive = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/oauth/google/start?userId=${user.id}`);
+      // Pass origin so callback knows where to redirect back
+      const origin = encodeURIComponent(window.location.origin);
+      const response = await fetch(`${API_BASE_URL}/oauth/google/start?userId=${user.id}&origin=${origin}`);
       const data = await response.json();
       if (data.authUrl) {
         window.location.href = data.authUrl;
