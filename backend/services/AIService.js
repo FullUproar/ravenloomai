@@ -797,6 +797,160 @@ Return JSON with:
   }
 }
 
+/**
+ * Extract atomic facts from a longer piece of text (answer, document, etc.)
+ * Each atomic fact is a single, self-contained statement that can stand alone
+ */
+export async function extractAtomicFacts(text, context = {}) {
+  const messages = [
+    {
+      role: 'system',
+      content: `You extract atomic facts from text. Each atomic fact should be:
+1. A single, complete statement that can stand alone
+2. Self-contained (includes necessary context like company name, not just "they" or "it")
+3. Factual and objective (not opinions unless clearly attributed)
+4. Concise but complete
+
+Examples of good atomic facts:
+- "Full Uproar Games, Inc. is a tabletop games company"
+- "Full Uproar Games specializes in humor-driven party games"
+- "Hack Your Deck is a game mod for card-based games"
+- "Dumbest Ways To Win is used to break ties in games"
+
+Examples of BAD atomic facts (too vague or incomplete):
+- "They make games" (who is "they"?)
+- "It's fun" (what is "it"?)
+- "The company" (which company?)
+
+Return a JSON object with:
+{
+  "facts": [
+    {
+      "statement": "The atomic fact statement",
+      "category": "product|company|process|people|decision|general",
+      "entities": ["Entity1", "Entity2"],
+      "confidence": 0.0-1.0
+    }
+  ],
+  "sourceQuestion": "The original question if this is a Q&A" (optional)
+}
+
+Extract ALL distinct facts from the text. Aim for 3-10 facts depending on content richness.
+Return ONLY valid JSON.`
+    },
+    {
+      role: 'user',
+      content: context.question
+        ? `Question: ${context.question}\n\nAnswer to extract facts from:\n${text}`
+        : `Text to extract facts from:\n${text}`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 1000,
+      temperature: 0
+    });
+
+    let content = response.choices[0].message.content;
+
+    // Strip markdown code blocks if present
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      content = codeBlockMatch[1].trim();
+    }
+
+    const result = JSON.parse(content);
+
+    // Filter to high-confidence facts and ensure they have required fields
+    return result.facts
+      .filter(f => f.confidence >= 0.6)
+      .map(f => ({
+        statement: f.statement,
+        category: f.category || 'general',
+        entities: f.entities || [],
+        confidence: f.confidence || 0.7
+      }));
+  } catch (error) {
+    console.error('Atomic fact extraction error:', error);
+    // Fallback: return the whole text as one fact
+    return [{
+      statement: text.substring(0, 500),
+      category: 'general',
+      entities: [],
+      confidence: 0.5
+    }];
+  }
+}
+
+/**
+ * Generate an embedding vector for text using OpenAI's embedding model
+ */
+export async function generateEmbedding(text) {
+  try {
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: text,
+      dimensions: 1536
+    });
+
+    return response.data[0].embedding;
+  } catch (error) {
+    console.error('Embedding generation error:', error);
+    return null;
+  }
+}
+
+/**
+ * Search for similar facts using vector similarity
+ * Returns the most semantically similar facts to the query
+ */
+export async function semanticSearch(query, facts, topK = 5) {
+  if (!facts || facts.length === 0) return [];
+
+  try {
+    // Generate embedding for the query
+    const queryEmbedding = await generateEmbedding(query);
+    if (!queryEmbedding) return facts.slice(0, topK);
+
+    // Calculate cosine similarity for each fact that has an embedding
+    const scored = facts
+      .filter(f => f.embedding)
+      .map(fact => {
+        const similarity = cosineSimilarity(queryEmbedding, fact.embedding);
+        return { ...fact, similarity };
+      })
+      .sort((a, b) => b.similarity - a.similarity);
+
+    return scored.slice(0, topK);
+  } catch (error) {
+    console.error('Semantic search error:', error);
+    return facts.slice(0, topK);
+  }
+}
+
+/**
+ * Calculate cosine similarity between two vectors
+ */
+function cosineSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+
+  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
+  return magnitude === 0 ? 0 : dotProduct / magnitude;
+}
+
 export default {
   parseRavenCommand,
   generateResponse,
@@ -809,5 +963,8 @@ export default {
   checkFactConflict,
   extractFactsFromMessage,
   callOpenAI,
-  generateCompanyAnswer
+  generateCompanyAnswer,
+  extractAtomicFacts,
+  generateEmbedding,
+  semanticSearch
 };

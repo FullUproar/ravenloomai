@@ -129,6 +129,7 @@ export async function getQuestionById(questionId) {
 
 /**
  * Answer a question
+ * When addToKnowledge=true, extracts atomic facts from the answer for semantic search
  */
 export async function answerQuestion(questionId, userId, answer, { addToKnowledge = false, teamId = null } = {}) {
   const client = await db.connect();
@@ -151,18 +152,25 @@ export async function answerQuestion(questionId, userId, answer, { addToKnowledg
 
     const questionRow = result.rows[0];
 
-    // Optionally add the Q&A to the knowledge base
-    if (addToKnowledge && teamId) {
-      const factContent = `Q: ${questionRow.question}\nA: ${answer}`;
-      await KnowledgeService.createFact(teamId, {
-        content: factContent,
-        category: 'faq',
-        source: 'team_question',
-        createdBy: userId
-      });
-    }
-
     await client.query('COMMIT');
+
+    // Extract and store atomic facts from the answer (outside transaction for async AI calls)
+    if (addToKnowledge && teamId) {
+      try {
+        // Use atomic fact extraction - breaks answer into discrete, searchable statements
+        const atomicFacts = await KnowledgeService.createAtomicFacts(teamId, answer, {
+          sourceType: 'team_answer',
+          sourceId: questionId,
+          createdBy: userId,
+          sourceQuestion: questionRow.question
+        });
+
+        console.log(`Created ${atomicFacts.length} atomic facts from team answer`);
+      } catch (knowledgeError) {
+        // Don't fail the answer if knowledge extraction fails
+        console.error('Error extracting atomic facts:', knowledgeError);
+      }
+    }
 
     return mapQuestion(result.rows[0]);
   } catch (error) {

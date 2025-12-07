@@ -1,20 +1,73 @@
 /**
  * KnowledgeService - Manages facts, decisions, and knowledge search
+ *
+ * Supports:
+ * - Atomic fact storage with embeddings for semantic search
+ * - Entity extraction and categorization
+ * - Provenance tracking (source questions, answers)
  */
 
 import db from '../db.js';
+import * as AIService from './AIService.js';
 
 /**
- * Create a new fact
+ * Create a new fact with optional embedding
  */
-export async function createFact(teamId, { content, category, sourceType = 'conversation', sourceId = null, createdBy = null, metadata = null }) {
+export async function createFact(teamId, { content, category, sourceType = 'conversation', sourceId = null, createdBy = null, metadata = null, embedding = null, entities = null, confidenceScore = null }) {
+  // If no embedding provided, generate one
+  let factEmbedding = embedding;
+  if (!factEmbedding && content) {
+    factEmbedding = await AIService.generateEmbedding(content);
+  }
+
   const result = await db.query(
-    `INSERT INTO facts (team_id, content, category, source_type, source_id, created_by, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO facts (team_id, content, category, source_type, source_id, created_by, metadata, embedding, confidence_score)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
-    [teamId, content, category, sourceType, sourceId, createdBy, metadata ? JSON.stringify(metadata) : null]
+    [
+      teamId,
+      content,
+      category,
+      sourceType,
+      sourceId,
+      createdBy,
+      metadata ? JSON.stringify({ ...metadata, entities }) : (entities ? JSON.stringify({ entities }) : null),
+      factEmbedding ? `[${factEmbedding.join(',')}]` : null,
+      confidenceScore
+    ]
   );
   return mapFact(result.rows[0]);
+}
+
+/**
+ * Create multiple atomic facts from a text (e.g., team answer)
+ * Extracts atomic statements, generates embeddings, and stores each
+ */
+export async function createAtomicFacts(teamId, text, { sourceType = 'team_answer', sourceId = null, createdBy = null, sourceQuestion = null }) {
+  // Extract atomic facts using AI
+  const atomicFacts = await AIService.extractAtomicFacts(text, { question: sourceQuestion });
+
+  const createdFacts = [];
+
+  for (const fact of atomicFacts) {
+    try {
+      const created = await createFact(teamId, {
+        content: fact.statement,
+        category: fact.category,
+        sourceType,
+        sourceId,
+        createdBy,
+        entities: fact.entities,
+        confidenceScore: fact.confidence,
+        metadata: sourceQuestion ? { sourceQuestion } : null
+      });
+      createdFacts.push(created);
+    } catch (error) {
+      console.error('Error creating atomic fact:', error);
+    }
+  }
+
+  return createdFacts;
 }
 
 /**
@@ -80,9 +133,9 @@ export async function getFacts(teamId, { category = null, limit = 50, includeInv
 }
 
 /**
- * Search facts by keyword (simple text search)
+ * Search facts by keyword (simple text search) - fallback for when embeddings not available
  */
-export async function searchFacts(teamId, query, limit = 20) {
+export async function searchFactsByKeyword(teamId, query, limit = 20) {
   const searchTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
 
   if (searchTerms.length === 0) {
@@ -103,6 +156,48 @@ export async function searchFacts(teamId, query, limit = 20) {
   );
 
   return result.rows.map(mapFact);
+}
+
+/**
+ * Semantic search using vector similarity (primary search method)
+ * Falls back to keyword search if embeddings not available
+ */
+export async function searchFacts(teamId, query, limit = 20) {
+  try {
+    // Generate embedding for the query
+    const queryEmbedding = await AIService.generateEmbedding(query);
+
+    if (queryEmbedding) {
+      // Use vector similarity search with pgvector
+      // cosine distance: 1 - (a <=> b) gives similarity
+      const result = await db.query(
+        `SELECT f.*, u.display_name as created_by_name, u.email as created_by_email,
+                1 - (f.embedding <=> $2::vector) as similarity
+         FROM facts f
+         LEFT JOIN users u ON f.created_by = u.id
+         WHERE f.team_id = $1
+           AND f.valid_until IS NULL
+           AND f.embedding IS NOT NULL
+         ORDER BY f.embedding <=> $2::vector
+         LIMIT $3`,
+        [teamId, `[${queryEmbedding.join(',')}]`, limit]
+      );
+
+      if (result.rows.length > 0) {
+        return result.rows.map(row => ({
+          ...mapFact(row),
+          similarity: parseFloat(row.similarity) || 0
+        }));
+      }
+    }
+
+    // Fallback to keyword search if no embeddings or vector search fails
+    return searchFactsByKeyword(teamId, query, limit);
+  } catch (error) {
+    console.error('Semantic search error, falling back to keyword:', error.message);
+    // Fallback to keyword search
+    return searchFactsByKeyword(teamId, query, limit);
+  }
 }
 
 /**
@@ -244,10 +339,12 @@ function mapDecision(row) {
 
 export default {
   createFact,
+  createAtomicFacts,
   updateFact,
   invalidateFact,
   getFacts,
   searchFacts,
+  searchFactsByKeyword,
   createDecision,
   getDecisions,
   searchDecisions,
