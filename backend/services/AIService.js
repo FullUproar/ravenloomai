@@ -581,42 +581,42 @@ export async function checkFactConflict(newFact, existingFacts) {
   const messages = [
     {
       role: 'system',
-      content: `You analyze whether a new fact conflicts with, duplicates, or updates existing knowledge.
+      content: `You detect CONFLICTS between a new fact and existing facts. Be STRICT about contradictions.
 
 EXISTING FACTS:
 ${existingFacts.map(f => `- ID: ${f.id} | "${f.content}" [${f.category}]`).join('\n')}
 
 NEW FACT TO SAVE: "${newFact.content}" [${newFact.category}]
 
-Analyze and return JSON:
+Return JSON:
 {
   "action": "save" | "update" | "ask_confirmation",
   "reason": "brief explanation",
   "relatedFactId": "ID of related fact if any, null otherwise",
   "relatedFactContent": "content of the related fact if any",
-  "isExplicitUpdate": true/false (true if user's phrasing indicates they're intentionally updating info, like "update X to Y", "change X", "actually it's Y"),
   "conflictType": "duplicate" | "contradiction" | "update" | "none"
 }
 
+CONTRADICTION EXAMPLES (use ask_confirmation):
+- "There are 7 dwarfs" vs "There are 6 dwarfs" → CONTRADICTION (different numbers)
+- "Fugly is a cat" vs "Fugly is a dog" → CONTRADICTION (same entity, different type)
+- "Launch date is March 25" vs "Launch date is April 1" → CONTRADICTION (different dates)
+- "CEO is John" vs "CEO is Mary" → CONTRADICTION (different values for same role)
+- "We use Slack" vs "We use Teams" → Could be both true, so SAVE
+
 Decision rules:
-1. SAVE (action: "save"):
-   - New fact is about a different topic/entity than all existing facts
-   - New fact adds additional information (not contradicting existing)
+1. ask_confirmation: Same subject with DIFFERENT values (numbers, dates, types, names)
+   - This is the MOST IMPORTANT check. When in doubt, ask_confirmation.
 
-2. UPDATE (action: "update"):
-   - User's phrasing explicitly indicates an update: "update X to Y", "change X", "actually X is Y"
-   - Same topic, clearly newer/corrected information that should replace old
+2. save: Genuinely different topics, OR additive information
 
-3. ASK_CONFIRMATION (action: "ask_confirmation"):
-   - Facts appear to contradict without explicit update language
-   - Example: "The sky is red" when we have "The sky is blue" stored
-   - This prevents accidentally overwriting correct info with mistakes
+3. update: ONLY if user explicitly says "update", "change", "actually", "correction"
 
 Return ONLY valid JSON.`
     },
     {
       role: 'user',
-      content: `Check this new fact against existing knowledge`
+      content: `Analyze for conflicts`
     }
   ];
 
@@ -628,7 +628,9 @@ Return ONLY valid JSON.`
       temperature: 0
     });
 
-    return JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(response.choices[0].message.content);
+    console.log(`Conflict check: "${newFact.content}" vs ${existingFacts.length} facts → ${result.action} (${result.reason})`);
+    return result;
   } catch (error) {
     console.error('Fact conflict check error:', error);
     // Default to saving if we can't check
