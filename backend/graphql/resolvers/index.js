@@ -682,9 +682,22 @@ const resolvers = {
       return UserService.getUserById(question.askedBy);
     },
 
+    askedByName: async (question) => {
+      if (question.askedByRaven) return 'Raven';
+      if (!question.askedBy) return null;
+      const user = await UserService.getUserById(question.askedBy);
+      return user?.displayName || user?.email || null;
+    },
+
     answeredByUser: async (question) => {
       if (!question.answeredBy) return null;
       return UserService.getUserById(question.answeredBy);
+    },
+
+    answeredByName: async (question) => {
+      if (!question.answeredBy) return null;
+      const user = await UserService.getUserById(question.answeredBy);
+      return user?.displayName || user?.email || null;
     },
 
     assignees: async (question) => {

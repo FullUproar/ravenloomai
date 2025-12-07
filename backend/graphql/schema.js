@@ -490,6 +490,7 @@ export default gql`
     teamId: ID!
     askedBy: ID!
     askedByUser: User
+    askedByName: String
     askedByRaven: Boolean!
     question: String!
     aiAnswer: String
@@ -498,6 +499,7 @@ export default gql`
     answer: String
     answeredBy: ID
     answeredByUser: User
+    answeredByName: String
     answeredAt: DateTime
     assignees: [User!]!
     channelId: ID
