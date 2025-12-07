@@ -645,6 +645,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   const team = teamData?.getTeam;
   const channels = team?.channels || [];
+  const members = team?.members || [];
 
   // Determine active channel - use state, URL itemId, or default
   const activeChannelId = activeChannelIdState ||
