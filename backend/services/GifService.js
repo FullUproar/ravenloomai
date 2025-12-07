@@ -1,14 +1,29 @@
 /**
  * GIF Service - Tenor API integration
  * Provides GIF search functionality
+ *
+ * Requires TENOR_API_KEY environment variable (Google Cloud API key with Tenor API enabled)
+ * Get one at: https://console.cloud.google.com/apis/library/tenor.googleapis.com
  */
 
-// Tenor API key (free tier - 50 requests/day for anonymous, more with key)
-const TENOR_API_KEY = process.env.TENOR_API_KEY || 'AIzaSyABVzHyK0Vz-pKRxBqpZ3K2c_KCv0XspHk';
+// Tenor API key - required for functionality
+const TENOR_API_KEY = process.env.TENOR_API_KEY;
 const TENOR_CLIENT_KEY = 'ravenloom';
 
 class GifService {
+  static checkApiKey() {
+    if (!TENOR_API_KEY) {
+      console.warn('TENOR_API_KEY not set - GIF functionality disabled');
+      return false;
+    }
+    return true;
+  }
+
   static async search(query, limit = 20) {
+    if (!this.checkApiKey()) {
+      return []; // Return empty array if API key not configured
+    }
+
     try {
       const params = new URLSearchParams({
         q: query,
@@ -21,7 +36,10 @@ class GifService {
       const response = await fetch(`https://tenor.googleapis.com/v2/search?${params}`);
 
       if (!response.ok) {
-        throw new Error(`Tenor API error: ${response.status}`);
+        const errorBody = await response.text().catch(() => '');
+        console.error(`Tenor API error: ${response.status}`, errorBody);
+        // Return empty array on error instead of throwing
+        return [];
       }
 
       const data = await response.json();
@@ -41,6 +59,10 @@ class GifService {
   }
 
   static async getTrending(limit = 20) {
+    if (!this.checkApiKey()) {
+      return []; // Return empty array if API key not configured
+    }
+
     try {
       const params = new URLSearchParams({
         key: TENOR_API_KEY,
@@ -52,7 +74,9 @@ class GifService {
       const response = await fetch(`https://tenor.googleapis.com/v2/featured?${params}`);
 
       if (!response.ok) {
-        throw new Error(`Tenor API error: ${response.status}`);
+        const errorBody = await response.text().catch(() => '');
+        console.error(`Tenor API error: ${response.status}`, errorBody);
+        return [];
       }
 
       const data = await response.json();
@@ -72,6 +96,10 @@ class GifService {
   }
 
   static async getCategories() {
+    if (!this.checkApiKey()) {
+      return [];
+    }
+
     try {
       const params = new URLSearchParams({
         key: TENOR_API_KEY,
@@ -81,7 +109,7 @@ class GifService {
       const response = await fetch(`https://tenor.googleapis.com/v2/categories?${params}`);
 
       if (!response.ok) {
-        throw new Error(`Tenor API error: ${response.status}`);
+        return [];
       }
 
       const data = await response.json();

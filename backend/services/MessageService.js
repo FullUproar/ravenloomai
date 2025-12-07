@@ -74,13 +74,22 @@ export async function sendMessage(channelId, userId, content, options = {}) {
 
   const userMessage = mapMessage(messageResult.rows[0]);
 
-  // If no AI mention, check for learning mode
+  // If no AI mention, check for learning mode and active discussions
   if (!mentionsAi) {
     // Check if channel is in learning mode
     if (channel.ai_mode === 'active') {
       // Extract facts from message in background (don't wait)
       extractAndSaveFactsFromMessage(content, teamId, userId).catch(err => {
         console.error('Background fact extraction error:', err);
+      });
+    }
+
+    // Check for active discussion - Raven may proactively respond
+    const activeDiscussion = await DiscussionService.getActiveDiscussion(channelId);
+    if (activeDiscussion) {
+      // Trigger proactive discussion response in background (don't block user message)
+      handleProactiveDiscussionResponse(channelId, teamId, activeDiscussion).catch(err => {
+        console.error('Proactive discussion response error:', err);
       });
     }
 
@@ -856,6 +865,56 @@ async function extractAndSaveFactsFromMessage(content, teamId, userId) {
     }
   } catch (error) {
     console.error('extractAndSaveFactsFromMessage error:', error);
+  }
+}
+
+/**
+ * Handle proactive Raven response during an active discussion
+ * Called in background after user messages during discussions
+ */
+async function handleProactiveDiscussionResponse(channelId, teamId, discussion) {
+  try {
+    // Get recent messages since discussion started
+    const messages = await DiscussionService.getDiscussionMessages(
+      channelId,
+      discussion.started_at,
+      20
+    );
+
+    // Get relevant knowledge for context
+    const knowledge = await KnowledgeService.searchFacts(teamId, discussion.topic, 5);
+    const knowledgeContext = { facts: knowledge };
+
+    // Evaluate if Raven should respond
+    const evaluation = await AIService.evaluateDiscussionResponse(
+      discussion.topic,
+      messages,
+      knowledgeContext
+    );
+
+    if (!evaluation.shouldRespond) {
+      console.log(`Discussion "${discussion.topic}": staying silent - ${evaluation.reason}`);
+      return;
+    }
+
+    console.log(`Discussion "${discussion.topic}": responding (${evaluation.responseType})`);
+
+    // Save Raven's proactive response
+    const metadata = {
+      command: 'proactive_discussion',
+      topic: discussion.topic,
+      responseType: evaluation.responseType,
+      replyToMessageId: evaluation.replyToMessageId || null
+    };
+
+    await db.query(
+      `INSERT INTO messages (channel_id, user_id, content, is_ai, mentions_ai, metadata)
+       VALUES ($1, NULL, $2, true, false, $3)
+       RETURNING *`,
+      [channelId, evaluation.response, JSON.stringify(metadata)]
+    );
+  } catch (error) {
+    console.error('handleProactiveDiscussionResponse error:', error);
   }
 }
 

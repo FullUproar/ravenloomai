@@ -1377,6 +1377,112 @@ Return ONLY the question text, nothing else.`
   }
 }
 
+/**
+ * Evaluate if Raven should proactively respond during an active discussion
+ * Returns decision about whether to respond and what to say
+ */
+export async function evaluateDiscussionResponse(topic, conversationHistory, knowledgeContext = null) {
+  // Safety check: Don't respond if Raven was the last speaker
+  if (conversationHistory.length > 0) {
+    const lastMessage = conversationHistory[conversationHistory.length - 1];
+    if (lastMessage.isAi) {
+      return {
+        shouldRespond: false,
+        reason: 'Raven was the last speaker - waiting for human input'
+      };
+    }
+  }
+
+  // If conversation is too short, don't interrupt
+  if (conversationHistory.length < 2) {
+    return {
+      shouldRespond: false,
+      reason: 'Conversation too short'
+    };
+  }
+
+  // Build conversation context
+  const historyText = conversationHistory.slice(-10).map(msg => {
+    const speaker = msg.isAi ? 'Raven' : (msg.user?.displayName || 'Team member');
+    return `[${msg.id?.substring(0, 8) || 'msg'}] ${speaker}: ${msg.content}`;
+  }).join('\n\n');
+
+  let contextInfo = '';
+  if (knowledgeContext && knowledgeContext.facts?.length > 0) {
+    contextInfo = '\n\nRELEVANT KNOWLEDGE:\n' + knowledgeContext.facts.map(f => `- ${f.content}`).join('\n');
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You are Raven, facilitating a team discussion on: "${topic}"
+
+Your role is to help guide the discussion, but NOT to dominate it. Evaluate if you should speak now.
+
+CONVERSATION SO FAR:
+${historyText}
+${contextInfo}
+
+DECIDE if you should respond NOW. Return JSON:
+{
+  "shouldRespond": true/false,
+  "reason": "Brief explanation",
+  "responseType": "critical" | "clarify" | "redirect" | "summarize" | "silent",
+  "replyToMessageId": "message ID to reply to (if specific message triggered this)",
+  "response": "Your response if shouldRespond is true"
+}
+
+WHEN TO RESPOND (responseType):
+- "critical": Someone said something factually wrong that needs gentle correction
+- "clarify": A point needs clarification to keep discussion productive
+- "redirect": Discussion went off-topic, gently bring it back
+- "summarize": Multiple good points made, worth synthesizing
+- "silent": Let humans continue their productive exchange
+
+WHEN TO STAY SILENT:
+- Humans are having productive back-and-forth
+- Recent messages are building on each other naturally
+- No factual errors or misunderstandings
+- Discussion is flowing well on topic
+- You just spoke recently (let others contribute)
+
+BE CONSERVATIVE - lean toward silence. Only speak when you add real value.
+If shouldRespond is false, response field can be empty.
+
+Return ONLY valid JSON.`
+    },
+    {
+      role: 'user',
+      content: 'Evaluate if you should respond now.'
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 500,
+      temperature: 0.3
+    });
+
+    let content = response.choices[0].message.content;
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      content = codeBlockMatch[1].trim();
+    }
+
+    const result = JSON.parse(content);
+    console.log(`Discussion eval for "${topic}": ${result.shouldRespond ? result.responseType : 'silent'} - ${result.reason}`);
+    return result;
+  } catch (error) {
+    console.error('Discussion response evaluation error:', error);
+    return {
+      shouldRespond: false,
+      reason: 'Error in evaluation'
+    };
+  }
+}
+
 export default {
   parseRavenCommand,
   generateResponse,
@@ -1399,5 +1505,6 @@ export default {
   generateReplacementQuestion,
   startDiscussion,
   continueDiscussion,
-  concludeDiscussion
+  concludeDiscussion,
+  evaluateDiscussionResponse
 };

@@ -134,6 +134,12 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Determine upload directory (same logic as UploadService)
+const IS_SERVERLESS = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+const UPLOAD_DIR = IS_SERVERLESS
+  ? '/tmp/uploads'
+  : path.join(__dirname, 'uploads');
+
 // Increase body size limit for file uploads
 app.use('/upload', express.json({ limit: '15mb' }));
 
@@ -151,6 +157,11 @@ app.post('/upload', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: data, filename, mimeType' });
     }
 
+    // Warn about serverless limitations
+    if (IS_SERVERLESS) {
+      console.warn('Note: Uploaded files in serverless environments are ephemeral (/tmp is cleared on function restart)');
+    }
+
     const attachment = await UploadService.saveFile(userId, teamId, {
       data,
       originalName: filename,
@@ -164,8 +175,8 @@ app.post('/upload', async (req, res) => {
   }
 });
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files (dynamically uses correct directory based on environment)
+app.use('/uploads', express.static(UPLOAD_DIR));
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, '0.0.0.0', () => {

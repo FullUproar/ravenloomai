@@ -906,6 +906,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     { cmd: '@raven remember', desc: 'Save a fact to knowledge base', example: '@raven remember our API rate limit is 100/min' },
     { cmd: '@raven task', desc: 'Create a new task', example: '@raven task Review PR #123' },
     { cmd: '@raven remind', desc: 'Set a reminder', example: '@raven remind me tomorrow to follow up' },
+    { cmd: '@raven discuss', desc: 'Start a facilitated discussion', example: '@raven discuss our Q1 marketing strategy' },
     { cmd: '@raven decide', desc: 'Record a decision', example: '@raven decide We will use PostgreSQL because...' },
     { cmd: '@raven summarize', desc: 'Summarize recent discussion', example: '@raven summarize' },
     { cmd: '@raven search', desc: 'Search knowledge base', example: '@raven search deployment process' },
