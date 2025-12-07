@@ -490,6 +490,7 @@ export default gql`
     teamId: ID!
     askedBy: ID!
     askedByUser: User
+    askedByRaven: Boolean!
     question: String!
     aiAnswer: String
     aiConfidence: Float!
@@ -501,6 +502,11 @@ export default gql`
     assignees: [User!]!
     channelId: ID
     context: String
+    parentQuestionId: ID
+    parentQuestion: TeamQuestion
+    followUpQuestions: [TeamQuestion!]!
+    learningObjectiveId: ID
+    learningObjective: LearningObjective
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -512,11 +518,50 @@ export default gql`
     channelId: ID
     context: String
     assigneeIds: [ID!]
+    learningObjectiveId: ID
   }
 
   input AnswerTeamQuestionInput {
     answer: String!
     addToKnowledge: Boolean
+  }
+
+  # ============================================================================
+  # LEARNING OBJECTIVES (Research projects for knowledge building)
+  # ============================================================================
+
+  type LearningObjective {
+    id: ID!
+    teamId: ID!
+    title: String!
+    description: String
+    status: String!  # active, paused, completed
+    assignedTo: ID
+    assignedToUser: User
+    assignedToName: String  # "Raven" if assignedTo is null
+    createdBy: ID!
+    createdByUser: User
+    questionsAsked: Int!
+    maxQuestions: Int!
+    questionCount: Int!
+    answeredCount: Int!
+    questions: [TeamQuestion!]!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    completedAt: DateTime
+  }
+
+  input CreateLearningObjectiveInput {
+    title: String!
+    description: String
+    assignedTo: ID  # null = assign to Raven
+  }
+
+  input UpdateLearningObjectiveInput {
+    title: String
+    description: String
+    status: String
+    assignedTo: ID
   }
 
   # ============================================================================
@@ -580,6 +625,11 @@ export default gql`
     getTeamQuestions(teamId: ID!, status: String, assignedTo: ID): [TeamQuestion!]!
     getTeamQuestion(questionId: ID!): TeamQuestion
     getOpenQuestionCount(teamId: ID!): Int!
+    getFollowUpQuestions(questionId: ID!): [TeamQuestion!]!
+
+    # Learning Objectives
+    getLearningObjectives(teamId: ID!, status: String, assignedTo: ID): [LearningObjective!]!
+    getLearningObjective(objectiveId: ID!): LearningObjective
   }
 
   # ============================================================================
@@ -662,5 +712,11 @@ export default gql`
     answerTeamQuestion(questionId: ID!, input: AnswerTeamQuestionInput!): TeamQuestion!
     assignTeamQuestion(questionId: ID!, assigneeIds: [ID!]!): TeamQuestion!
     closeTeamQuestion(questionId: ID!): TeamQuestion!
+    askFollowUpQuestion(questionId: ID!): TeamQuestion  # Have Raven ask a follow-up
+
+    # Learning Objectives
+    createLearningObjective(teamId: ID!, input: CreateLearningObjectiveInput!): LearningObjective!
+    updateLearningObjective(objectiveId: ID!, input: UpdateLearningObjectiveInput!): LearningObjective!
+    deleteLearningObjective(objectiveId: ID!): Boolean!
   }
 `;

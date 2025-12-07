@@ -18,6 +18,7 @@ import DigestService from '../../services/DigestService.js';
 import AIService from '../../services/AIService.js';
 import * as GoalService from '../../services/GoalService.js';
 import * as QuestionService from '../../services/QuestionService.js';
+import * as LearningObjectiveService from '../../services/LearningObjectiveService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -210,6 +211,22 @@ const resolvers = {
     getOpenQuestionCount: async (_, { teamId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return QuestionService.getOpenQuestionCount(teamId, userId);
+    },
+
+    getFollowUpQuestions: async (_, { questionId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return LearningObjectiveService.getFollowUpQuestions(questionId);
+    },
+
+    // Learning Objectives
+    getLearningObjectives: async (_, { teamId, status, assignedTo }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return LearningObjectiveService.getObjectives(teamId, { status, assignedTo });
+    },
+
+    getLearningObjective: async (_, { objectiveId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return LearningObjectiveService.getObjectiveById(objectiveId);
     }
   },
 
@@ -461,6 +478,30 @@ const resolvers = {
     closeTeamQuestion: async (_, { questionId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return QuestionService.closeQuestion(questionId);
+    },
+
+    askFollowUpQuestion: async (_, { questionId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const question = await QuestionService.getQuestionById(questionId);
+      if (!question) throw new Error('Question not found');
+      return LearningObjectiveService.askFollowUp(questionId, question.teamId, userId);
+    },
+
+    // Learning Objectives
+    createLearningObjective: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return LearningObjectiveService.createObjective(teamId, userId, input);
+    },
+
+    updateLearningObjective: async (_, { objectiveId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return LearningObjectiveService.updateObjective(objectiveId, input);
+    },
+
+    deleteLearningObjective: async (_, { objectiveId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      // TODO: Add actual delete logic
+      return true;
     }
   },
 
@@ -648,6 +689,36 @@ const resolvers = {
 
     assignees: async (question) => {
       return QuestionService.getQuestionAssignees(question.id);
+    },
+
+    parentQuestion: async (question) => {
+      if (!question.parentQuestionId) return null;
+      return QuestionService.getQuestionById(question.parentQuestionId);
+    },
+
+    followUpQuestions: async (question) => {
+      return LearningObjectiveService.getFollowUpQuestions(question.id);
+    },
+
+    learningObjective: async (question) => {
+      if (!question.learningObjectiveId) return null;
+      return LearningObjectiveService.getObjectiveById(question.learningObjectiveId);
+    }
+  },
+
+  LearningObjective: {
+    assignedToUser: async (objective) => {
+      if (!objective.assignedTo) return null;
+      return UserService.getUserById(objective.assignedTo);
+    },
+
+    createdByUser: async (objective) => {
+      if (!objective.createdBy) return null;
+      return UserService.getUserById(objective.createdBy);
+    },
+
+    questions: async (objective) => {
+      return LearningObjectiveService.getObjectiveQuestions(objective.id);
     }
   }
 };

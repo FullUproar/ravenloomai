@@ -172,6 +172,20 @@ export async function answerQuestion(questionId, userId, answer, { addToKnowledg
       }
     }
 
+    // If this question is part of a Learning Objective, trigger next step processing
+    if (questionRow.learning_objective_id && teamId) {
+      try {
+        // Use dynamic import to avoid circular dependency
+        const LearningObjectiveService = await import('./LearningObjectiveService.js');
+        const nextStep = await LearningObjectiveService.processAnsweredQuestion(questionId, teamId);
+        if (nextStep) {
+          console.log(`LO next step: ${nextStep.action}`);
+        }
+      } catch (loError) {
+        console.error('Error processing LO next step:', loError);
+      }
+    }
+
     return mapQuestion(result.rows[0]);
   } catch (error) {
     await client.query('ROLLBACK');
@@ -273,6 +287,7 @@ function mapQuestion(row) {
     askedBy: row.asked_by,
     askedByName: row.asked_by_name || null,
     askedByEmail: row.asked_by_email || null,
+    askedByRaven: row.asked_by_raven || false,
     question: row.question,
     aiAnswer: row.ai_answer,
     aiConfidence: parseFloat(row.ai_confidence) || 0,
@@ -283,6 +298,8 @@ function mapQuestion(row) {
     answeredAt: row.answered_at,
     channelId: row.channel_id,
     context: row.context,
+    parentQuestionId: row.parent_question_id || null,
+    learningObjectiveId: row.learning_objective_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

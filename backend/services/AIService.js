@@ -953,6 +953,173 @@ function cosineSimilarity(a, b) {
   return magnitude === 0 ? 0 : dotProduct / magnitude;
 }
 
+// ============================================================================
+// Learning Objectives - Question Generation
+// ============================================================================
+
+/**
+ * Generate questions for a learning objective
+ */
+export async function generateLearningQuestions(title, description, existingQA = [], { count = 3, isInitial = false } = {}) {
+  const existingContext = existingQA.length > 0
+    ? `\n\nAlready asked and answered:\n${existingQA.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n\n')}`
+    : '';
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You are helping a company build knowledge about a topic. Generate ${count} insightful questions to learn more.
+
+LEARNING OBJECTIVE: ${title}
+${description ? `DESCRIPTION: ${description}` : ''}
+${existingContext}
+
+Guidelines:
+- Ask specific, actionable questions (not vague or philosophical)
+- Questions should build toward comprehensive understanding
+- ${isInitial ? 'Start with foundational questions that establish key facts' : 'Build on existing knowledge with deeper or adjacent questions'}
+- Avoid questions already asked
+- Each question should be self-contained and clear
+
+Return a JSON array of question strings:
+["Question 1?", "Question 2?", "Question 3?"]
+
+Return ONLY valid JSON.`
+    },
+    {
+      role: 'user',
+      content: `Generate ${count} questions for this learning objective`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 500,
+      temperature: 0.7
+    });
+
+    let content = response.choices[0].message.content;
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      content = codeBlockMatch[1].trim();
+    }
+
+    return JSON.parse(content);
+  } catch (error) {
+    console.error('Learning question generation error:', error);
+    return [`What are the key aspects of ${title}?`];
+  }
+}
+
+/**
+ * Decide next step after a question is answered in a learning objective
+ */
+export async function decideLearningNextStep(title, description, existingQA, latestQA) {
+  const messages = [
+    {
+      role: 'system',
+      content: `You are managing a learning objective for a company. Decide what to do next.
+
+LEARNING OBJECTIVE: ${title}
+${description ? `DESCRIPTION: ${description}` : ''}
+
+Questions & Answers so far:
+${existingQA.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n\n')}
+
+LATEST Q&A:
+Q: ${latestQA.question}
+A: ${latestQA.answer}
+
+Decide the next action:
+1. "followup" - Ask a follow-up question to dig deeper into the latest answer
+2. "new_question" - Ask a new question about a different aspect
+3. "complete" - The objective has been sufficiently addressed
+
+Return JSON:
+{
+  "action": "followup" | "new_question" | "complete",
+  "question": "The question to ask (if action is followup or new_question)",
+  "reason": "Brief explanation of your decision"
+}
+
+Guidelines:
+- Use "followup" when the answer reveals something worth exploring deeper
+- Use "new_question" when this topic is covered but others remain
+- Use "complete" when we have comprehensive understanding of the objective
+- Aim for depth over breadth - follow up on interesting threads
+
+Return ONLY valid JSON.`
+    },
+    {
+      role: 'user',
+      content: `Decide next step`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 300,
+      temperature: 0.3
+    });
+
+    let content = response.choices[0].message.content;
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      content = codeBlockMatch[1].trim();
+    }
+
+    return JSON.parse(content);
+  } catch (error) {
+    console.error('Learning decision error:', error);
+    return { action: 'complete', reason: 'Error in decision making' };
+  }
+}
+
+/**
+ * Generate a single follow-up question for an answered question
+ */
+export async function generateFollowUpQuestion(originalQuestion, answer, context = null) {
+  const messages = [
+    {
+      role: 'system',
+      content: `Generate a follow-up question to dig deeper into an answer.
+${context ? `\nCONTEXT: Learning about "${context.title}"${context.description ? ` - ${context.description}` : ''}` : ''}
+
+ORIGINAL QUESTION: ${originalQuestion}
+ANSWER: ${answer}
+
+Generate ONE follow-up question that:
+- Digs deeper into something mentioned in the answer
+- Clarifies ambiguity or asks for specifics
+- Explores implications or related aspects
+
+Return ONLY the question text, nothing else.`
+    },
+    {
+      role: 'user',
+      content: `Generate follow-up question`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 150,
+      temperature: 0.5
+    });
+
+    return response.choices[0].message.content.trim();
+  } catch (error) {
+    console.error('Follow-up question generation error:', error);
+    return null;
+  }
+}
+
 export default {
   parseRavenCommand,
   generateResponse,
@@ -968,5 +1135,8 @@ export default {
   generateCompanyAnswer,
   extractAtomicFacts,
   generateEmbedding,
-  semanticSearch
+  semanticSearch,
+  generateLearningQuestions,
+  decideLearningNextStep,
+  generateFollowUpQuestion
 };
