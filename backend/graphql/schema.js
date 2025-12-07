@@ -541,6 +541,7 @@ export default gql`
     assignedToName: String  # "Raven" if assignedTo is null
     createdBy: ID!
     createdByUser: User
+    createdByName: String
     questionsAsked: Int!
     maxQuestions: Int!
     questionCount: Int!
