@@ -191,19 +191,20 @@ async function handleRemember(content, teamId, channelId, userId) {
     // Extract structured fact from content with rich metadata
     const extracted = await AIService.extractFact(content);
 
-    // Get existing facts to check for conflicts
-    const existingFacts = await KnowledgeService.getFacts(teamId, { limit: 100 });
+    // Use semantic search to find potentially related facts (much more accurate than scanning all)
+    // This finds facts about the same entity/topic even if worded differently
+    const relatedFacts = await KnowledgeService.searchFacts(teamId, extracted.content, 10);
 
-    // Check for conflicts/duplicates with original user content for context
+    // Check for conflicts/duplicates with the semantically related facts
     const conflictCheck = await AIService.checkFactConflict(
       { ...extracted, originalContent: content },
-      existingFacts
+      relatedFacts
     );
 
     // Handle based on conflict check result
     if (conflictCheck.action === 'ask_confirmation') {
       // There's a potential conflict - ask user to confirm
-      const relatedFact = existingFacts.find(f => f.id === conflictCheck.relatedFactId);
+      const relatedFact = relatedFacts.find(f => f.id === conflictCheck.relatedFactId);
       return {
         responseText: `I noticed something similar already stored:\n> "${relatedFact?.content || conflictCheck.relatedFactContent}"\n\nDid you want to update this? Reply with:\n• \`@raven yes, update\` to replace the old fact\n• \`@raven save anyway\` to keep both\n• \`@raven nevermind\` to cancel`,
         metadata: {
@@ -218,7 +219,7 @@ async function handleRemember(content, teamId, channelId, userId) {
 
     if (conflictCheck.action === 'update' && conflictCheck.relatedFactId) {
       // Explicit update - replace the old fact
-      const oldFact = existingFacts.find(f => f.id === conflictCheck.relatedFactId);
+      const oldFact = relatedFacts.find(f => f.id === conflictCheck.relatedFactId);
 
       // Create new fact
       const newFact = await KnowledgeService.createFact(teamId, {
