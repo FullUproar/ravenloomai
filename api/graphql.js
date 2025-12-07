@@ -24,8 +24,9 @@ let pool;
 function getPool() {
   if (!pool) {
     // Vercel Postgres uses DB_POSTGRES_URL prefix when linked
-    const connString = process.env.POSTGRES_URL || process.env.DB_POSTGRES_URL || process.env.DATABASE_URL;
-    console.log('🔌 DB connected:', connString ? 'yes' : 'NO CONNECTION STRING!');
+    // Priority: DB_POSTGRES_URL (Vercel linked) > POSTGRES_URL > DATABASE_URL
+    const connString = process.env.DB_POSTGRES_URL || process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    console.log('🔌 DB using:', process.env.DB_POSTGRES_URL ? 'DB_POSTGRES_URL' : process.env.POSTGRES_URL ? 'POSTGRES_URL' : 'DATABASE_URL');
     pool = new Pool({
       connectionString: connString,
       ssl: { rejectUnauthorized: false },
