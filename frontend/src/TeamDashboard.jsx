@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 
 // API base URL - uses /api prefix in production, localhost in development
-const API_BASE_URL = process.env.NODE_ENV === 'production'
+const API_BASE_URL = import.meta.env.PROD
   ? '/api'
   : 'http://localhost:4000';
 

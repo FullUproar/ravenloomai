@@ -22,7 +22,7 @@ const isNativeApp = window.location.protocol === 'capacitor:' ||
 // API URI configuration
 const apiUri = isNativeApp
   ? 'http://10.0.2.2:4000/graphql'
-  : process.env.NODE_ENV === 'production'
+  : import.meta.env.PROD
     ? '/api/graphql'
     : 'http://localhost:4000/graphql';
 
