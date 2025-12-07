@@ -19,6 +19,9 @@ import AIService from '../../services/AIService.js';
 import * as GoalService from '../../services/GoalService.js';
 import * as QuestionService from '../../services/QuestionService.js';
 import * as LearningObjectiveService from '../../services/LearningObjectiveService.js';
+import GoogleDriveService from '../../services/GoogleDriveService.js';
+import UploadService from '../../services/UploadService.js';
+import GifService from '../../services/GifService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -227,6 +230,79 @@ const resolvers = {
     getLearningObjective: async (_, { objectiveId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return LearningObjectiveService.getObjectiveById(objectiveId);
+    },
+
+    // Site Admin
+    getSiteInvites: async (_, __, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Site admin required');
+      return UserService.getSiteInvites();
+    },
+
+    checkSiteInvite: async (_, { email }) => {
+      const invite = await UserService.hasValidSiteInvite(email);
+      return invite !== null;
+    },
+
+    amISiteAdmin: async (_, __, { userId }) => {
+      if (!userId) return false;
+      return UserService.isSiteAdmin(userId);
+    },
+
+    // Integrations
+    getMyIntegrations: async (_, __, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const google = await GoogleDriveService.getIntegration(userId);
+      const integrations = [];
+      if (google) {
+        integrations.push({
+          id: google.id,
+          provider: 'google',
+          providerEmail: google.providerEmail,
+          isActive: google.isActive,
+          createdAt: google.createdAt
+        });
+      }
+      return integrations;
+    },
+
+    getDriveFiles: async (_, { folderId, pageSize, pageToken }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const result = await GoogleDriveService.listFiles(userId, {
+        folderId: folderId || 'root',
+        pageSize: pageSize || 20,
+        pageToken
+      });
+      return {
+        files: result.files || [],
+        nextPageToken: result.nextPageToken
+      };
+    },
+
+    getDriveFileContent: async (_, { fileId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const metadata = await GoogleDriveService.getFileMetadata(userId, fileId);
+      const content = await GoogleDriveService.getFileContent(userId, fileId, metadata.mimeType);
+      return {
+        id: metadata.id,
+        name: metadata.name,
+        mimeType: metadata.mimeType,
+        content
+      };
+    },
+
+    // GIF Search (Tenor API)
+    searchGifs: async (_, { query, limit }) => {
+      return GifService.search(query, limit || 20);
+    },
+
+    getTrendingGifs: async (_, { limit }) => {
+      return GifService.getTrending(limit || 20);
+    },
+
+    getGifCategories: async () => {
+      return GifService.getCategories();
     }
   },
 
@@ -487,6 +563,11 @@ const resolvers = {
       return LearningObjectiveService.askFollowUp(questionId, question.teamId, userId);
     },
 
+    rejectQuestion: async (_, { questionId, reason }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return LearningObjectiveService.rejectAndReplace(questionId, reason, userId);
+    },
+
     // Learning Objectives
     createLearningObjective: async (_, { teamId, input }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
@@ -502,6 +583,75 @@ const resolvers = {
       if (!userId) throw new Error('Not authenticated');
       // TODO: Add actual delete logic
       return true;
+    },
+
+    // Site Admin
+    createSiteInvite: async (_, { email }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Site admin required');
+      return UserService.createSiteInvite(userId, email);
+    },
+
+    revokeSiteInvite: async (_, { inviteId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Site admin required');
+      return UserService.revokeSiteInvite(inviteId);
+    },
+
+    makeSiteAdmin: async (_, { userId: targetUserId, isAdmin }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const currentIsAdmin = await UserService.isSiteAdmin(userId);
+      if (!currentIsAdmin) throw new Error('Not authorized: Site admin required');
+      return UserService.makeSiteAdmin(targetUserId, isAdmin);
+    },
+
+    // Integrations
+    disconnectIntegration: async (_, { provider }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      if (provider === 'google') {
+        return GoogleDriveService.disconnectIntegration(userId);
+      }
+      throw new Error(`Unknown provider: ${provider}`);
+    },
+
+    importDriveFileToKnowledge: async (_, { teamId, fileId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      // Get file content
+      const metadata = await GoogleDriveService.getFileMetadata(userId, fileId);
+      const content = await GoogleDriveService.getFileContent(userId, fileId, metadata.mimeType);
+
+      // Create a fact from the document content
+      const fact = await KnowledgeService.createFact(teamId, {
+        content: content.substring(0, 10000), // Limit size for now
+        category: 'document',
+        sourceType: 'integration',
+        createdBy: userId
+      });
+
+      return fact;
+    },
+
+    // Attachments
+    attachToMessage: async (_, { attachmentId, messageId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await UploadService.attachToMessage(attachmentId, messageId);
+      const attachments = await UploadService.getMessageAttachments(messageId);
+      return attachments.find(a => a.id === attachmentId);
+    },
+
+    attachToQuestion: async (_, { attachmentId, questionId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await UploadService.attachToQuestion(attachmentId, questionId);
+      const attachments = await UploadService.getQuestionAttachments(questionId);
+      return attachments.find(a => a.id === attachmentId);
+    },
+
+    deleteAttachment: async (_, { attachmentId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return UploadService.deleteAttachment(attachmentId, userId);
     }
   },
 
@@ -544,6 +694,11 @@ const resolvers = {
     thread: async (message) => {
       if (!message.threadId) return null;
       return ThreadService.getThread(message.threadId);
+    },
+
+    attachments: async (message) => {
+      if (!message.hasAttachments) return [];
+      return UploadService.getMessageAttachments(message.id);
     }
   },
 
@@ -716,6 +871,10 @@ const resolvers = {
     learningObjective: async (question) => {
       if (!question.learningObjectiveId) return null;
       return LearningObjectiveService.getObjectiveById(question.learningObjectiveId);
+    },
+
+    attachments: async (question) => {
+      return UploadService.getQuestionAttachments(question.id);
     }
   },
 

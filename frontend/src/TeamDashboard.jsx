@@ -390,6 +390,149 @@ const ASK_FOLLOWUP_QUESTION = gql`
   }
 `;
 
+const REJECT_QUESTION = gql`
+  mutation RejectQuestion($questionId: ID!, $reason: String) {
+    rejectQuestion(questionId: $questionId, reason: $reason) {
+      id
+      question
+      status
+      askedByRaven
+    }
+  }
+`;
+
+// Site Admin queries
+const AM_I_SITE_ADMIN = gql`
+  query AmISiteAdmin {
+    amISiteAdmin
+  }
+`;
+
+const GET_SITE_INVITES = gql`
+  query GetSiteInvites {
+    getSiteInvites {
+      id
+      email
+      invitedByName
+      status
+      expiresAt
+      acceptedAt
+      createdAt
+    }
+  }
+`;
+
+const CREATE_SITE_INVITE = gql`
+  mutation CreateSiteInvite($email: String!) {
+    createSiteInvite(email: $email) {
+      id
+      email
+      status
+      expiresAt
+    }
+  }
+`;
+
+const REVOKE_SITE_INVITE = gql`
+  mutation RevokeSiteInvite($inviteId: ID!) {
+    revokeSiteInvite(inviteId: $inviteId) {
+      id
+      status
+    }
+  }
+`;
+
+// Google Drive Integration queries
+const GET_MY_INTEGRATIONS = gql`
+  query GetMyIntegrations {
+    getMyIntegrations {
+      id
+      provider
+      providerEmail
+      isActive
+      createdAt
+    }
+  }
+`;
+
+const GET_DRIVE_FILES = gql`
+  query GetDriveFiles($folderId: String, $pageSize: Int) {
+    getDriveFiles(folderId: $folderId, pageSize: $pageSize) {
+      files {
+        id
+        name
+        mimeType
+        modifiedTime
+        webViewLink
+        iconLink
+      }
+      nextPageToken
+    }
+  }
+`;
+
+const GET_DRIVE_FILE_CONTENT = gql`
+  query GetDriveFileContent($fileId: String!) {
+    getDriveFileContent(fileId: $fileId) {
+      id
+      name
+      mimeType
+      content
+    }
+  }
+`;
+
+const SEARCH_GIFS = gql`
+  query SearchGifs($query: String!, $limit: Int) {
+    searchGifs(query: $query, limit: $limit) {
+      id
+      title
+      url
+      previewUrl
+      width
+      height
+    }
+  }
+`;
+
+const GET_TRENDING_GIFS = gql`
+  query GetTrendingGifs($limit: Int) {
+    getTrendingGifs(limit: $limit) {
+      id
+      title
+      url
+      previewUrl
+      width
+      height
+    }
+  }
+`;
+
+const DISCONNECT_INTEGRATION = gql`
+  mutation DisconnectIntegration($provider: String!) {
+    disconnectIntegration(provider: $provider)
+  }
+`;
+
+const IMPORT_DRIVE_FILE = gql`
+  mutation ImportDriveFile($teamId: ID!, $fileId: String!) {
+    importDriveFileToKnowledge(teamId: $teamId, fileId: $fileId) {
+      id
+      content
+    }
+  }
+`;
+
+const ATTACH_TO_MESSAGE = gql`
+  mutation AttachToMessage($attachmentId: ID!, $messageId: ID!) {
+    attachToMessage(attachmentId: $attachmentId, messageId: $messageId) {
+      id
+      url
+      originalName
+    }
+  }
+`;
+
 const GET_DAILY_DIGEST = gql`
   query GetDailyDigest($teamId: ID!) {
     getDailyDigest(teamId: $teamId) {
@@ -646,6 +789,26 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [inviteSending, setInviteSending] = useState(false);
   const [lastInviteLink, setLastInviteLink] = useState(null);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
+  // Site Admin state
+  const [showSiteAdminPanel, setShowSiteAdminPanel] = useState(false);
+  const [siteInviteEmail, setSiteInviteEmail] = useState('');
+  const [siteInviteSending, setSiteInviteSending] = useState(false);
+  // Google Drive state
+  const [showDrivePanel, setShowDrivePanel] = useState(false);
+  const [driveFolderId, setDriveFolderId] = useState('root');
+  const [driveFolderStack, setDriveFolderStack] = useState([{ id: 'root', name: 'My Drive' }]);
+  // Image upload state
+  const [pendingImage, setPendingImage] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageInputRef = useRef(null);
+
+  // GIF Picker state
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifSearchQuery, setGifSearchQuery] = useState('');
+  const [gifResults, setGifResults] = useState([]);
+  const [gifLoading, setGifLoading] = useState(false);
+  const gifSearchTimeoutRef = useRef(null);
+
   const [activeView, setActiveViewState] = useState(getInitialView);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskProjectId, setNewTaskProjectId] = useState('');
@@ -889,6 +1052,28 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [createLearningObjective] = useMutation(CREATE_LEARNING_OBJECTIVE);
   const [updateLearningObjective] = useMutation(UPDATE_LEARNING_OBJECTIVE);
   const [askFollowUpQuestion] = useMutation(ASK_FOLLOWUP_QUESTION);
+  const [rejectQuestion] = useMutation(REJECT_QUESTION);
+
+  // Site Admin hooks
+  const { data: siteAdminData } = useQuery(AM_I_SITE_ADMIN);
+  const isSiteAdmin = siteAdminData?.amISiteAdmin || false;
+  const [fetchSiteInvites, { data: siteInvitesData }] = useLazyQuery(GET_SITE_INVITES);
+  const [createSiteInvite] = useMutation(CREATE_SITE_INVITE);
+  const [revokeSiteInvite] = useMutation(REVOKE_SITE_INVITE);
+  const siteInvites = siteInvitesData?.getSiteInvites || [];
+
+  // Google Drive hooks
+  const { data: integrationsData, refetch: refetchIntegrations } = useQuery(GET_MY_INTEGRATIONS);
+  const googleIntegration = integrationsData?.getMyIntegrations?.find(i => i.provider === 'google');
+  const [fetchDriveFiles, { data: driveFilesData, loading: driveLoading }] = useLazyQuery(GET_DRIVE_FILES);
+  const driveFiles = driveFilesData?.getDriveFiles?.files || [];
+  const [disconnectIntegration] = useMutation(DISCONNECT_INTEGRATION);
+  const [importDriveFile] = useMutation(IMPORT_DRIVE_FILE);
+  const [attachToMessage] = useMutation(ATTACH_TO_MESSAGE);
+
+  // GIF search queries
+  const [searchGifs] = useLazyQuery(SEARCH_GIFS);
+  const [fetchTrendingGifs] = useLazyQuery(GET_TRENDING_GIFS);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -960,7 +1145,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!messageInput.trim() || isSending) return;
+    if ((!messageInput.trim() && !pendingImage) || isSending) return;
 
     // Don't submit if selecting from popup
     if (showMentions || showCommands) return;
@@ -980,10 +1165,22 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     setIsSending(true);
 
     try {
+      // Upload image first if there's one pending
+      let imageUrl = null;
+      if (pendingImage) {
+        const attachment = await uploadImage();
+        if (attachment) {
+          imageUrl = attachment.url;
+          // Add image reference to content
+          content = content ? `${content}\n\n![${attachment.originalName}](${attachment.url})` : `![${pendingImage.filename}](${attachment.url})`;
+        }
+        handleRemovePendingImage();
+      }
+
       await sendMessage({
         variables: {
           channelId: activeChannelId,
-          input: { content, replyToMessageId }
+          input: { content: content || '(Image)', replyToMessageId }
         }
       });
       await refetchMessages();
@@ -1062,6 +1259,256 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       await navigator.clipboard.writeText(lastInviteLink);
       alert('Invite link copied to clipboard!');
     }
+  };
+
+  // Site Admin handlers
+  const handleOpenSiteAdmin = () => {
+    setShowSiteAdminPanel(true);
+    fetchSiteInvites();
+  };
+
+  const handleCreateSiteInvite = async (e) => {
+    e.preventDefault();
+    if (!siteInviteEmail.trim() || siteInviteSending) return;
+
+    setSiteInviteSending(true);
+    try {
+      await createSiteInvite({
+        variables: { email: siteInviteEmail.trim() }
+      });
+      setSiteInviteEmail('');
+      fetchSiteInvites();
+    } catch (error) {
+      console.error('Error creating site invite:', error);
+      alert('Failed to create invite: ' + error.message);
+    } finally {
+      setSiteInviteSending(false);
+    }
+  };
+
+  const handleRevokeSiteInvite = async (inviteId) => {
+    if (!window.confirm('Are you sure you want to revoke this invite?')) return;
+
+    try {
+      await revokeSiteInvite({
+        variables: { inviteId }
+      });
+      fetchSiteInvites();
+    } catch (error) {
+      console.error('Error revoking invite:', error);
+      alert('Failed to revoke invite: ' + error.message);
+    }
+  };
+
+  // Google Drive handlers
+  const handleConnectGoogleDrive = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/oauth/google/start?userId=${user.id}`);
+      const data = await response.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        throw new Error(data.error || 'Failed to get auth URL');
+      }
+    } catch (error) {
+      console.error('Error connecting Google Drive:', error);
+      alert('Failed to connect Google Drive: ' + error.message);
+    }
+  };
+
+  const handleOpenDrivePanel = () => {
+    setShowDrivePanel(true);
+    if (googleIntegration) {
+      fetchDriveFiles({ variables: { folderId: 'root', pageSize: 20 } });
+    }
+  };
+
+  const handleDriveFolderClick = (file) => {
+    if (file.mimeType === 'application/vnd.google-apps.folder') {
+      setDriveFolderId(file.id);
+      setDriveFolderStack([...driveFolderStack, { id: file.id, name: file.name }]);
+      fetchDriveFiles({ variables: { folderId: file.id, pageSize: 20 } });
+    }
+  };
+
+  const handleDriveNavigateBack = (index) => {
+    const folder = driveFolderStack[index];
+    setDriveFolderId(folder.id);
+    setDriveFolderStack(driveFolderStack.slice(0, index + 1));
+    fetchDriveFiles({ variables: { folderId: folder.id, pageSize: 20 } });
+  };
+
+  const handleDisconnectGoogleDrive = async () => {
+    if (!window.confirm('Are you sure you want to disconnect Google Drive?')) return;
+
+    try {
+      await disconnectIntegration({ variables: { provider: 'google' } });
+      refetchIntegrations();
+      setShowDrivePanel(false);
+    } catch (error) {
+      console.error('Error disconnecting Google Drive:', error);
+      alert('Failed to disconnect: ' + error.message);
+    }
+  };
+
+  const handleImportDriveFile = async (file) => {
+    try {
+      await importDriveFile({
+        variables: { teamId, fileId: file.id }
+      });
+      alert(`Imported "${file.name}" to knowledge base!`);
+    } catch (error) {
+      console.error('Error importing file:', error);
+      alert('Failed to import file: ' + error.message);
+    }
+  };
+
+  const getDriveFileIcon = (mimeType) => {
+    if (mimeType === 'application/vnd.google-apps.folder') return '📁';
+    if (mimeType === 'application/vnd.google-apps.document') return '📄';
+    if (mimeType === 'application/vnd.google-apps.spreadsheet') return '📊';
+    if (mimeType === 'application/vnd.google-apps.presentation') return '📽️';
+    return '📎';
+  };
+
+  const isImportableFile = (mimeType) => {
+    return [
+      'application/vnd.google-apps.document',
+      'application/vnd.google-apps.spreadsheet',
+      'application/vnd.google-apps.presentation'
+    ].includes(mimeType);
+  };
+
+  // Image upload handlers
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Image too large. Maximum size is 10MB');
+      return;
+    }
+
+    // Read as base64
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      setPendingImage({
+        data: base64,
+        filename: file.name,
+        mimeType: file.type,
+        preview: reader.result
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePendingImage = () => {
+    setPendingImage(null);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  };
+
+  const uploadImage = async () => {
+    if (!pendingImage) return null;
+
+    setImageUploading(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.id
+        },
+        body: JSON.stringify({
+          data: pendingImage.data,
+          filename: pendingImage.filename,
+          mimeType: pendingImage.mimeType,
+          teamId
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Upload failed');
+      }
+
+      const attachment = await response.json();
+      return attachment;
+    } catch (error) {
+      console.error('Image upload error:', error);
+      alert('Failed to upload image: ' + error.message);
+      return null;
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  // GIF Picker handlers
+  const handleOpenGifPicker = async () => {
+    setShowGifPicker(true);
+    setGifSearchQuery('');
+    setGifLoading(true);
+    try {
+      const { data } = await fetchTrendingGifs({ variables: { limit: 20 } });
+      setGifResults(data?.getTrendingGifs || []);
+    } catch (error) {
+      console.error('Failed to load trending GIFs:', error);
+    } finally {
+      setGifLoading(false);
+    }
+  };
+
+  const handleGifSearch = async (query) => {
+    setGifSearchQuery(query);
+
+    // Clear previous timeout
+    if (gifSearchTimeoutRef.current) {
+      clearTimeout(gifSearchTimeoutRef.current);
+    }
+
+    if (!query.trim()) {
+      // Load trending if search is cleared
+      setGifLoading(true);
+      try {
+        const { data } = await fetchTrendingGifs({ variables: { limit: 20 } });
+        setGifResults(data?.getTrendingGifs || []);
+      } catch (error) {
+        console.error('Failed to load trending GIFs:', error);
+      } finally {
+        setGifLoading(false);
+      }
+      return;
+    }
+
+    // Debounce search
+    gifSearchTimeoutRef.current = setTimeout(async () => {
+      setGifLoading(true);
+      try {
+        const { data } = await searchGifs({ variables: { query: query.trim(), limit: 20 } });
+        setGifResults(data?.searchGifs || []);
+      } catch (error) {
+        console.error('GIF search error:', error);
+      } finally {
+        setGifLoading(false);
+      }
+    }, 300);
+  };
+
+  const handleSelectGif = (gif) => {
+    // Insert GIF as markdown image in the message
+    const gifMarkdown = `![${gif.title || 'GIF'}](${gif.url})`;
+    setMessageInput(prev => prev ? `${prev} ${gifMarkdown}` : gifMarkdown);
+    setShowGifPicker(false);
+    inputRef.current?.focus();
   };
 
   const handleCreateTask = async (e) => {
@@ -1342,6 +1789,22 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       alert('Failed to request follow-up: ' + error.message);
     } finally {
       setRequestingFollowUp(null);
+    }
+  };
+
+  // Reject a question and get a replacement
+  const handleRejectQuestion = async (questionId, reason = null) => {
+    try {
+      await rejectQuestion({
+        variables: { questionId, reason }
+      });
+      refetchQuestions();
+      if (selectedLOId) {
+        refetchSelectedLO();
+      }
+    } catch (error) {
+      console.error('Error rejecting question:', error);
+      alert('Failed to reject question: ' + error.message);
     }
   };
 
@@ -1931,6 +2394,28 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <span>Help</span>
           </button>
 
+          {/* Site Admin Button (only for admins) */}
+          {isSiteAdmin && (
+            <button
+              className="footer-help-btn footer-admin-btn"
+              onClick={handleOpenSiteAdmin}
+              title="Site Admin"
+            >
+              <span>⚙</span>
+              <span>Admin</span>
+            </button>
+          )}
+
+          {/* Google Drive Button */}
+          <button
+            className={`footer-help-btn ${googleIntegration ? 'footer-drive-connected' : ''}`}
+            onClick={handleOpenDrivePanel}
+            title="Google Drive"
+          >
+            <span>📁</span>
+            <span>Drive</span>
+          </button>
+
           {/* User Info & Sign Out */}
           <div className="footer-user">
             <div className="user-info">
@@ -2048,6 +2533,237 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Site Admin Panel Modal */}
+      {showSiteAdminPanel && (
+        <div className="modal-overlay" onClick={() => setShowSiteAdminPanel(false)}>
+          <div className="modal site-admin-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Site Administration</h3>
+            <p className="modal-subtitle">Manage who can join RavenLoom</p>
+
+            {/* Create Site Invite Form */}
+            <form onSubmit={handleCreateSiteInvite} className="site-invite-form">
+              <input
+                type="email"
+                value={siteInviteEmail}
+                onChange={(e) => setSiteInviteEmail(e.target.value)}
+                placeholder="email@example.com"
+                className="input-field"
+                required
+              />
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={siteInviteSending}
+              >
+                {siteInviteSending ? 'Inviting...' : 'Invite to Site'}
+              </button>
+            </form>
+
+            {/* Site Invites List */}
+            <div className="site-invites-list">
+              <h4>Pending Invites</h4>
+              {siteInvites.filter(i => i.status === 'pending').length === 0 ? (
+                <p className="no-invites">No pending invites</p>
+              ) : (
+                siteInvites.filter(i => i.status === 'pending').map(invite => (
+                  <div key={invite.id} className="site-invite-item">
+                    <div className="invite-info">
+                      <span className="invite-email">{invite.email}</span>
+                      <span className="invite-date">
+                        Invited {new Date(invite.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleRevokeSiteInvite(invite.id)}
+                      className="btn-danger-small"
+                      title="Revoke invite"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
+
+              <h4>Accepted Invites</h4>
+              {siteInvites.filter(i => i.status === 'accepted').length === 0 ? (
+                <p className="no-invites">No accepted invites yet</p>
+              ) : (
+                siteInvites.filter(i => i.status === 'accepted').map(invite => (
+                  <div key={invite.id} className="site-invite-item accepted">
+                    <div className="invite-info">
+                      <span className="invite-email">{invite.email}</span>
+                      <span className="invite-status">✓ Accepted</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="form-actions">
+              <button
+                type="button"
+                onClick={() => setShowSiteAdminPanel(false)}
+                className="btn-secondary"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Google Drive Panel Modal */}
+      {showDrivePanel && (
+        <div className="modal-overlay" onClick={() => setShowDrivePanel(false)}>
+          <div className="modal drive-panel-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Google Drive</h3>
+
+            {!googleIntegration ? (
+              <div className="drive-connect-prompt">
+                <p>Connect your Google Drive to import documents, spreadsheets, and presentations into your knowledge base.</p>
+                <button onClick={handleConnectGoogleDrive} className="btn-primary">
+                  Connect Google Drive
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="modal-subtitle">
+                  Connected as {googleIntegration.providerEmail}
+                </p>
+
+                {/* Breadcrumb Navigation */}
+                <div className="drive-breadcrumb">
+                  {driveFolderStack.map((folder, index) => (
+                    <span key={folder.id}>
+                      {index > 0 && <span className="breadcrumb-sep">/</span>}
+                      <button
+                        className="breadcrumb-link"
+                        onClick={() => handleDriveNavigateBack(index)}
+                      >
+                        {folder.name}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* File List */}
+                <div className="drive-file-list">
+                  {driveLoading ? (
+                    <div className="drive-loading">Loading files...</div>
+                  ) : driveFiles.length === 0 ? (
+                    <div className="drive-empty">No files in this folder</div>
+                  ) : (
+                    driveFiles.map(file => (
+                      <div
+                        key={file.id}
+                        className={`drive-file-item ${file.mimeType === 'application/vnd.google-apps.folder' ? 'folder' : ''}`}
+                        onClick={() => handleDriveFolderClick(file)}
+                      >
+                        <span className="drive-file-icon">{getDriveFileIcon(file.mimeType)}</span>
+                        <span className="drive-file-name">{file.name}</span>
+                        {isImportableFile(file.mimeType) && (
+                          <button
+                            className="drive-import-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleImportDriveFile(file);
+                            }}
+                            title="Import to knowledge base"
+                          >
+                            Import
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    onClick={handleDisconnectGoogleDrive}
+                    className="btn-danger-small"
+                  >
+                    Disconnect
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDrivePanel(false)}
+                    className="btn-secondary"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* GIF Picker Modal */}
+      {showGifPicker && (
+        <div className="modal-overlay" onClick={() => setShowGifPicker(false)}>
+          <div className="modal gif-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="gif-picker-header">
+              <h3>Choose a GIF</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setShowGifPicker(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="gif-search-container">
+              <input
+                type="text"
+                value={gifSearchQuery}
+                onChange={(e) => handleGifSearch(e.target.value)}
+                placeholder="Search GIFs..."
+                className="gif-search-input"
+                autoFocus
+              />
+            </div>
+
+            <div className="gif-results-container">
+              {gifLoading ? (
+                <div className="gif-loading">
+                  <div className="loading-spinner"></div>
+                  <span>Loading GIFs...</span>
+                </div>
+              ) : gifResults.length === 0 ? (
+                <div className="gif-empty">
+                  <p>No GIFs found. Try a different search.</p>
+                </div>
+              ) : (
+                <div className="gif-grid">
+                  {gifResults.map(gif => (
+                    <button
+                      key={gif.id}
+                      type="button"
+                      className="gif-item"
+                      onClick={() => handleSelectGif(gif)}
+                      title={gif.title || 'GIF'}
+                    >
+                      <img
+                        src={gif.previewUrl || gif.url}
+                        alt={gif.title || 'GIF'}
+                        loading="lazy"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="gif-footer">
+              <span className="tenor-attribution">Powered by Tenor</span>
+            </div>
           </div>
         </div>
       )}
@@ -2200,7 +2916,47 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
 
+            {/* Image Preview */}
+            {pendingImage && (
+              <div className="pending-image-preview">
+                <img src={pendingImage.preview} alt="Preview" />
+                <button
+                  type="button"
+                  className="remove-image-btn"
+                  onClick={handleRemovePendingImage}
+                  title="Remove image"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             <form onSubmit={handleSendMessage} className="message-form">
+              {/* Hidden file input */}
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                className="image-upload-btn"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={imageUploading}
+                title="Attach image"
+              >
+                📷
+              </button>
+              <button
+                type="button"
+                className="gif-picker-btn"
+                onClick={handleOpenGifPicker}
+                title="Add GIF"
+              >
+                GIF
+              </button>
               <input
                 ref={inputRef}
                 type="text"
@@ -2213,10 +2969,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               />
               <button
                 type="submit"
-                disabled={isSending || !messageInput.trim() || !activeChannelId}
+                disabled={isSending || (!messageInput.trim() && !pendingImage) || !activeChannelId}
                 className="send-btn"
               >
-                {isSending ? '...' : 'Send'}
+                {isSending || imageUploading ? '...' : 'Send'}
               </button>
             </form>
           </div>
@@ -2823,12 +3579,23 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                             <p className="answer-note">Your answer will be added to the knowledge base. @mention team members to tag them.</p>
                           </div>
                         ) : (
-                          <button
-                            className="btn-secondary answer-btn"
-                            onClick={() => setAnsweringQuestionId(q.id)}
-                          >
-                            I can answer this
-                          </button>
+                          <div className="question-action-buttons">
+                            <button
+                              className="btn-secondary answer-btn"
+                              onClick={() => setAnsweringQuestionId(q.id)}
+                            >
+                              I can answer this
+                            </button>
+                            {q.askedByRaven && (
+                              <button
+                                className="btn-reject"
+                                onClick={() => handleRejectQuestion(q.id, 'Too deep or off-topic')}
+                                title="Reject this question and get a different one"
+                              >
+                                Not relevant
+                              </button>
+                            )}
+                          </div>
                         )
                       )}
 
@@ -3129,12 +3896,23 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                               </div>
                             </div>
                           ) : (
-                            <button
-                              className="btn-secondary answer-btn"
-                              onClick={() => setAnsweringQuestionId(q.id)}
-                            >
-                              Answer this
-                            </button>
+                            <div className="question-action-buttons">
+                              <button
+                                className="btn-secondary answer-btn"
+                                onClick={() => setAnsweringQuestionId(q.id)}
+                              >
+                                Answer this
+                              </button>
+                              {q.askedByRaven && (
+                                <button
+                                  className="btn-reject"
+                                  onClick={() => handleRejectQuestion(q.id, 'Too deep or off-topic')}
+                                  title="Reject this question and get a different one"
+                                >
+                                  Not relevant
+                                </button>
+                              )}
+                            </div>
                           )
                         )}
 
@@ -3151,12 +3929,60 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                                   </div>
                                 )}
                                 {fq.status === 'open' && (
-                                  <button
-                                    className="btn-secondary btn-small answer-btn"
-                                    onClick={() => setAnsweringQuestionId(fq.id)}
-                                  >
-                                    Answer
-                                  </button>
+                                  answeringQuestionId === fq.id ? (
+                                    <div className="answer-form">
+                                      <textarea
+                                        value={questionAnswerText}
+                                        onChange={(e) => setQuestionAnswerText(e.target.value)}
+                                        placeholder="Your answer..."
+                                        rows={2}
+                                        className="answer-input"
+                                      />
+                                      <div className="answer-form-actions">
+                                        <button
+                                          className="btn-secondary btn-small"
+                                          onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); }}
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          className="btn-primary btn-small"
+                                          onClick={async () => {
+                                            await answerTeamQuestion({
+                                              variables: {
+                                                questionId: fq.id,
+                                                input: { answer: questionAnswerText.trim(), addToKnowledge: true }
+                                              }
+                                            });
+                                            setAnsweringQuestionId(null);
+                                            setQuestionAnswerText('');
+                                            refetchSelectedLO();
+                                          }}
+                                          disabled={!questionAnswerText.trim()}
+                                        >
+                                          Submit
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="question-action-buttons">
+                                      <button
+                                        className="btn-secondary btn-small answer-btn"
+                                        onClick={() => setAnsweringQuestionId(fq.id)}
+                                      >
+                                        Answer
+                                      </button>
+                                      {fq.askedByRaven && (
+                                        <button
+                                          className="btn-reject btn-small"
+                                          onClick={() => handleRejectQuestion(fq.id, 'Too deep or off-topic')}
+                                          title="Reject this question"
+                                        >
+                                          Not relevant
+                                        </button>
+                                      )}
+                                    </div>
+                                  )
                                 )}
                               </div>
                             ))}

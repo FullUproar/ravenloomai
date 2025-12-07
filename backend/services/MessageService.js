@@ -7,6 +7,7 @@ import AIService from './AIService.js';
 import KnowledgeService from './KnowledgeService.js';
 import AlertService from './AlertService.js';
 import TaskService from './TaskService.js';
+import DiscussionService from './DiscussionService.js';
 
 /**
  * Get a message by ID
@@ -176,6 +177,15 @@ async function processAICommand(command, teamId, channelId, userId, replyContext
 
     case 'cancel_action':
       return handleCancelAction(channelId);
+
+    case 'discuss':
+      return handleStartDiscussion(command.topic, teamId, channelId, userId);
+
+    case 'end_discussion':
+      return handleEndDiscussion(teamId, channelId);
+
+    case 'continue_discussion':
+      return handleContinueDiscussion(teamId, channelId);
 
     case 'query':
     default:
@@ -952,6 +962,133 @@ export async function sendThreadMessage(threadId, userId, content, options = {})
     alertsCreated: aiResponse.alertsCreated || [],
     tasksCreated: aiResponse.tasksCreated || []
   };
+}
+
+/**
+ * Handle starting a discussion
+ */
+async function handleStartDiscussion(topic, teamId, channelId, userId) {
+  try {
+    // Get relevant knowledge for context
+    const knowledge = await KnowledgeService.searchFacts(teamId, topic, 5);
+    const knowledgeContext = { facts: knowledge };
+
+    // Start the discussion
+    await DiscussionService.startDiscussion(channelId, topic, userId);
+
+    // Generate opening discussion message
+    const response = await AIService.startDiscussion(topic, knowledgeContext);
+
+    return {
+      responseText: response,
+      metadata: {
+        command: 'discuss',
+        topic: topic,
+        action: 'started'
+      }
+    };
+  } catch (error) {
+    console.error('Start discussion error:', error);
+    return {
+      responseText: `I'd love to help facilitate a discussion, but I ran into an issue. Try again?`,
+      metadata: { command: 'discuss', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle ending a discussion
+ */
+async function handleEndDiscussion(teamId, channelId) {
+  try {
+    // Get the active discussion
+    const discussion = await DiscussionService.getActiveDiscussion(channelId);
+
+    if (!discussion) {
+      return {
+        responseText: `There's no active discussion to end in this channel. You can start one with \`@raven discuss [topic]\`.`,
+        metadata: { command: 'end_discussion', action: 'no_discussion' }
+      };
+    }
+
+    // Get messages since discussion started
+    const messages = await DiscussionService.getDiscussionMessages(
+      channelId,
+      discussion.started_at,
+      50
+    );
+
+    // Generate summary
+    const summary = await AIService.concludeDiscussion(discussion.topic, messages);
+
+    // End the discussion
+    await DiscussionService.endActiveDiscussion(channelId);
+
+    return {
+      responseText: summary,
+      metadata: {
+        command: 'end_discussion',
+        topic: discussion.topic,
+        action: 'ended'
+      }
+    };
+  } catch (error) {
+    console.error('End discussion error:', error);
+    return {
+      responseText: `I ran into an issue wrapping up the discussion. The discussion has been ended though.`,
+      metadata: { command: 'end_discussion', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle continuing a discussion with the next question
+ */
+async function handleContinueDiscussion(teamId, channelId) {
+  try {
+    // Get the active discussion
+    const discussion = await DiscussionService.getActiveDiscussion(channelId);
+
+    if (!discussion) {
+      return {
+        responseText: `There's no active discussion to continue. Start one with \`@raven discuss [topic]\`.`,
+        metadata: { command: 'continue_discussion', action: 'no_discussion' }
+      };
+    }
+
+    // Get messages since discussion started
+    const messages = await DiscussionService.getDiscussionMessages(
+      channelId,
+      discussion.started_at,
+      30
+    );
+
+    // Get relevant knowledge for context
+    const knowledge = await KnowledgeService.searchFacts(teamId, discussion.topic, 5);
+    const knowledgeContext = { facts: knowledge };
+
+    // Generate follow-up question
+    const response = await AIService.continueDiscussion(
+      discussion.topic,
+      messages,
+      knowledgeContext
+    );
+
+    return {
+      responseText: response,
+      metadata: {
+        command: 'continue_discussion',
+        topic: discussion.topic,
+        action: 'continued'
+      }
+    };
+  } catch (error) {
+    console.error('Continue discussion error:', error);
+    return {
+      responseText: `I ran into an issue coming up with the next question. Feel free to keep the conversation going!`,
+      metadata: { command: 'continue_discussion', error: error.message }
+    };
+  }
 }
 
 export default {

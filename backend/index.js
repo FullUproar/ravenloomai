@@ -69,6 +69,104 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ============================================================================
+// OAuth Routes for Integrations
+// ============================================================================
+
+import GoogleDriveService from './services/GoogleDriveService.js';
+
+// Start Google OAuth flow
+app.get('/oauth/google/start', (req, res) => {
+  const userId = req.headers['x-user-id'] || req.query.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'User ID required' });
+  }
+
+  try {
+    const authUrl = GoogleDriveService.getAuthUrl(userId);
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('OAuth start error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Google OAuth callback
+app.get('/oauth/google/callback', async (req, res) => {
+  const { code, state } = req.query;
+
+  if (!code) {
+    return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/integrations?error=no_code`);
+  }
+
+  try {
+    const stateData = JSON.parse(state || '{}');
+    const userId = stateData.userId;
+
+    if (!userId) {
+      throw new Error('No user ID in state');
+    }
+
+    // Exchange code for tokens
+    const tokens = await GoogleDriveService.exchangeCodeForTokens(code);
+
+    // Get user info
+    const userInfo = await GoogleDriveService.getGoogleUserInfo(tokens.access_token);
+
+    // Save integration
+    await GoogleDriveService.saveIntegration(userId, tokens, userInfo);
+
+    // Redirect back to frontend
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/integrations?success=google`);
+  } catch (error) {
+    console.error('OAuth callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/integrations?error=${encodeURIComponent(error.message)}`);
+  }
+});
+
+// ============================================================================
+// File Upload Routes
+// ============================================================================
+
+import UploadService from './services/UploadService.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Increase body size limit for file uploads
+app.use('/upload', express.json({ limit: '15mb' }));
+
+// Upload endpoint (accepts base64 encoded file)
+app.post('/upload', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) {
+    return res.status(401).json({ error: 'User ID required' });
+  }
+
+  try {
+    const { data, filename, mimeType, teamId } = req.body;
+
+    if (!data || !filename || !mimeType) {
+      return res.status(400).json({ error: 'Missing required fields: data, filename, mimeType' });
+    }
+
+    const attachment = await UploadService.saveFile(userId, teamId, {
+      data,
+      originalName: filename,
+      mimeType
+    });
+
+    res.json(attachment);
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 RavenLoom server ready at http://localhost:${PORT}/graphql`);

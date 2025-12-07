@@ -148,6 +148,25 @@ export function parseRavenCommand(content) {
     return { type: 'list_reminders' };
   }
 
+  // Discuss command - start a facilitated discussion
+  if (lowerAfterRaven.startsWith('discuss ') || lowerAfterRaven.startsWith('let\'s discuss ') || lowerAfterRaven.startsWith('lets discuss ')) {
+    const topic = afterRaven.replace(/^(discuss|let's discuss|lets discuss)\s+/i, '').trim();
+    return {
+      type: 'discuss',
+      topic: topic
+    };
+  }
+
+  // End discussion
+  if (lowerAfterRaven === 'end discussion' || lowerAfterRaven === 'stop discussion' || lowerAfterRaven === 'conclude discussion' || lowerAfterRaven === 'wrap up') {
+    return { type: 'end_discussion' };
+  }
+
+  // Continue discussion (next question)
+  if (lowerAfterRaven === 'next question' || lowerAfterRaven === 'another question' || lowerAfterRaven === 'more' || lowerAfterRaven === 'continue') {
+    return { type: 'continue_discussion' };
+  }
+
   // Confirmation commands for pending actions
   if (lowerAfterRaven === 'yes, update' || lowerAfterRaven === 'yes update' || lowerAfterRaven.startsWith('yes,') || lowerAfterRaven === 'yes') {
     return { type: 'confirm_update' };
@@ -968,25 +987,31 @@ export async function generateLearningQuestions(title, description, existingQA =
   const messages = [
     {
       role: 'system',
-      content: `You are helping a company build knowledge about a topic. Generate ${count} focused questions.
+      content: `You are helping a company build practical knowledge about a topic. Generate ${count} focused questions.
 
 LEARNING OBJECTIVE: ${title}
 ${description ? `DESCRIPTION: ${description}` : ''}
 ${existingContext}
 
-CRITICAL: Ask BITE-SIZED questions that can be answered in 1-3 sentences.
+CRITICAL: Ask PRACTICAL, BROAD questions that can be answered in 1-3 sentences.
 - BAD: "What are the key external factors, such as marketing and distribution partnerships, that need to be arranged?"
+- BAD: "What's the underlying methodology for your approach?"
 - GOOD: "Who is your distribution partner for this launch?"
 - GOOD: "What's the target launch date?"
 - GOOD: "How many units are planned for the initial print run?"
+- GOOD: "What's the budget for this project?"
 
 Guidelines:
+- Focus on BREADTH across the topic, not depth in any one area
 - Each question should target ONE specific fact or detail
 - Answers should fit in a short paragraph, not require a page of writing
-- ${isInitial ? 'Start with foundational facts: who, what, when, where, how many' : 'Target specific gaps in what we know'}
-- We use FOLLOW-UP questions to dig deeper, so keep each question narrow
+- ${isInitial ? 'Cover the fundamentals: who, what, when, where, how many, how much' : 'Explore areas not yet covered rather than drilling deeper into existing answers'}
+- Prioritize practical, operational questions (people, dates, budgets, processes)
+- Avoid academic, theoretical, or overly technical questions
 - Avoid compound questions with "and" or multiple parts
 - Avoid questions already asked
+
+Think like a new employee trying to understand the basics, not a consultant doing deep analysis.
 
 Return a JSON array of question strings:
 ["Question 1?", "Question 2?", "Question 3?"]
@@ -1093,21 +1118,40 @@ export async function generateFollowUpQuestion(originalQuestion, answer, context
   const messages = [
     {
       role: 'system',
-      content: `Generate a BITE-SIZED follow-up question to dig deeper into an answer.
+      content: `Generate a PRACTICAL follow-up question to expand knowledge breadth (not depth).
 ${context ? `\nCONTEXT: Learning about "${context.title}"${context.description ? ` - ${context.description}` : ''}` : ''}
 
 ORIGINAL QUESTION: ${originalQuestion}
 ANSWER: ${answer}
 
-Generate ONE focused follow-up question that:
-- Targets ONE specific detail mentioned in the answer
-- Can be answered in 1-3 sentences
-- Asks for a specific name, date, number, or fact (not broad "tell me more")
+Generate ONE question that:
+- Explores a DIFFERENT aspect of the topic (don't dive deeper into the same subtopic)
+- Is practical and relevant to day-to-day business operations
+- Can be answered in 1-3 sentences with concrete facts
+- Covers gaps in knowledge (what, who, when, where) rather than drilling into details
 
-Examples:
-- If answer mentions a partner: "What's the name of that distribution partner?"
-- If answer mentions a date: "Is that date confirmed or tentative?"
-- If answer mentions a process: "Who is responsible for that step?"
+PRIORITIZE questions about:
+1. Key people/roles involved
+2. Important dates/timelines
+3. Related processes or workflows
+4. Business impact or outcomes
+5. Connections to other parts of the business
+
+AVOID:
+- Going deeper into implementation details already mentioned
+- Academic or theoretical questions
+- Overly narrow technical specifics
+- Anything that feels like interrogation
+
+Examples of GOOD questions (breadth):
+- "Who else needs to be involved in this process?"
+- "What's the timeline for this?"
+- "How does this connect to [related topic]?"
+
+Examples of BAD questions (too deep):
+- "What's the specific methodology used for X?"
+- "Can you elaborate on that detail?"
+- "What are the underlying reasons for that approach?"
 
 Return ONLY the question text, nothing else.`
     },
@@ -1132,6 +1176,207 @@ Return ONLY the question text, nothing else.`
   }
 }
 
+/**
+ * Start a facilitated discussion on a topic
+ * Returns an opening message with the first discussion question
+ */
+export async function startDiscussion(topic, knowledgeContext = null) {
+  let contextInfo = '';
+  if (knowledgeContext && knowledgeContext.facts?.length > 0) {
+    contextInfo = '\n\nRELEVANT KNOWLEDGE:\n' + knowledgeContext.facts.map(f => `- ${f.content}`).join('\n');
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You are Raven, facilitating a team discussion on a topic.
+
+Your role is to:
+1. Welcome the topic and briefly frame why it's worth discussing
+2. Ask ONE thought-provoking opening question to get the discussion started
+3. The question should be open-ended but focused, encouraging diverse perspectives
+
+Keep your response concise:
+- Brief intro (1-2 sentences max)
+- One clear opening question
+
+${contextInfo ? `Use this context if relevant:${contextInfo}` : ''}
+
+Be warm and engaging, but get to the question quickly.
+End with the question, don't add extra commentary.`
+    },
+    {
+      role: 'user',
+      content: `Start a discussion about: ${topic}`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 300,
+      temperature: 0.7
+    });
+
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error('Discussion start error:', error);
+    throw new Error('Failed to start discussion');
+  }
+}
+
+/**
+ * Continue a discussion with a follow-up question based on responses
+ */
+export async function continueDiscussion(topic, conversationHistory, knowledgeContext = null) {
+  // Build conversation context
+  const historyText = conversationHistory.map(msg => {
+    const speaker = msg.isAi ? 'Raven' : (msg.user?.displayName || 'Team member');
+    return `${speaker}: ${msg.content}`;
+  }).join('\n\n');
+
+  let contextInfo = '';
+  if (knowledgeContext && knowledgeContext.facts?.length > 0) {
+    contextInfo = '\n\nRELEVANT KNOWLEDGE:\n' + knowledgeContext.facts.map(f => `- ${f.content}`).join('\n');
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You are Raven, facilitating a team discussion on: "${topic}"
+
+Your role:
+1. Briefly acknowledge the latest response(s) from team members
+2. Build on what was said with a natural follow-up question
+3. The question should deepen the discussion or explore a new angle
+
+Keep your response concise:
+- Very brief acknowledgment (1 sentence)
+- One focused follow-up question
+
+Don't repeat points already made. Push the discussion forward.
+${contextInfo ? `\nContext if relevant:${contextInfo}` : ''}`
+    },
+    {
+      role: 'user',
+      content: `Discussion so far:\n\n${historyText}\n\nContinue the discussion with a follow-up question.`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 250,
+      temperature: 0.7
+    });
+
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error('Discussion continue error:', error);
+    throw new Error('Failed to continue discussion');
+  }
+}
+
+/**
+ * Summarize and conclude a discussion
+ */
+export async function concludeDiscussion(topic, conversationHistory) {
+  const historyText = conversationHistory.map(msg => {
+    const speaker = msg.isAi ? 'Raven' : (msg.user?.displayName || 'Team member');
+    return `${speaker}: ${msg.content}`;
+  }).join('\n\n');
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You are Raven, wrapping up a team discussion on: "${topic}"
+
+Provide a brief summary that:
+1. Thanks the team for the discussion
+2. Highlights 2-3 key points or insights that emerged
+3. Notes any decisions made or action items mentioned
+4. Asks if there's anything that should be remembered for the knowledge base
+
+Keep it concise but comprehensive. Use bullet points for key takeaways.`
+    },
+    {
+      role: 'user',
+      content: `Discussion to summarize:\n\n${historyText}`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 400,
+      temperature: 0.5
+    });
+
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error('Discussion conclude error:', error);
+    throw new Error('Failed to conclude discussion');
+  }
+}
+
+/**
+ * Generate a replacement question when a question is rejected
+ * Avoids the rejected direction and explores different angles
+ */
+export async function generateReplacementQuestion(rejectedQuestion, reason, previouslyRejected = [], context = null) {
+  const rejectedList = previouslyRejected.length > 0
+    ? `\n\nPREVIOUSLY REJECTED QUESTIONS (AVOID SIMILAR PATTERNS):\n${previouslyRejected.map(q => `- ${q}`).join('\n')}`
+    : '';
+
+  const messages = [
+    {
+      role: 'system',
+      content: `Generate a REPLACEMENT question after the previous one was rejected.
+${context ? `\nCONTEXT: Learning about "${context.title}"${context.description ? ` - ${context.description}` : ''}` : ''}
+
+REJECTED QUESTION: ${rejectedQuestion}
+${reason ? `REASON FOR REJECTION: ${reason}` : 'The user found this question too deep, off-topic, or irrelevant.'}
+${rejectedList}
+
+Generate a NEW question that:
+1. Explores a DIFFERENT angle or aspect of the topic
+2. Stays at a more practical, high-level focus (avoid going too deep)
+3. Is relevant to day-to-day business operations
+4. Does NOT repeat or closely resemble any rejected questions
+5. Can be answered in 1-3 sentences
+
+AVOID:
+- Diving deeper into the same subtopic
+- Asking about granular implementation details
+- Questions that feel like academic research
+- Tangents that stray from the main topic
+
+Return ONLY the question text, nothing else.`
+    },
+    {
+      role: 'user',
+      content: `Generate a replacement question`
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 150,
+      temperature: 0.7
+    });
+
+    return response.choices[0].message.content.trim();
+  } catch (error) {
+    console.error('Replacement question generation error:', error);
+    return null;
+  }
+}
+
 export default {
   parseRavenCommand,
   generateResponse,
@@ -1150,5 +1395,9 @@ export default {
   semanticSearch,
   generateLearningQuestions,
   decideLearningNextStep,
-  generateFollowUpQuestion
+  generateFollowUpQuestion,
+  generateReplacementQuestion,
+  startDiscussion,
+  continueDiscussion,
+  concludeDiscussion
 };

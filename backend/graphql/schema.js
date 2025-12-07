@@ -50,7 +50,94 @@ export default gql`
     timezone: String
     digestEnabled: Boolean
     preferences: JSON
+    isSiteAdmin: Boolean
     createdAt: DateTime!
+  }
+
+  # Site-wide invite (required for new user registration)
+  type SiteInvite {
+    id: ID!
+    email: String!
+    invitedBy: ID
+    invitedByName: String
+    invitedByEmail: String
+    inviteCode: String!
+    status: String!  # pending, accepted, expired, revoked
+    expiresAt: DateTime
+    acceptedAt: DateTime
+    createdAt: DateTime!
+  }
+
+  # ============================================================================
+  # INTEGRATIONS (Google Drive, etc.)
+  # ============================================================================
+
+  type Integration {
+    id: ID!
+    provider: String!  # google, notion, etc.
+    providerEmail: String
+    isActive: Boolean!
+    createdAt: DateTime!
+  }
+
+  type DriveFile {
+    id: String!
+    name: String!
+    mimeType: String!
+    modifiedTime: String
+    webViewLink: String
+    iconLink: String
+  }
+
+  type DriveFilesResult {
+    files: [DriveFile!]!
+    nextPageToken: String
+  }
+
+  type DriveFileContent {
+    id: String!
+    name: String!
+    mimeType: String!
+    content: String!
+  }
+
+  # ============================================================================
+  # ATTACHMENTS (Images, Files)
+  # ============================================================================
+
+  type Attachment {
+    id: ID!
+    teamId: ID
+    uploadedBy: String!
+    filename: String!
+    originalName: String!
+    mimeType: String!
+    fileSize: Int!
+    url: String!
+    messageId: ID
+    teamQuestionId: ID
+    width: Int
+    height: Int
+    thumbnailUrl: String
+    createdAt: DateTime!
+  }
+
+  # ============================================================================
+  # GIF TYPES (Tenor API)
+  # ============================================================================
+
+  type Gif {
+    id: String!
+    title: String
+    url: String!
+    previewUrl: String
+    width: Int
+    height: Int
+  }
+
+  type GifCategory {
+    name: String!
+    imageUrl: String
   }
 
   # ============================================================================
@@ -96,6 +183,8 @@ export default gql`
     mentionsAi: Boolean!
     aiCommand: String  # remember, query, remind, task, etc.
     metadata: JSON
+    hasAttachments: Boolean
+    attachments: [Attachment!]
     createdAt: DateTime!
   }
 
@@ -509,6 +598,7 @@ export default gql`
     followUpQuestions: [TeamQuestion!]!
     learningObjectiveId: ID
     learningObjective: LearningObjective
+    attachments: [Attachment!]
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -634,6 +724,21 @@ export default gql`
     # Learning Objectives
     getLearningObjectives(teamId: ID!, status: String, assignedTo: ID): [LearningObjective!]!
     getLearningObjective(objectiveId: ID!): LearningObjective
+
+    # Site Admin (invite management)
+    getSiteInvites: [SiteInvite!]!
+    checkSiteInvite(email: String!): Boolean!
+    amISiteAdmin: Boolean!
+
+    # Integrations (Google Drive, etc.)
+    getMyIntegrations: [Integration!]!
+    getDriveFiles(folderId: String, pageSize: Int, pageToken: String): DriveFilesResult!
+    getDriveFileContent(fileId: String!): DriveFileContent!
+
+    # GIFs (Tenor API)
+    searchGifs(query: String!, limit: Int): [Gif!]!
+    getTrendingGifs(limit: Int): [Gif!]!
+    getGifCategories: [GifCategory!]!
   }
 
   # ============================================================================
@@ -717,10 +822,25 @@ export default gql`
     assignTeamQuestion(questionId: ID!, assigneeIds: [ID!]!): TeamQuestion!
     closeTeamQuestion(questionId: ID!): TeamQuestion!
     askFollowUpQuestion(questionId: ID!): TeamQuestion  # Have Raven ask a follow-up
+    rejectQuestion(questionId: ID!, reason: String): TeamQuestion  # Reject a question and get a replacement
 
     # Learning Objectives
     createLearningObjective(teamId: ID!, input: CreateLearningObjectiveInput!): LearningObjective!
     updateLearningObjective(objectiveId: ID!, input: UpdateLearningObjectiveInput!): LearningObjective!
     deleteLearningObjective(objectiveId: ID!): Boolean!
+
+    # Site Admin (invite management)
+    createSiteInvite(email: String!): SiteInvite!
+    revokeSiteInvite(inviteId: ID!): SiteInvite
+    makeSiteAdmin(userId: ID!, isAdmin: Boolean!): User
+
+    # Integrations
+    disconnectIntegration(provider: String!): Boolean!
+    importDriveFileToKnowledge(teamId: ID!, fileId: String!): Fact
+
+    # Attachments
+    attachToMessage(attachmentId: ID!, messageId: ID!): Attachment
+    attachToQuestion(attachmentId: ID!, questionId: ID!): Attachment
+    deleteAttachment(attachmentId: ID!): Boolean!
   }
 `;

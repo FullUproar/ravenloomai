@@ -362,6 +362,62 @@ function mapQuestion(row) {
   };
 }
 
+/**
+ * Reject a question and generate a replacement that avoids the rejected direction
+ */
+export async function rejectAndReplace(questionId, reason, userId) {
+  const question = await QuestionService.getQuestionById(questionId);
+  if (!question) {
+    throw new Error('Question not found');
+  }
+
+  // Mark the question as rejected
+  await db.query(
+    `UPDATE team_questions SET status = 'rejected' WHERE id = $1`,
+    [questionId]
+  );
+
+  // Get context for generating replacement
+  let context = null;
+  if (question.learningObjectiveId) {
+    const objective = await getObjectiveById(question.learningObjectiveId);
+    context = { title: objective.title, description: objective.description };
+  }
+
+  // Get previously rejected questions to avoid similar patterns
+  const rejectedQuestions = await db.query(
+    `SELECT question FROM team_questions
+     WHERE team_id = $1 AND status = 'rejected'
+       AND (learning_objective_id = $2 OR parent_question_id = $3 OR id = $3)
+     ORDER BY created_at DESC
+     LIMIT 5`,
+    [question.teamId, question.learningObjectiveId, question.parentQuestionId || questionId]
+  );
+  const rejectedList = rejectedQuestions.rows.map(r => r.question);
+
+  // Generate replacement question
+  const replacementText = await AIService.generateReplacementQuestion(
+    question.question,
+    reason,
+    rejectedList,
+    context
+  );
+
+  if (!replacementText) {
+    return null;
+  }
+
+  // Create the replacement question
+  const result = await db.query(
+    `INSERT INTO team_questions (team_id, asked_by, question, learning_objective_id, parent_question_id, asked_by_raven)
+     VALUES ($1, $2, $3, $4, $5, true)
+     RETURNING *`,
+    [question.teamId, userId, replacementText, question.learningObjectiveId, question.parentQuestionId]
+  );
+
+  return mapQuestion(result.rows[0]);
+}
+
 export default {
   createObjective,
   getObjectives,
@@ -370,5 +426,6 @@ export default {
   getObjectiveQuestions,
   getFollowUpQuestions,
   processAnsweredQuestion,
-  askFollowUp
+  askFollowUp,
+  rejectAndReplace
 };
