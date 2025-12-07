@@ -716,13 +716,15 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   });
 
   // Team questions - with error handling for when table doesn't exist
-  const { data: questionsData, refetch: refetchQuestions, error: questionsError } = useQuery(GET_TEAM_QUESTIONS, {
+  const { data: questionsData, refetch: refetchQuestions, error: questionsError, loading: questionsLoading } = useQuery(GET_TEAM_QUESTIONS, {
     variables: { teamId, status: showOpenQuestions ? 'open' : null },
     skip: !teamId || activeView !== 'ask',
-    errorPolicy: 'all'
+    errorPolicy: 'all',
+    onError: (err) => console.log('Team questions query error:', err.message)
   });
   const teamQuestions = questionsData?.getTeamQuestions || [];
-  const teamQuestionsAvailable = !questionsError;
+  // Only show team questions if query succeeded (no error) and not loading
+  const teamQuestionsAvailable = !questionsError && !questionsLoading && questionsData !== undefined;
 
   const [createTeamQuestion] = useMutation(CREATE_TEAM_QUESTION);
   const [answerTeamQuestion] = useMutation(ANSWER_TEAM_QUESTION);
