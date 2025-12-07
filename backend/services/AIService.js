@@ -968,18 +968,25 @@ export async function generateLearningQuestions(title, description, existingQA =
   const messages = [
     {
       role: 'system',
-      content: `You are helping a company build knowledge about a topic. Generate ${count} insightful questions to learn more.
+      content: `You are helping a company build knowledge about a topic. Generate ${count} focused questions.
 
 LEARNING OBJECTIVE: ${title}
 ${description ? `DESCRIPTION: ${description}` : ''}
 ${existingContext}
 
+CRITICAL: Ask BITE-SIZED questions that can be answered in 1-3 sentences.
+- BAD: "What are the key external factors, such as marketing and distribution partnerships, that need to be arranged?"
+- GOOD: "Who is your distribution partner for this launch?"
+- GOOD: "What's the target launch date?"
+- GOOD: "How many units are planned for the initial print run?"
+
 Guidelines:
-- Ask specific, actionable questions (not vague or philosophical)
-- Questions should build toward comprehensive understanding
-- ${isInitial ? 'Start with foundational questions that establish key facts' : 'Build on existing knowledge with deeper or adjacent questions'}
+- Each question should target ONE specific fact or detail
+- Answers should fit in a short paragraph, not require a page of writing
+- ${isInitial ? 'Start with foundational facts: who, what, when, where, how many' : 'Target specific gaps in what we know'}
+- We use FOLLOW-UP questions to dig deeper, so keep each question narrow
+- Avoid compound questions with "and" or multiple parts
 - Avoid questions already asked
-- Each question should be self-contained and clear
 
 Return a JSON array of question strings:
 ["Question 1?", "Question 2?", "Question 3?"]
@@ -1086,16 +1093,21 @@ export async function generateFollowUpQuestion(originalQuestion, answer, context
   const messages = [
     {
       role: 'system',
-      content: `Generate a follow-up question to dig deeper into an answer.
+      content: `Generate a BITE-SIZED follow-up question to dig deeper into an answer.
 ${context ? `\nCONTEXT: Learning about "${context.title}"${context.description ? ` - ${context.description}` : ''}` : ''}
 
 ORIGINAL QUESTION: ${originalQuestion}
 ANSWER: ${answer}
 
-Generate ONE follow-up question that:
-- Digs deeper into something mentioned in the answer
-- Clarifies ambiguity or asks for specifics
-- Explores implications or related aspects
+Generate ONE focused follow-up question that:
+- Targets ONE specific detail mentioned in the answer
+- Can be answered in 1-3 sentences
+- Asks for a specific name, date, number, or fact (not broad "tell me more")
+
+Examples:
+- If answer mentions a partner: "What's the name of that distribution partner?"
+- If answer mentions a date: "Is that date confirmed or tentative?"
+- If answer mentions a process: "Who is responsible for that step?"
 
 Return ONLY the question text, nothing else.`
     },
