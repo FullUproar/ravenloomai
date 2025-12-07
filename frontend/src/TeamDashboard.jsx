@@ -1,7 +1,33 @@
 import { gql, useQuery, useMutation, useLazyQuery } from '@apollo/client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+
+// Error Boundary for catching render errors
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('TeamDashboard Error:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <h3>Something went wrong</h3>
+          <p>{this.state.error?.message}</p>
+          <button onClick={() => window.location.reload()}>Reload Page</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ============================================================================
 // GraphQL Operations
@@ -3158,5 +3184,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   );
 }
 
-export default TeamDashboard;
+// Wrap with ErrorBoundary to catch render errors
+function TeamDashboardWithErrorBoundary(props) {
+  return (
+    <ErrorBoundary>
+      <TeamDashboard {...props} />
+    </ErrorBoundary>
+  );
+}
+
+export default TeamDashboardWithErrorBoundary;
 
