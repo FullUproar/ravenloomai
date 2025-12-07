@@ -3563,6 +3563,12 @@ button:active:not(:disabled),
 
 .lo-detail-header {
   display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.lo-title-row {
+  display: flex;
   align-items: center;
   gap: 1rem;
 }
@@ -3572,6 +3578,11 @@ button:active:not(:disabled),
   font-size: 1.25rem;
   font-family: var(--font-header);
   flex: 1;
+}
+
+.lo-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .lo-status {

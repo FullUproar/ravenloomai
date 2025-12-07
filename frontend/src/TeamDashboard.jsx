@@ -365,6 +365,19 @@ const CREATE_LEARNING_OBJECTIVE = gql`
   }
 `;
 
+const UPDATE_LEARNING_OBJECTIVE = gql`
+  mutation UpdateLearningObjective($objectiveId: ID!, $input: UpdateLearningObjectiveInput!) {
+    updateLearningObjective(objectiveId: $objectiveId, input: $input) {
+      id
+      title
+      description
+      status
+      assignedTo
+      assignedToName
+    }
+  }
+`;
+
 const ASK_FOLLOWUP_QUESTION = gql`
   mutation AskFollowUpQuestion($questionId: ID!) {
     askFollowUpQuestion(questionId: $questionId) {
@@ -867,6 +880,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const selectedLO = selectedLOData?.getLearningObjective;
 
   const [createLearningObjective] = useMutation(CREATE_LEARNING_OBJECTIVE);
+  const [updateLearningObjective] = useMutation(UPDATE_LEARNING_OBJECTIVE);
   const [askFollowUpQuestion] = useMutation(ASK_FOLLOWUP_QUESTION);
 
   // Scroll to bottom when messages change
@@ -2837,8 +2851,54 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   ← Back to all
                 </button>
                 <div className="lo-detail-header">
-                  <h4>{selectedLO.title}</h4>
-                  <span className={`lo-status ${selectedLO.status}`}>{selectedLO.status}</span>
+                  <div className="lo-title-row">
+                    <h4>{selectedLO.title}</h4>
+                    <span className={`lo-status ${selectedLO.status}`}>{selectedLO.status}</span>
+                  </div>
+                  <div className="lo-actions">
+                    {selectedLO.status === 'active' && (
+                      <button
+                        className="btn-secondary btn-small"
+                        onClick={async () => {
+                          await updateLearningObjective({
+                            variables: { objectiveId: selectedLO.id, input: { status: 'paused' } }
+                          });
+                          refetchSelectedLO();
+                        }}
+                      >
+                        Pause Questions
+                      </button>
+                    )}
+                    {selectedLO.status === 'paused' && (
+                      <button
+                        className="btn-primary btn-small"
+                        onClick={async () => {
+                          await updateLearningObjective({
+                            variables: { objectiveId: selectedLO.id, input: { status: 'active' } }
+                          });
+                          refetchSelectedLO();
+                        }}
+                      >
+                        Resume Questions
+                      </button>
+                    )}
+                    {selectedLO.status !== 'completed' && (
+                      <button
+                        className="btn-secondary btn-small"
+                        onClick={async () => {
+                          if (confirm('Mark this research as complete?')) {
+                            await updateLearningObjective({
+                              variables: { objectiveId: selectedLO.id, input: { status: 'completed' } }
+                            });
+                            refetchSelectedLO();
+                            refetchLOs();
+                          }
+                        }}
+                      >
+                        Mark Complete
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {selectedLO.description && (
                   <p className="lo-description">{selectedLO.description}</p>
