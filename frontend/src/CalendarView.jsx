@@ -2,7 +2,7 @@
  * CalendarView - Calendar component with Month, Week, and Work-Week views
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import EventModal from './EventModal';
 import './CalendarView.css';
@@ -159,6 +159,27 @@ export default function CalendarView({ teamId }) {
 
   const events = data?.getCalendarItems?.events || [];
   const tasksDue = data?.getCalendarItems?.tasksDue || [];
+
+  // Auto-sync from Google Calendar on mount (once per session)
+  const hasSynced = useRef(false);
+  useEffect(() => {
+    if (teamId && !hasSynced.current) {
+      hasSynced.current = true;
+      // Silent background sync - don't show loading state for auto-sync
+      importFromGoogle({
+        variables: {
+          teamId,
+          daysBack: 30,
+          daysForward: 90
+        }
+      }).then(() => {
+        refetch();
+      }).catch(err => {
+        // Silently fail - user can manually sync if needed
+        console.log('Auto-sync from Google skipped:', err.message);
+      });
+    }
+  }, [teamId, importFromGoogle, refetch]);
 
   // Combine events and tasks for display
   const getItemsForDay = (date) => {
