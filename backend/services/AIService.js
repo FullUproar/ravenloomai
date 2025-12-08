@@ -729,7 +729,7 @@ export async function callOpenAI(messages, { maxTokens = 500, temperature = 0.7 
  * Generate an answer for "Ask the Company" feature
  * Uses knowledge base to answer questions about the company
  */
-export async function generateCompanyAnswer(question, facts, decisions) {
+export async function generateCompanyAnswer(question, facts, decisions, kbDocuments = []) {
   // Build knowledge context
   let knowledgeContext = '';
 
@@ -756,13 +756,33 @@ export async function generateCompanyAnswer(question, facts, decisions) {
     knowledgeContext += '\n';
   }
 
+  // Add Knowledge Base documents (from Google Drive, etc.)
+  if (kbDocuments.length > 0) {
+    knowledgeContext += 'DOCUMENTS FROM KNOWLEDGE BASE:\n';
+    kbDocuments.forEach((doc, i) => {
+      knowledgeContext += `\n--- Document ${i + 1}: ${doc.title} ---\n`;
+      if (doc.content) {
+        // Truncate content if too long (keep first 2000 chars per doc)
+        const truncatedContent = doc.content.length > 2000
+          ? doc.content.substring(0, 2000) + '...[truncated]'
+          : doc.content;
+        knowledgeContext += truncatedContent + '\n';
+      }
+      if (doc.external_url) {
+        knowledgeContext += `Source: ${doc.external_url}\n`;
+      }
+    });
+    knowledgeContext += '\n';
+  }
+
   const systemPrompt = `You are a company knowledge assistant. Answer questions using ONLY the company knowledge provided below. If you don't have enough information to answer, say so clearly.
 
 ${knowledgeContext || 'No specific knowledge available yet.'}
 
 Guidelines:
 - Be direct and concise
-- Reference specific facts when answering
+- Reference specific facts and documents when answering
+- When citing documents from the Knowledge Base, mention the document title
 - If information is incomplete, state what you do know and what's missing
 - Suggest related questions the user might ask
 - Rate your confidence in the answer (0.0 to 1.0)

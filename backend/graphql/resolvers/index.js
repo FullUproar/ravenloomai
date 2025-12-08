@@ -96,14 +96,23 @@ const resolvers = {
 
     // Ask the Company (AI Q&A)
     askCompany: async (_, { teamId, input }, { userId }) => {
-      // Get all relevant knowledge
+      // Get all relevant knowledge (facts and decisions)
       const knowledge = await KnowledgeService.getKnowledgeContext(teamId, input.question);
 
-      // Generate AI answer
+      // Also search Knowledge Base documents (synced from Google Drive, etc.)
+      let kbDocuments = [];
+      try {
+        kbDocuments = await KnowledgeBaseService.searchDocuments(teamId, input.question, 5);
+      } catch (err) {
+        console.error('Error searching KB documents:', err);
+      }
+
+      // Generate AI answer with all context
       const answer = await AIService.generateCompanyAnswer(
         input.question,
         knowledge.facts,
-        knowledge.decisions
+        knowledge.decisions,
+        kbDocuments
       );
 
       // Log the query for analytics
