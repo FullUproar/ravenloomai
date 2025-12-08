@@ -22,6 +22,7 @@ import * as LearningObjectiveService from '../../services/LearningObjectiveServi
 import GoogleDriveService from '../../services/GoogleDriveService.js';
 import UploadService from '../../services/UploadService.js';
 import GifService from '../../services/GifService.js';
+import KnowledgeBaseService from '../../services/KnowledgeBaseService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -290,6 +291,27 @@ const resolvers = {
         mimeType: metadata.mimeType,
         content
       };
+    },
+
+    // Knowledge Base
+    getKnowledgeBaseSources: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeBaseService.getSources(teamId);
+    },
+
+    getKnowledgeBaseDocuments: async (_, { teamId, sourceId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeBaseService.getDocuments(teamId, sourceId);
+    },
+
+    isInKnowledgeBase: async (_, { teamId, provider, sourceId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeBaseService.isInKnowledgeBase(teamId, provider, sourceId);
+    },
+
+    getGooglePickerConfig: async (_, __, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return GoogleDriveService.getPickerConfig(userId);
     },
 
     // GIF Search (Tenor API)
@@ -632,6 +654,22 @@ const resolvers = {
       });
 
       return fact;
+    },
+
+    // Knowledge Base
+    addToKnowledgeBase: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeBaseService.addSource(teamId, userId, input);
+    },
+
+    removeFromKnowledgeBase: async (_, { teamId, sourceId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeBaseService.removeSource(teamId, sourceId);
+    },
+
+    syncKnowledgeBaseSource: async (_, { teamId, sourceId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeBaseService.syncSource(teamId, sourceId, userId);
     },
 
     // Attachments

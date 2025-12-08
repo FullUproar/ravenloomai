@@ -528,6 +528,79 @@ const IMPORT_DRIVE_FILE = gql`
   }
 `;
 
+// Knowledge Base Queries
+const GET_KNOWLEDGE_BASE_SOURCES = gql`
+  query GetKnowledgeBaseSources($teamId: ID!) {
+    getKnowledgeBaseSources(teamId: $teamId) {
+      id
+      provider
+      sourceType
+      sourceId
+      sourceName
+      sourcePath
+      sourceUrl
+      status
+      lastSyncedAt
+      syncError
+      fileCount
+      createdAt
+    }
+  }
+`;
+
+const IS_IN_KNOWLEDGE_BASE = gql`
+  query IsInKnowledgeBase($teamId: ID!, $provider: String!, $sourceId: String!) {
+    isInKnowledgeBase(teamId: $teamId, provider: $provider, sourceId: $sourceId)
+  }
+`;
+
+const ADD_TO_KNOWLEDGE_BASE = gql`
+  mutation AddToKnowledgeBase($teamId: ID!, $input: AddToKnowledgeBaseInput!) {
+    addToKnowledgeBase(teamId: $teamId, input: $input) {
+      id
+      provider
+      sourceType
+      sourceId
+      sourceName
+      status
+    }
+  }
+`;
+
+const REMOVE_FROM_KNOWLEDGE_BASE = gql`
+  mutation RemoveFromKnowledgeBase($teamId: ID!, $sourceId: ID!) {
+    removeFromKnowledgeBase(teamId: $teamId, sourceId: $sourceId)
+  }
+`;
+
+const SYNC_KNOWLEDGE_BASE_SOURCE = gql`
+  mutation SyncKnowledgeBaseSource($teamId: ID!, $sourceId: ID!) {
+    syncKnowledgeBaseSource(teamId: $teamId, sourceId: $sourceId) {
+      source {
+        id
+        status
+        lastSyncedAt
+        fileCount
+        syncError
+      }
+      documentsAdded
+      documentsUpdated
+      errors
+    }
+  }
+`;
+
+const GET_GOOGLE_PICKER_CONFIG = gql`
+  query GetGooglePickerConfig {
+    getGooglePickerConfig {
+      clientId
+      apiKey
+      accessToken
+      appId
+    }
+  }
+`;
+
 const ATTACH_TO_MESSAGE = gql`
   mutation AttachToMessage($attachmentId: ID!, $messageId: ID!) {
     attachToMessage(attachmentId: $attachmentId, messageId: $messageId) {
@@ -867,7 +940,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     channels: true,
     tasks: false,
     goals: false,
-    projects: false
+    projects: false,
+    knowledge: false
   });
   // Goals state
   const [showCreateGoal, setShowCreateGoal] = useState(false);
@@ -1080,6 +1154,17 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // GIF search queries
   const [searchGifs] = useLazyQuery(SEARCH_GIFS);
   const [fetchTrendingGifs] = useLazyQuery(GET_TRENDING_GIFS);
+
+  // Knowledge Base hooks
+  const { data: kbSourcesData, refetch: refetchKbSources } = useQuery(GET_KNOWLEDGE_BASE_SOURCES, {
+    variables: { teamId },
+    skip: !teamId
+  });
+  const kbSources = kbSourcesData?.getKnowledgeBaseSources || [];
+  const [fetchPickerConfig] = useLazyQuery(GET_GOOGLE_PICKER_CONFIG);
+  const [addToKnowledgeBase] = useMutation(ADD_TO_KNOWLEDGE_BASE);
+  const [removeFromKnowledgeBase] = useMutation(REMOVE_FROM_KNOWLEDGE_BASE);
+  const [syncKnowledgeBaseSource] = useMutation(SYNC_KNOWLEDGE_BASE_SOURCE);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -1385,6 +1470,122 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       'application/vnd.google-apps.spreadsheet',
       'application/vnd.google-apps.presentation'
     ].includes(mimeType);
+  };
+
+  // Google Picker for Knowledge Base
+  const [pickerLoaded, setPickerLoaded] = useState(false);
+
+  const loadGooglePicker = () => {
+    return new Promise((resolve, reject) => {
+      if (window.google?.picker) {
+        resolve();
+        return;
+      }
+      // Load Google API script
+      const script = document.createElement('script');
+      script.src = 'https://apis.google.com/js/api.js';
+      script.onload = () => {
+        window.gapi.load('picker', () => {
+          setPickerLoaded(true);
+          resolve();
+        });
+      };
+      script.onerror = reject;
+      document.body.appendChild(script);
+    });
+  };
+
+  const openGooglePicker = async () => {
+    try {
+      // Load picker if not already loaded
+      await loadGooglePicker();
+
+      // Get picker config from backend (includes fresh access token)
+      const { data } = await fetchPickerConfig();
+      const config = data?.getGooglePickerConfig;
+
+      if (!config) {
+        alert('Failed to get Google Picker configuration. Please reconnect Google Drive.');
+        return;
+      }
+
+      // Create picker
+      const picker = new window.google.picker.PickerBuilder()
+        .addView(new window.google.picker.DocsView()
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(true))
+        .addView(new window.google.picker.DocsView(window.google.picker.ViewId.FOLDERS)
+          .setSelectFolderEnabled(true))
+        .setOAuthToken(config.accessToken)
+        .setDeveloperKey(config.apiKey || '')
+        .setAppId(config.appId)
+        .setCallback(handlePickerCallback)
+        .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
+        .setTitle('Select files or folders for Knowledge Base')
+        .build();
+
+      picker.setVisible(true);
+    } catch (error) {
+      console.error('Error opening Google Picker:', error);
+      alert('Failed to open file picker: ' + error.message);
+    }
+  };
+
+  const handlePickerCallback = async (data) => {
+    if (data.action === window.google.picker.Action.PICKED) {
+      const docs = data.docs || [];
+
+      for (const doc of docs) {
+        try {
+          await addToKnowledgeBase({
+            variables: {
+              teamId,
+              input: {
+                provider: 'google_drive',
+                sourceType: doc.mimeType === 'application/vnd.google-apps.folder' ? 'folder' : 'file',
+                sourceId: doc.id,
+                sourceName: doc.name,
+                sourcePath: doc.parentId ? `/${doc.name}` : doc.name,
+                sourceMimeType: doc.mimeType,
+                sourceUrl: doc.url
+              }
+            }
+          });
+        } catch (error) {
+          console.error(`Error adding ${doc.name} to KB:`, error);
+          alert(`Failed to add "${doc.name}": ${error.message}`);
+        }
+      }
+
+      // Refresh KB sources
+      refetchKbSources();
+    }
+  };
+
+  const handleRemoveKbSource = async (sourceId, sourceName) => {
+    if (!window.confirm(`Remove "${sourceName}" from Knowledge Base?`)) return;
+
+    try {
+      await removeFromKnowledgeBase({ variables: { teamId, sourceId } });
+      refetchKbSources();
+    } catch (error) {
+      console.error('Error removing KB source:', error);
+      alert('Failed to remove: ' + error.message);
+    }
+  };
+
+  const handleSyncKbSource = async (sourceId) => {
+    try {
+      const { data } = await syncKnowledgeBaseSource({ variables: { teamId, sourceId } });
+      const result = data?.syncKnowledgeBaseSource;
+      if (result) {
+        alert(`Synced! Added: ${result.documentsAdded}, Updated: ${result.documentsUpdated}`);
+      }
+      refetchKbSources();
+    } catch (error) {
+      console.error('Error syncing KB source:', error);
+      alert('Failed to sync: ' + error.message);
+    }
   };
 
   // Image upload handlers
@@ -2349,6 +2550,53 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 <span className="nav-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
               )}
             </button>
+          </div>
+
+          {/* Knowledge Base */}
+          <div className={`nav-section ${expandedSections.knowledge ? 'expanded' : ''}`}>
+            <button
+              className={`nav-section-header ${activeView === 'knowledge' ? 'active' : ''}`}
+              onClick={() => toggleSection('knowledge')}
+            >
+              <span className="nav-expand-icon">{expandedSections.knowledge ? '▼' : '▶'}</span>
+              <span className="nav-icon">🧠</span>
+              <span className="nav-label">Knowledge Base</span>
+              {kbSources.length > 0 && <span className="nav-count">{kbSources.length}</span>}
+            </button>
+            {expandedSections.knowledge && (
+              <div className="nav-children">
+                <button
+                  className={`nav-item ${activeView === 'knowledge' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('knowledge', 'knowledge')}
+                >
+                  <span className="nav-item-icon">📂</span>
+                  <span className="nav-item-label">All Sources</span>
+                </button>
+                {kbSources.slice(0, 5).map((source) => (
+                  <button
+                    key={source.id}
+                    className="nav-item nav-item-sub"
+                    onClick={() => handleSectionItemClick('knowledge', 'knowledge')}
+                    title={source.sourceName}
+                  >
+                    <span className="nav-item-icon">
+                      {source.sourceType === 'folder' ? '📁' : '📄'}
+                    </span>
+                    <span className="nav-item-label">{source.sourceName}</span>
+                    {source.status === 'syncing' && <span className="nav-item-badge">⟳</span>}
+                  </button>
+                ))}
+                {googleIntegration && (
+                  <button
+                    className="nav-item nav-action"
+                    onClick={openGooglePicker}
+                  >
+                    <span className="nav-item-icon">+</span>
+                    <span className="nav-item-label">Add from Drive</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Alerts indicator */}
@@ -3618,6 +3866,115 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 </div>
               )}
             </div>
+            )}
+          </div>
+        </main>
+      ) : activeView === 'knowledge' ? (
+        <main className="knowledge-area">
+          {/* Knowledge Base Header */}
+          <header className="knowledge-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
+            <h3>Knowledge Base</h3>
+            <p className="knowledge-subtitle">Connect external documents to enhance your team's AI</p>
+          </header>
+
+          <div className="knowledge-content">
+            {/* Integration Status */}
+            {!googleIntegration ? (
+              <div className="knowledge-connect-prompt">
+                <div className="connect-card">
+                  <span className="connect-icon">🔗</span>
+                  <h4>Connect Google Drive</h4>
+                  <p>Link your Google Drive to add documents to your team's knowledge base.</p>
+                  <button onClick={handleConnectGoogleDrive} className="btn-primary">
+                    Connect Google Drive
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Add Sources Button */}
+                <div className="knowledge-actions">
+                  <button onClick={openGooglePicker} className="btn-primary">
+                    + Add from Google Drive
+                  </button>
+                </div>
+
+                {/* Sources List */}
+                <div className="knowledge-sources">
+                  {kbSources.length === 0 ? (
+                    <div className="knowledge-empty">
+                      <span className="empty-icon">📂</span>
+                      <p>No sources linked yet.</p>
+                      <p className="text-muted">Click "Add from Google Drive" to select folders or files to include in your knowledge base.</p>
+                    </div>
+                  ) : (
+                    <div className="sources-grid">
+                      {kbSources.map((source) => (
+                        <div key={source.id} className="source-card">
+                          <div className="source-icon">
+                            {source.sourceType === 'folder' ? '📁' :
+                             source.sourceMimeType?.includes('document') ? '📄' :
+                             source.sourceMimeType?.includes('spreadsheet') ? '📊' :
+                             source.sourceMimeType?.includes('presentation') ? '📽️' : '📎'}
+                          </div>
+                          <div className="source-info">
+                            <h4 className="source-name">{source.sourceName}</h4>
+                            <div className="source-meta">
+                              <span className={`source-status status-${source.status}`}>
+                                {source.status === 'synced' ? '✓ Synced' :
+                                 source.status === 'syncing' ? '⟳ Syncing...' :
+                                 source.status === 'error' ? '⚠ Error' : '○ Pending'}
+                              </span>
+                              {source.fileCount > 0 && (
+                                <span className="source-count">{source.fileCount} files</span>
+                              )}
+                            </div>
+                            {source.syncError && (
+                              <p className="source-error">{source.syncError}</p>
+                            )}
+                            {source.lastSyncedAt && (
+                              <span className="source-synced">
+                                Last synced: {new Date(source.lastSyncedAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="source-actions">
+                            {source.sourceUrl && (
+                              <a
+                                href={source.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-icon"
+                                title="Open in Google Drive"
+                              >
+                                🔗
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleSyncKbSource(source.id)}
+                              className="btn-icon"
+                              title="Sync now"
+                              disabled={source.status === 'syncing'}
+                            >
+                              🔄
+                            </button>
+                            <button
+                              onClick={() => handleRemoveKbSource(source.id, source.sourceName)}
+                              className="btn-icon btn-danger"
+                              title="Remove from Knowledge Base"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </main>

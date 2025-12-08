@@ -101,6 +101,57 @@ export default gql`
     content: String!
   }
 
+  type GooglePickerConfig {
+    clientId: String!
+    apiKey: String
+    accessToken: String!
+    appId: String!
+  }
+
+  # ============================================================================
+  # KNOWLEDGE BASE (Linked folders/files from external sources)
+  # ============================================================================
+
+  type KnowledgeBaseSource {
+    id: ID!
+    teamId: ID!
+    provider: String!  # google_drive, notion, etc.
+    sourceType: String!  # folder, file
+    sourceId: String!  # External ID
+    sourceName: String!
+    sourcePath: String
+    sourceMimeType: String
+    sourceUrl: String
+    status: String!  # pending, syncing, synced, error
+    lastSyncedAt: DateTime
+    syncError: String
+    fileCount: Int
+    addedBy: User
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    # Nested documents for this source
+    documents: [KnowledgeBaseDocument!]
+  }
+
+  type KnowledgeBaseDocument {
+    id: ID!
+    sourceId: ID
+    externalId: String!
+    title: String!
+    mimeType: String
+    externalUrl: String
+    hasContent: Boolean!  # Whether content has been extracted
+    lastSyncedAt: DateTime
+    createdAt: DateTime!
+  }
+
+  type KnowledgeBaseSyncResult {
+    source: KnowledgeBaseSource!
+    documentsAdded: Int!
+    documentsUpdated: Int!
+    errors: [String!]
+  }
+
   # ============================================================================
   # ATTACHMENTS (Images, Files)
   # ============================================================================
@@ -618,6 +669,16 @@ export default gql`
     addToKnowledge: Boolean
   }
 
+  input AddToKnowledgeBaseInput {
+    provider: String!  # google_drive
+    sourceType: String!  # folder, file
+    sourceId: String!  # External ID (Drive folder/file ID)
+    sourceName: String!
+    sourcePath: String
+    sourceMimeType: String
+    sourceUrl: String
+  }
+
   # ============================================================================
   # LEARNING OBJECTIVES (Research projects for knowledge building)
   # ============================================================================
@@ -734,6 +795,12 @@ export default gql`
     getMyIntegrations: [Integration!]!
     getDriveFiles(folderId: String, pageSize: Int, pageToken: String): DriveFilesResult!
     getDriveFileContent(fileId: String!): DriveFileContent!
+    getGooglePickerConfig: GooglePickerConfig!
+
+    # Knowledge Base
+    getKnowledgeBaseSources(teamId: ID!): [KnowledgeBaseSource!]!
+    getKnowledgeBaseDocuments(teamId: ID!, sourceId: ID): [KnowledgeBaseDocument!]!
+    isInKnowledgeBase(teamId: ID!, provider: String!, sourceId: String!): Boolean!
 
     # GIFs (Tenor API)
     searchGifs(query: String!, limit: Int): [Gif!]!
@@ -837,6 +904,11 @@ export default gql`
     # Integrations
     disconnectIntegration(provider: String!): Boolean!
     importDriveFileToKnowledge(teamId: ID!, fileId: String!): Fact
+
+    # Knowledge Base
+    addToKnowledgeBase(teamId: ID!, input: AddToKnowledgeBaseInput!): KnowledgeBaseSource!
+    removeFromKnowledgeBase(teamId: ID!, sourceId: ID!): Boolean!
+    syncKnowledgeBaseSource(teamId: ID!, sourceId: ID!): KnowledgeBaseSyncResult!
 
     # Attachments
     attachToMessage(attachmentId: ID!, messageId: ID!): Attachment

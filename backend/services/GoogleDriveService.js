@@ -8,6 +8,7 @@ import db from '../db.js';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/oauth/google/callback';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY; // For Picker API
 
 // OAuth scopes for Google Drive
 const SCOPES = [
@@ -292,6 +293,25 @@ function mapIntegration(row) {
   };
 }
 
+/**
+ * Get Google Picker configuration for frontend
+ * Returns client ID, API key, and valid access token
+ */
+export async function getPickerConfig(userId) {
+  if (!GOOGLE_CLIENT_ID) {
+    throw new Error('Google OAuth not configured');
+  }
+
+  const accessToken = await getValidAccessToken(userId);
+
+  return {
+    clientId: GOOGLE_CLIENT_ID,
+    apiKey: GOOGLE_API_KEY || null, // Optional, picker works without it
+    accessToken,
+    appId: GOOGLE_CLIENT_ID.split('-')[0] // Extract app ID from client ID
+  };
+}
+
 export default {
   getAuthUrl,
   exchangeCodeForTokens,
@@ -303,5 +323,6 @@ export default {
   getValidAccessToken,
   listFiles,
   getFileContent,
-  getFileMetadata
+  getFileMetadata,
+  getPickerConfig
 };
