@@ -222,13 +222,19 @@ class KnowledgeBaseService {
 
     // Try to extract content (for supported file types)
     let content = null;
+    console.log(`[KB Sync] Processing "${title}" (mimeType: ${mimeType})`);
+
     try {
       // Only extract content from Google Docs, Sheets, etc.
       if (mimeType.startsWith('application/vnd.google-apps.')) {
+        console.log(`[KB Sync] Extracting content from Google Apps file: ${mimeType}`);
         content = await GoogleDriveService.getFileContent(userId, externalId, mimeType);
+        console.log(`[KB Sync] Extracted ${content?.length || 0} chars from "${title}"`);
+      } else {
+        console.log(`[KB Sync] Skipping content extraction for non-Google-Apps file: ${mimeType}`);
       }
     } catch (err) {
-      console.log(`Could not extract content from ${title}: ${err.message}`);
+      console.error(`[KB Sync] Content extraction FAILED for ${title}: ${err.message}`);
     }
 
     // Calculate content hash for change detection

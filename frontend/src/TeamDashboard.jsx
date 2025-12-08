@@ -847,7 +847,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   // Determine initial view from URL or default to 'chat'
   const getInitialView = () => {
-    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects') {
+    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects' || initialView === 'knowledge') {
       return initialView;
     }
     if (initialView === 'channel' || initialView === 'chat') {
@@ -1560,8 +1560,27 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         }
       }
 
-      // Refresh KB sources
+      // Refresh KB sources immediately and poll for sync completion
       refetchKbSources();
+
+      // Poll every 2s for 30s to catch when sync finishes
+      let pollCount = 0;
+      const pollInterval = setInterval(() => {
+        pollCount++;
+        refetchKbSources();
+        if (pollCount >= 15) { // Stop after 30s
+          clearInterval(pollInterval);
+        }
+      }, 2000);
+
+      // Also clear interval if all sources are synced
+      const checkSynced = setInterval(() => {
+        const allSynced = kbSources.every(s => s.status === 'synced' || s.status === 'error');
+        if (allSynced && kbSources.length > 0) {
+          clearInterval(pollInterval);
+          clearInterval(checkSynced);
+        }
+      }, 2000);
     }
   };
 
