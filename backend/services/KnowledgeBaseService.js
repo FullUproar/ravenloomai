@@ -277,21 +277,24 @@ class KnowledgeBaseService {
   static async searchDocuments(teamId, query, limit = 5) {
     // Simple keyword search for now
     // TODO: Implement semantic search with embeddings
+    // First, try to find documents with matching content
     const result = await db.query(`
       SELECT id, title, content, external_url, mime_type
       FROM knowledge_base_documents
       WHERE team_id = $1
-        AND content IS NOT NULL
         AND (
           title ILIKE $2
-          OR content ILIKE $2
+          OR (content IS NOT NULL AND content ILIKE $2)
         )
       ORDER BY
-        CASE WHEN title ILIKE $2 THEN 0 ELSE 1 END,
+        CASE WHEN content IS NOT NULL AND content ILIKE $2 THEN 0
+             WHEN title ILIKE $2 THEN 1
+             ELSE 2 END,
         updated_at DESC
       LIMIT $3
     `, [teamId, `%${query}%`, limit]);
 
+    console.log(`KB search for "${query}" in team ${teamId}: found ${result.rows.length} docs`);
     return result.rows;
   }
 
