@@ -204,7 +204,9 @@ export async function listFiles(userId, { folderId = 'root', pageSize = 20, page
     pageSize: pageSize.toString(),
     fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, parents, webViewLink, iconLink)',
     q: `'${folderId}' in parents and trashed = false`,
-    orderBy: 'modifiedTime desc'
+    orderBy: 'modifiedTime desc',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true'
   });
 
   if (pageToken) {
@@ -241,8 +243,13 @@ export async function getFileContent(userId, fileId, mimeType) {
     throw new Error(`Unsupported file type: ${mimeType}`);
   }
 
+  const params = new URLSearchParams({
+    mimeType: exportMimeType,
+    supportsAllDrives: 'true'
+  });
+
   const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=${encodeURIComponent(exportMimeType)}`,
+    `https://www.googleapis.com/drive/v3/files/${fileId}/export?${params.toString()}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
@@ -260,13 +267,19 @@ export async function getFileContent(userId, fileId, mimeType) {
 export async function getFileMetadata(userId, fileId) {
   const accessToken = await getValidAccessToken(userId);
 
+  const params = new URLSearchParams({
+    fields: 'id,name,mimeType,modifiedTime,size,webViewLink',
+    supportsAllDrives: 'true'
+  });
+
   const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,modifiedTime,size,webViewLink`,
+    `https://www.googleapis.com/drive/v3/files/${fileId}?${params.toString()}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+    console.error('getFileMetadata error:', { fileId, status: response.status, error });
     throw new Error(`Failed to get file metadata: ${error.error?.message || response.statusText}`);
   }
 
