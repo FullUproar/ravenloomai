@@ -153,7 +153,22 @@ class KnowledgeBaseService {
             if (result === 'added') documentsAdded++;
             if (result === 'updated') documentsUpdated++;
           } catch (err) {
+            // For single files, if we can't access it, mark as error
+            console.error(`Error syncing single file ${source.source_name}:`, err.message);
             errors.push(err.message);
+            // Mark single file source as error immediately
+            await db.query(`
+              UPDATE knowledge_base_sources
+              SET status = 'error', sync_error = $2, last_synced_at = NOW()
+              WHERE id = $1
+            `, [sourceId, err.message]);
+
+            return {
+              source: this.formatSource({ ...source, status: 'error', sync_error: err.message }),
+              documentsAdded: 0,
+              documentsUpdated: 0,
+              errors: [err.message]
+            };
           }
         }
       }
