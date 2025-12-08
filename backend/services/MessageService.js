@@ -8,6 +8,7 @@ import KnowledgeService from './KnowledgeService.js';
 import AlertService from './AlertService.js';
 import TaskService from './TaskService.js';
 import DiscussionService from './DiscussionService.js';
+import * as CalendarService from './CalendarService.js';
 
 /**
  * Get a message by ID
@@ -42,8 +43,9 @@ export async function sendMessage(channelId, userId, content, options = {}) {
   const channel = channelResult.rows[0];
   const teamId = channel.team_id;
 
-  // Check if message mentions @raven explicitly
-  let mentionsAi = content.toLowerCase().includes('@raven');
+  // Check if message mentions @raven explicitly OR is in #calendar channel
+  const isCalendarChannel = channel.name === 'calendar';
+  let mentionsAi = content.toLowerCase().includes('@raven') || isCalendarChannel;
   let replyContext = null;
 
   // If replying to a message, check if it's a Raven message
@@ -62,7 +64,16 @@ export async function sendMessage(channelId, userId, content, options = {}) {
     }
   }
 
-  const command = mentionsAi ? AIService.parseRavenCommand(content) : null;
+  // Parse command - in calendar channel, parse without @raven prefix
+  let command = null;
+  if (mentionsAi) {
+    if (isCalendarChannel && !content.toLowerCase().includes('@raven')) {
+      // In calendar channel without explicit @raven, prepend it for parsing
+      command = AIService.parseRavenCommand('@raven ' + content);
+    } else {
+      command = AIService.parseRavenCommand(content);
+    }
+  }
 
   // Save the user's message
   const messageResult = await db.query(
@@ -134,13 +145,15 @@ async function processAICommand(command, teamId, channelId, userId, replyContext
       responseText: `I'm here! Commands I understand:
 • \`@raven remember [fact]\` - Save information
 • \`@raven forget [fact]\` - Remove information
-• \`@raven correct [old → new]\` - Fix information
 • \`@raven remind [when] [what]\` - Set a reminder
 • \`@raven task [description]\` - Create a task
 • \`@raven tasks\` - List your tasks
-• \`@raven facts\` - What I know
-• \`@raven start learning\` - Auto-learn from messages
-• Or just ask me a question!`
+• \`@raven calendar\` - Show upcoming events & due dates
+• \`@raven add event [details]\` - Add a calendar event
+• \`@raven what's due\` - Show task deadlines
+• Or just ask me a question!
+
+💡 Tip: In the #calendar channel, you can talk to me without @raven!`
     };
   }
 
@@ -195,6 +208,15 @@ async function processAICommand(command, teamId, channelId, userId, replyContext
 
     case 'continue_discussion':
       return handleContinueDiscussion(teamId, channelId);
+
+    case 'calendar_query':
+      return handleCalendarQuery(teamId);
+
+    case 'add_event':
+      return handleAddEvent(command.content, teamId, userId);
+
+    case 'due_dates_query':
+      return handleDueDatesQuery(teamId);
 
     case 'query':
     default:
@@ -1146,6 +1168,105 @@ async function handleContinueDiscussion(teamId, channelId) {
     return {
       responseText: `I ran into an issue coming up with the next question. Feel free to keep the conversation going!`,
       metadata: { command: 'continue_discussion', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle calendar query - show upcoming events and tasks
+ */
+async function handleCalendarQuery(teamId) {
+  try {
+    const now = new Date();
+    const nextWeek = new Date(now);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+
+    // Get events for next 7 days
+    const events = await CalendarService.getEvents(teamId, {
+      startDate: now.toISOString(),
+      endDate: nextWeek.toISOString()
+    });
+
+    // Get tasks with due dates
+    const allTasks = await TaskService.getTasks(teamId, {});
+    const tasksDue = allTasks.filter(t => t.dueAt);
+
+    const response = AIService.formatCalendarResponse(events, tasksDue);
+
+    return {
+      responseText: response,
+      metadata: { command: 'calendar_query' }
+    };
+  } catch (error) {
+    console.error('Calendar query error:', error);
+    return {
+      responseText: `I had trouble checking the calendar. ${error.message}`,
+      metadata: { command: 'calendar_query', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle adding a calendar event
+ */
+async function handleAddEvent(content, teamId, userId) {
+  try {
+    // Extract event details using AI
+    const eventDetails = await AIService.extractCalendarEvent(content);
+
+    // Create the event
+    const event = await CalendarService.createEvent(teamId, {
+      title: eventDetails.title,
+      description: eventDetails.description,
+      startAt: eventDetails.startAt,
+      endAt: eventDetails.endAt,
+      isAllDay: eventDetails.isAllDay || false,
+      location: eventDetails.location,
+      createdBy: userId
+    });
+
+    const startDate = new Date(event.startAt);
+    const dateStr = startDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric'
+    });
+    const timeStr = event.isAllDay ? 'all day' :
+      startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+    return {
+      responseText: `Added to calendar: **${event.title}**\n📅 ${dateStr}${event.isAllDay ? '' : ` at ${timeStr}`}${event.location ? `\n📍 ${event.location}` : ''}`,
+      metadata: {
+        command: 'add_event',
+        eventId: event.id
+      }
+    };
+  } catch (error) {
+    console.error('Add event error:', error);
+    return {
+      responseText: `I couldn't add that event. ${error.message}\n\nTry: "add event [title] on [date] at [time]"`,
+      metadata: { command: 'add_event', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle due dates query
+ */
+async function handleDueDatesQuery(teamId) {
+  try {
+    const allTasks = await TaskService.getTasks(teamId, {});
+    const response = AIService.formatDueDatesResponse(allTasks);
+
+    return {
+      responseText: response,
+      metadata: { command: 'due_dates_query' }
+    };
+  } catch (error) {
+    console.error('Due dates query error:', error);
+    return {
+      responseText: `I had trouble checking due dates. ${error.message}`,
+      metadata: { command: 'due_dates_query', error: error.message }
     };
   }
 }

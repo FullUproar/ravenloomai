@@ -180,6 +180,29 @@ export function parseRavenCommand(content) {
     return { type: 'cancel_action' };
   }
 
+  // Calendar commands
+  if (lowerAfterRaven === 'calendar' || lowerAfterRaven === 'schedule' || lowerAfterRaven.startsWith('what\'s on my calendar') ||
+      lowerAfterRaven.startsWith('whats on my calendar') || lowerAfterRaven.startsWith('show calendar') ||
+      lowerAfterRaven.startsWith('my calendar') || lowerAfterRaven.startsWith('upcoming events') ||
+      lowerAfterRaven.startsWith('what\'s coming up') || lowerAfterRaven.startsWith('whats coming up')) {
+    return { type: 'calendar_query', content: afterRaven };
+  }
+
+  // Add event to calendar
+  if (lowerAfterRaven.startsWith('add event ') || lowerAfterRaven.startsWith('schedule ') ||
+      lowerAfterRaven.startsWith('add to calendar ') || lowerAfterRaven.startsWith('create event ') ||
+      lowerAfterRaven.startsWith('put on calendar ') || lowerAfterRaven.startsWith('book ')) {
+    const eventContent = afterRaven.replace(/^(add event|schedule|add to calendar|create event|put on calendar|book)\s+/i, '').trim();
+    return { type: 'add_event', content: eventContent };
+  }
+
+  // Task due dates query
+  if (lowerAfterRaven.startsWith('what\'s due') || lowerAfterRaven.startsWith('whats due') ||
+      lowerAfterRaven.startsWith('due dates') || lowerAfterRaven.startsWith('upcoming due') ||
+      lowerAfterRaven === 'due' || lowerAfterRaven.startsWith('deadlines')) {
+    return { type: 'due_dates_query', content: afterRaven };
+  }
+
   // Default: treat as a query
   return {
     type: 'query',
@@ -1537,6 +1560,207 @@ Return ONLY valid JSON.`
   }
 }
 
+/**
+ * Extract calendar event details from user's command
+ */
+export async function extractCalendarEvent(content) {
+  const now = new Date();
+  const messages = [
+    {
+      role: 'system',
+      content: `You extract calendar event details from user statements. Current date/time: ${now.toISOString()}
+
+Return a JSON object with:
+- title: Event title (concise, clear)
+- description: Optional longer description
+- startAt: ISO datetime string for start time (interpret relative dates like "tomorrow", "next Monday")
+- endAt: ISO datetime string for end time (default to 1 hour after start if not specified)
+- isAllDay: boolean, true if it's an all-day event
+- location: Optional location string
+
+Examples:
+"meeting with John tomorrow at 2pm" ->
+{"title": "Meeting with John", "startAt": "[tomorrow 2pm]", "endAt": "[tomorrow 3pm]", "isAllDay": false}
+
+"product launch on March 15" ->
+{"title": "Product launch", "startAt": "2025-03-15T09:00:00Z", "endAt": "2025-03-15T17:00:00Z", "isAllDay": true}
+
+"team lunch Friday noon at Olive Garden" ->
+{"title": "Team lunch", "startAt": "[friday 12pm]", "endAt": "[friday 1pm]", "isAllDay": false, "location": "Olive Garden"}
+
+Return ONLY valid JSON, no other text.`
+    },
+    {
+      role: 'user',
+      content
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      max_tokens: 300,
+      temperature: 0
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    console.error('Calendar event extraction error:', error);
+    throw new Error('Could not understand the event. Try: "@raven add event [title] on [date] at [time]"');
+  }
+}
+
+/**
+ * Format calendar events for Raven's response
+ */
+export function formatCalendarResponse(events, tasksDue, query = '') {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const nextWeek = new Date(today);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+
+  let response = '';
+
+  // Group events by day
+  const eventsByDay = {};
+  events.forEach(event => {
+    const eventDate = new Date(event.startAt);
+    const dateKey = eventDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    if (!eventsByDay[dateKey]) eventsByDay[dateKey] = [];
+    eventsByDay[dateKey].push(event);
+  });
+
+  // Today's events
+  const todayEvents = events.filter(e => {
+    const d = new Date(e.startAt);
+    return d >= today && d < tomorrow;
+  });
+
+  if (todayEvents.length > 0) {
+    response += '**Today:**\n';
+    todayEvents.forEach(e => {
+      const time = e.isAllDay ? 'All day' : new Date(e.startAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      response += `• ${time} - ${e.title}${e.location ? ` (${e.location})` : ''}\n`;
+    });
+    response += '\n';
+  }
+
+  // Upcoming events (next 7 days, excluding today)
+  const upcomingEvents = events.filter(e => {
+    const d = new Date(e.startAt);
+    return d >= tomorrow && d < nextWeek;
+  });
+
+  if (upcomingEvents.length > 0) {
+    response += '**Coming up:**\n';
+    upcomingEvents.forEach(e => {
+      const d = new Date(e.startAt);
+      const day = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const time = e.isAllDay ? '' : ` at ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      response += `• ${day}${time} - ${e.title}\n`;
+    });
+    response += '\n';
+  }
+
+  // Task due dates
+  const upcomingTasks = tasksDue.filter(t => {
+    if (!t.dueAt) return false;
+    const d = new Date(t.dueAt);
+    return d >= today && d < nextWeek;
+  });
+
+  if (upcomingTasks.length > 0) {
+    response += '**Tasks due:**\n';
+    upcomingTasks.forEach(t => {
+      const d = new Date(t.dueAt);
+      const isToday = d >= today && d < tomorrow;
+      const day = isToday ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const status = t.status === 'done' ? '✓' : '○';
+      response += `${status} ${day} - ${t.title}${t.project?.name ? ` [${t.project.name}]` : ''}\n`;
+    });
+    response += '\n';
+  }
+
+  if (!response) {
+    response = 'No events or tasks scheduled for the next week.';
+  }
+
+  return response.trim();
+}
+
+/**
+ * Format task due dates for Raven's response
+ */
+export function formatDueDatesResponse(tasks) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Filter tasks with due dates and sort by date
+  const tasksWithDue = tasks
+    .filter(t => t.dueAt && t.status !== 'done')
+    .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
+
+  if (tasksWithDue.length === 0) {
+    return 'No pending tasks with due dates.';
+  }
+
+  let response = '**Upcoming deadlines:**\n';
+
+  // Overdue
+  const overdue = tasksWithDue.filter(t => new Date(t.dueAt) < today);
+  if (overdue.length > 0) {
+    response += '\n🔴 **Overdue:**\n';
+    overdue.forEach(t => {
+      const d = new Date(t.dueAt);
+      response += `• ${t.title} (was due ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})${t.project?.name ? ` [${t.project.name}]` : ''}\n`;
+    });
+  }
+
+  // Due today
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dueToday = tasksWithDue.filter(t => {
+    const d = new Date(t.dueAt);
+    return d >= today && d < tomorrow;
+  });
+  if (dueToday.length > 0) {
+    response += '\n🟡 **Due today:**\n';
+    dueToday.forEach(t => {
+      response += `• ${t.title}${t.project?.name ? ` [${t.project.name}]` : ''}\n`;
+    });
+  }
+
+  // Due this week
+  const nextWeek = new Date(today);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  const dueThisWeek = tasksWithDue.filter(t => {
+    const d = new Date(t.dueAt);
+    return d >= tomorrow && d < nextWeek;
+  });
+  if (dueThisWeek.length > 0) {
+    response += '\n🟢 **Due this week:**\n';
+    dueThisWeek.forEach(t => {
+      const d = new Date(t.dueAt);
+      response += `• ${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} - ${t.title}${t.project?.name ? ` [${t.project.name}]` : ''}\n`;
+    });
+  }
+
+  // Due later
+  const dueLater = tasksWithDue.filter(t => new Date(t.dueAt) >= nextWeek).slice(0, 5);
+  if (dueLater.length > 0) {
+    response += '\n📅 **Coming up:**\n';
+    dueLater.forEach(t => {
+      const d = new Date(t.dueAt);
+      response += `• ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${t.title}\n`;
+    });
+  }
+
+  return response.trim();
+}
+
 export default {
   parseRavenCommand,
   generateResponse,
@@ -1560,5 +1784,8 @@ export default {
   startDiscussion,
   continueDiscussion,
   concludeDiscussion,
-  evaluateDiscussionResponse
+  evaluateDiscussionResponse,
+  extractCalendarEvent,
+  formatCalendarResponse,
+  formatDueDatesResponse
 };

@@ -44,6 +44,13 @@ export async function createTeam(name, ownerId) {
     [team.id, ownerId]
   );
 
+  // Create #calendar channel (Raven auto-responds here)
+  await db.query(
+    `INSERT INTO channels (team_id, name, description, is_default, created_by)
+     VALUES ($1, 'calendar', 'Calendar management - Raven responds to all messages here', false, $2)`,
+    [team.id, ownerId]
+  );
+
   return mapTeam(team);
 }
 
