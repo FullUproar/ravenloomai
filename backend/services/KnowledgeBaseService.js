@@ -281,26 +281,47 @@ class KnowledgeBaseService {
    * Search knowledge base documents for RAG
    */
   static async searchDocuments(teamId, query, limit = 5) {
-    // Simple keyword search for now
-    // TODO: Implement semantic search with embeddings
-    // First, try to find documents with matching content
-    const result = await db.query(`
-      SELECT id, title, content, external_url, mime_type
-      FROM knowledge_base_documents
-      WHERE team_id = $1
-        AND (
-          title ILIKE $2
-          OR (content IS NOT NULL AND content ILIKE $2)
-        )
-      ORDER BY
-        CASE WHEN content IS NOT NULL AND content ILIKE $2 THEN 0
-             WHEN title ILIKE $2 THEN 1
-             ELSE 2 END,
-        updated_at DESC
-      LIMIT $3
-    `, [teamId, `%${query}%`, limit]);
+    // Extract keywords from query (words 3+ chars, excluding common words)
+    const stopWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'has', 'her', 'was', 'one', 'our', 'out', 'what', 'who', 'how', 'why', 'when', 'where', 'which', 'this', 'that', 'with', 'from', 'about', 'into', 'does', 'tell', 'know'];
+    const keywords = query.toLowerCase()
+      .split(/\s+/)
+      .filter(word => word.length >= 3 && !stopWords.includes(word));
 
-    console.log(`KB search for "${query}" in team ${teamId}: found ${result.rows.length} docs`);
+    console.log(`[KB Search] Query: "${query}", Keywords: [${keywords.join(', ')}]`);
+
+    // Build OR conditions for each keyword
+    let result;
+    if (keywords.length > 0) {
+      // Search for any keyword match
+      const keywordConditions = keywords.map((_, i) => `title ILIKE $${i + 2} OR content ILIKE $${i + 2}`).join(' OR ');
+      const keywordParams = keywords.map(k => `%${k}%`);
+
+      result = await db.query(`
+        SELECT id, title, content, external_url, mime_type
+        FROM knowledge_base_documents
+        WHERE team_id = $1
+          AND content IS NOT NULL
+          AND (${keywordConditions})
+        ORDER BY updated_at DESC
+        LIMIT $${keywords.length + 2}
+      `, [teamId, ...keywordParams, limit]);
+
+      console.log(`[KB Search] Keyword search found ${result.rows.length} docs`);
+    }
+
+    // If no keyword results, fall back to returning ALL documents with content
+    if (!result || result.rows.length === 0) {
+      console.log(`[KB Search] No keyword matches, returning all docs with content`);
+      result = await db.query(`
+        SELECT id, title, content, external_url, mime_type
+        FROM knowledge_base_documents
+        WHERE team_id = $1 AND content IS NOT NULL
+        ORDER BY updated_at DESC
+        LIMIT $2
+      `, [teamId, limit]);
+      console.log(`[KB Search] Fallback found ${result.rows.length} docs`);
+    }
+
     return result.rows;
   }
 
