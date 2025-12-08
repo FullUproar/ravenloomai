@@ -874,6 +874,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Google Drive state
   const [showDrivePanel, setShowDrivePanel] = useState(false);
   const [driveFolderId, setDriveFolderId] = useState('root');
+  // Knowledge Base loading states
+  const [deletingKbSourceId, setDeletingKbSourceId] = useState(null);
+  const [syncingKbSourceId, setSyncingKbSourceId] = useState(null);
   const [driveFolderStack, setDriveFolderStack] = useState([{ id: 'root', name: 'My Drive' }]);
   // Image upload state
   const [pendingImage, setPendingImage] = useState(null);
@@ -1562,19 +1565,26 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     }
   };
 
-  const handleRemoveKbSource = async (sourceId, sourceName) => {
-    if (!window.confirm(`Remove "${sourceName}" from Knowledge Base?`)) return;
+  const handleRemoveKbSource = (sourceId, sourceName) => {
+    // Use setTimeout to defer the confirm dialog, avoiding blocking the paint
+    setTimeout(async () => {
+      if (!window.confirm(`Remove "${sourceName}" from Knowledge Base?`)) return;
 
-    try {
-      await removeFromKnowledgeBase({ variables: { teamId, sourceId } });
-      refetchKbSources();
-    } catch (error) {
-      console.error('Error removing KB source:', error);
-      alert('Failed to remove: ' + error.message);
-    }
+      setDeletingKbSourceId(sourceId);
+      try {
+        await removeFromKnowledgeBase({ variables: { teamId, sourceId } });
+        refetchKbSources();
+      } catch (error) {
+        console.error('Error removing KB source:', error);
+        alert('Failed to remove: ' + error.message);
+      } finally {
+        setDeletingKbSourceId(null);
+      }
+    }, 0);
   };
 
   const handleSyncKbSource = async (sourceId) => {
+    setSyncingKbSourceId(sourceId);
     try {
       const { data } = await syncKnowledgeBaseSource({ variables: { teamId, sourceId } });
       const result = data?.syncKnowledgeBaseSource;
@@ -1585,6 +1595,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error syncing KB source:', error);
       alert('Failed to sync: ' + error.message);
+    } finally {
+      setSyncingKbSourceId(null);
     }
   };
 
@@ -3957,16 +3969,17 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                               onClick={() => handleSyncKbSource(source.id)}
                               className="btn-icon"
                               title="Sync now"
-                              disabled={source.status === 'syncing'}
+                              disabled={source.status === 'syncing' || syncingKbSourceId === source.id}
                             >
-                              🔄
+                              {syncingKbSourceId === source.id ? '⏳' : '🔄'}
                             </button>
                             <button
                               onClick={() => handleRemoveKbSource(source.id, source.sourceName)}
                               className="btn-icon btn-danger"
                               title="Remove from Knowledge Base"
+                              disabled={deletingKbSourceId === source.id}
                             >
-                              ✕
+                              {deletingKbSourceId === source.id ? '⏳' : '✕'}
                             </button>
                           </div>
                         </div>
