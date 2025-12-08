@@ -2,7 +2,7 @@
  * CalendarView - Calendar component with Month, Week, and Work-Week views
  */
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import EventModal from './EventModal';
 import './CalendarView.css';
@@ -160,26 +160,68 @@ export default function CalendarView({ teamId }) {
   const events = data?.getCalendarItems?.events || [];
   const tasksDue = data?.getCalendarItems?.tasksDue || [];
 
-  // Auto-sync from Google Calendar on mount (once per session)
-  const hasSynced = useRef(false);
-  useEffect(() => {
-    if (teamId && !hasSynced.current) {
-      hasSynced.current = true;
-      // Silent background sync - don't show loading state for auto-sync
-      importFromGoogle({
-        variables: {
-          teamId,
-          daysBack: 30,
-          daysForward: 90
-        }
-      }).then(() => {
-        refetch();
-      }).catch(err => {
-        // Silently fail - user can manually sync if needed
-        console.log('Auto-sync from Google skipped:', err.message);
+  // Auto-sync from Google Calendar on mount and poll every 30s while tab is visible
+  const isSyncing = useRef(false);
+
+  const doGoogleSync = useCallback(async () => {
+    if (!teamId || isSyncing.current) return;
+    isSyncing.current = true;
+    try {
+      await importFromGoogle({
+        variables: { teamId, daysBack: 30, daysForward: 90 }
       });
+      await refetch();
+    } catch (err) {
+      console.log('Google sync skipped:', err.message);
+    } finally {
+      isSyncing.current = false;
     }
   }, [teamId, importFromGoogle, refetch]);
+
+  useEffect(() => {
+    if (!teamId) return;
+
+    // Initial sync on mount
+    doGoogleSync();
+
+    // Poll every 30 seconds, but only when tab is visible
+    const POLL_INTERVAL = 30000;
+    let intervalId = null;
+
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(doGoogleSync, POLL_INTERVAL);
+      }
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        doGoogleSync(); // Sync immediately when tab becomes visible
+        startPolling();
+      }
+    };
+
+    // Start polling if tab is visible
+    if (!document.hidden) {
+      startPolling();
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [teamId, doGoogleSync]);
 
   // Combine events and tasks for display
   const getItemsForDay = (date) => {
