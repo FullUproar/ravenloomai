@@ -28,7 +28,9 @@ export default async function handler(req, res) {
 
   const userId = stateData.userId;
 
-  if (!userId) {
+  // Check for missing userId or string "undefined" (from bad frontend state)
+  if (!userId || userId === 'undefined') {
+    console.error('OAuth callback: Invalid userId in state:', { state, stateData });
     return res.redirect(`${frontendUrl}?error=no_user`);
   }
 

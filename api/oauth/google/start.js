@@ -21,7 +21,9 @@ export default async function handler(req, res) {
   const userId = req.query.userId;
   const origin = req.query.origin; // Frontend passes its origin for redirect
 
-  if (!userId) {
+  // Validate userId is present and not the string "undefined"
+  if (!userId || userId === 'undefined') {
+    console.error('OAuth start: Invalid userId:', userId);
     return res.status(401).json({ error: 'User ID required' });
   }
 

@@ -1311,7 +1311,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     try {
       // Pass origin so callback knows where to redirect back
       const origin = encodeURIComponent(window.location.origin);
-      const response = await fetch(`${API_BASE_URL}/oauth/google/start?userId=${user.id}&origin=${origin}`);
+      const response = await fetch(`${API_BASE_URL}/oauth/google/start?userId=${user.uid}&origin=${origin}`);
       const data = await response.json();
       if (data.authUrl) {
         window.location.href = data.authUrl;
@@ -1434,7 +1434,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': user.id
+          'x-user-id': user.uid
         },
         body: JSON.stringify({
           data: pendingImage.data,
