@@ -7,23 +7,51 @@ import { useQuery, useMutation, gql } from '@apollo/client';
 import EventModal from './EventModal';
 import './CalendarView.css';
 
-const GET_EVENTS = gql`
-  query GetEvents($teamId: ID!, $startDate: DateTime, $endDate: DateTime) {
-    getEvents(teamId: $teamId, startDate: $startDate, endDate: $endDate) {
+const GET_CALENDAR_ITEMS = gql`
+  query GetCalendarItems($teamId: ID!, $startDate: DateTime!, $endDate: DateTime!) {
+    getCalendarItems(teamId: $teamId, startDate: $startDate, endDate: $endDate) {
+      events {
+        id
+        title
+        description
+        location
+        startAt
+        endAt
+        isAllDay
+        color
+        taskId
+        projectId
+        googleEventId
+        syncStatus
+        createdByUser {
+          id
+          displayName
+        }
+      }
+      tasksDue {
+        id
+        title
+        status
+        priority
+        dueAt
+        projectId
+        project {
+          id
+          name
+          color
+        }
+      }
+    }
+  }
+`;
+
+const IMPORT_FROM_GOOGLE = gql`
+  mutation ImportCalendarFromGoogle($teamId: ID!, $calendarId: String, $daysBack: Int, $daysForward: Int) {
+    importCalendarFromGoogle(teamId: $teamId, calendarId: $calendarId, daysBack: $daysBack, daysForward: $daysForward) {
       id
       title
-      description
-      location
       startAt
       endAt
-      isAllDay
-      color
-      taskId
-      projectId
-      createdByUser {
-        id
-        displayName
-      }
     }
   }
 `;
@@ -115,7 +143,7 @@ export default function CalendarView({ teamId }) {
     }
   }, [currentDate, viewMode]);
 
-  const { data, loading, refetch } = useQuery(GET_EVENTS, {
+  const { data, loading, refetch } = useQuery(GET_CALENDAR_ITEMS, {
     variables: {
       teamId,
       startDate: dateRange.start.toISOString(),
@@ -127,8 +155,33 @@ export default function CalendarView({ teamId }) {
   const [createEvent] = useMutation(CREATE_EVENT);
   const [updateEvent] = useMutation(UPDATE_EVENT);
   const [deleteEvent] = useMutation(DELETE_EVENT);
+  const [importFromGoogle, { loading: importing }] = useMutation(IMPORT_FROM_GOOGLE);
 
-  const events = data?.getEvents || [];
+  const events = data?.getCalendarItems?.events || [];
+  const tasksDue = data?.getCalendarItems?.tasksDue || [];
+
+  // Combine events and tasks for display
+  const getItemsForDay = (date) => {
+    const dayEvents = events.filter(event => isSameDay(event.startAt, date));
+    const dayTasks = tasksDue.filter(task => isSameDay(task.dueAt, date));
+    return { events: dayEvents, tasks: dayTasks };
+  };
+
+  // Import from Google Calendar
+  const handleImportFromGoogle = async () => {
+    try {
+      await importFromGoogle({
+        variables: {
+          teamId,
+          daysBack: 30,
+          daysForward: 90
+        }
+      });
+      await refetch();
+    } catch (err) {
+      console.error('Error importing from Google:', err);
+    }
+  };
 
   // Get events for a specific day
   const getEventsForDay = (date) => {
@@ -296,6 +349,15 @@ export default function CalendarView({ teamId }) {
             }
           </h2>
         </div>
+        <div className="calendar-actions">
+          <button
+            className="btn btn-secondary"
+            onClick={handleImportFromGoogle}
+            disabled={importing}
+          >
+            {importing ? 'Syncing...' : 'Sync from Google'}
+          </button>
+        </div>
         <div className="calendar-view-toggle">
           <button
             className={`btn ${viewMode === 'work-week' ? 'btn-primary' : 'btn-secondary'}`}
@@ -330,8 +392,9 @@ export default function CalendarView({ teamId }) {
           </div>
           <div className="calendar-days">
             {generateMonthGrid().map(({ date, isCurrentMonth }, index) => {
-              const dayEvents = getEventsForDay(date);
+              const { events: dayEvents, tasks: dayTasks } = getItemsForDay(date);
               const isToday = isSameDay(date, today);
+              const totalItems = dayEvents.length + dayTasks.length;
 
               return (
                 <div
@@ -341,7 +404,8 @@ export default function CalendarView({ teamId }) {
                 >
                   <span className="day-number">{date.getDate()}</span>
                   <div className="day-events">
-                    {dayEvents.slice(0, 3).map(event => (
+                    {/* Show events */}
+                    {dayEvents.slice(0, 2).map(event => (
                       <div
                         key={event.id}
                         className="event-chip"
@@ -352,8 +416,19 @@ export default function CalendarView({ teamId }) {
                         {event.title}
                       </div>
                     ))}
-                    {dayEvents.length > 3 && (
-                      <div className="more-events">+{dayEvents.length - 3} more</div>
+                    {/* Show task due dates */}
+                    {dayTasks.slice(0, dayEvents.length >= 2 ? 1 : 2).map(task => (
+                      <div
+                        key={`task-${task.id}`}
+                        className="event-chip task-chip"
+                        style={{ backgroundColor: task.project?.color || '#F59E0B' }}
+                        title={`Task due: ${task.title}`}
+                      >
+                        <span className="task-icon">✓</span> {task.title}
+                      </div>
+                    ))}
+                    {totalItems > 3 && (
+                      <div className="more-events">+{totalItems - 3} more</div>
                     )}
                   </div>
                 </div>
@@ -376,11 +451,12 @@ export default function CalendarView({ teamId }) {
             ))}
           </div>
 
-          {/* All-day events row */}
+          {/* All-day events and task due dates row */}
           <div className="week-allday-row">
             <div className="time-label">All day</div>
             {generateWeekGrid().map(({ date }) => {
               const allDayEvents = events.filter(e => e.isAllDay && isSameDay(e.startAt, date));
+              const dayTasks = tasksDue.filter(task => isSameDay(task.dueAt, date));
               return (
                 <div key={date.toISOString()} className="week-allday-cell" onClick={() => handleDayClick(date)}>
                   {allDayEvents.map(event => (
@@ -391,6 +467,16 @@ export default function CalendarView({ teamId }) {
                       onClick={(e) => handleEventClick(event, e)}
                     >
                       {event.title}
+                    </div>
+                  ))}
+                  {dayTasks.map(task => (
+                    <div
+                      key={`task-${task.id}`}
+                      className="event-chip allday task-chip"
+                      style={{ backgroundColor: task.project?.color || '#F59E0B' }}
+                      title={`Task due: ${task.title}`}
+                    >
+                      <span className="task-icon">✓</span> {task.title}
                     </div>
                   ))}
                 </div>

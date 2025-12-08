@@ -367,6 +367,22 @@ const resolvers = {
 
     exportCalendarICS: async (_, { teamId, startDate, endDate }) => {
       return CalendarService.exportToICS(teamId, startDate, endDate);
+    },
+
+    // Get calendar items including events AND task due dates
+    getCalendarItems: async (_, { teamId, startDate, endDate }) => {
+      // Get events
+      const events = await CalendarService.getEvents(teamId, { startDate, endDate });
+
+      // Get tasks with due dates in the range
+      const tasksResult = await TaskService.getTasks(teamId, {});
+      const tasksDue = tasksResult.filter(task => {
+        if (!task.dueAt) return false;
+        const dueDate = new Date(task.dueAt);
+        return dueDate >= new Date(startDate) && dueDate <= new Date(endDate);
+      });
+
+      return { events, tasksDue };
     }
   },
 
@@ -753,6 +769,24 @@ const resolvers = {
     syncEventToGoogle: async (_, { eventId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return GoogleCalendarService.syncEventToGoogle(userId, eventId);
+    },
+
+    importCalendarFromGoogle: async (_, { teamId, calendarId, daysBack, daysForward }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      const timeMin = new Date();
+      timeMin.setDate(timeMin.getDate() - (daysBack || 30));
+
+      const timeMax = new Date();
+      timeMax.setDate(timeMax.getDate() + (daysForward || 90));
+
+      return GoogleCalendarService.importFromGoogle(
+        userId,
+        teamId,
+        calendarId || 'primary',
+        timeMin,
+        timeMax
+      );
     }
   },
 

@@ -507,6 +507,12 @@ export default gql`
     projectId: ID
   }
 
+  # Calendar items result (events + task due dates)
+  type CalendarItemsResult {
+    events: [Event!]!
+    tasksDue: [Task!]!
+  }
+
   # ============================================================================
   # INPUT TYPES
   # ============================================================================
@@ -875,6 +881,7 @@ export default gql`
     getEvents(teamId: ID!, startDate: DateTime, endDate: DateTime, taskId: ID, projectId: ID): [Event!]!
     getEvent(eventId: ID!): Event
     getCalendarMonth(teamId: ID!, year: Int!, month: Int!): [Event!]!
+    getCalendarItems(teamId: ID!, startDate: DateTime!, endDate: DateTime!): CalendarItemsResult!
     exportCalendarICS(teamId: ID!, startDate: DateTime, endDate: DateTime): String!
   }
 
@@ -990,5 +997,6 @@ export default gql`
     updateEvent(eventId: ID!, input: UpdateEventInput!): Event!
     deleteEvent(eventId: ID!): Boolean!
     syncEventToGoogle(eventId: ID!): Event!
+    importCalendarFromGoogle(teamId: ID!, calendarId: String, daysBack: Int, daysForward: Int): [Event!]!
   }
 `;

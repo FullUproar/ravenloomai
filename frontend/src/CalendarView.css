@@ -30,6 +30,11 @@
   color: var(--text-primary);
 }
 
+.calendar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .calendar-view-toggle {
   display: flex;
   gap: 0.25rem;
@@ -136,6 +141,19 @@
 }
 
 .event-chip:hover {
+  opacity: 0.9;
+}
+
+/* Task due date chips */
+.task-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border-left: 3px solid rgba(255, 255, 255, 0.5);
+}
+
+.task-chip .task-icon {
+  font-size: 0.65rem;
   opacity: 0.9;
 }
 
