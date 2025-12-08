@@ -10,13 +10,14 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/oauth/google/callback';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY; // For Picker API
 
-// OAuth scopes for Google Drive
+// OAuth scopes for Google Drive and Calendar
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/documents.readonly',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
   'https://www.googleapis.com/auth/presentations.readonly',
-  'https://www.googleapis.com/auth/userinfo.email'
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/calendar'  // Calendar read/write access
 ];
 
 /**

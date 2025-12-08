@@ -5827,6 +5827,22 @@ input[type="date"].property-value {
   background: var(--bg);
 }
 
+/* ============================================================================
+   CALENDAR AREA
+   ============================================================================ */
+
+.calendar-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ============================================================================
+   KNOWLEDGE HEADER (continued)
+   ============================================================================ */
+
 .knowledge-header {
   padding: 1.5rem 2rem;
   background: var(--bg-secondary);

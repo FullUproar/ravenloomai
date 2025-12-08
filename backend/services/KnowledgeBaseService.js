@@ -5,6 +5,7 @@
 
 import db from '../db.js';
 import GoogleDriveService from './GoogleDriveService.js';
+import { processDocument as processIntoKnowledgeGraph } from './KnowledgeGraphService.js';
 
 class KnowledgeBaseService {
 
@@ -248,17 +249,53 @@ class KnowledgeBaseService {
           SET title = $2, mime_type = $3, external_url = $4, content = $5, content_hash = $6, last_synced_at = NOW()
           WHERE id = $1
         `, [existing.rows[0].id, title, mimeType, webViewLink, content, contentHash]);
+
+        // Process updated document into Knowledge Graph
+        if (content) {
+          this.processDocumentIntoKG(teamId, existing.rows[0].id, title, content).catch(err => {
+            console.error(`[KB] KG processing failed for ${title}:`, err.message);
+          });
+        }
+
         return 'updated';
       }
       return 'unchanged';
     } else {
       // Insert new document
-      await db.query(`
+      const result = await db.query(`
         INSERT INTO knowledge_base_documents
           (team_id, source_id, external_id, title, mime_type, external_url, content, content_hash, last_synced_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        RETURNING id
       `, [teamId, sourceId, externalId, title, mimeType, webViewLink, content, contentHash]);
+
+      // Process new document into Knowledge Graph
+      if (content) {
+        this.processDocumentIntoKG(teamId, result.rows[0].id, title, content).catch(err => {
+          console.error(`[KB] KG processing failed for ${title}:`, err.message);
+        });
+      }
+
       return 'added';
+    }
+  }
+
+  /**
+   * Process a document into the Knowledge Graph (async, non-blocking)
+   */
+  static async processDocumentIntoKG(teamId, docId, title, content) {
+    console.log(`[KB] Processing "${title}" into Knowledge Graph...`);
+    try {
+      const result = await processIntoKnowledgeGraph(teamId, {
+        id: docId,
+        title,
+        content
+      }, { sourceType: 'document' });
+      console.log(`[KB] KG processing complete: ${result.nodes} nodes, ${result.edges} edges, ${result.chunks} chunks`);
+      return result;
+    } catch (err) {
+      console.error(`[KB] KG processing error:`, err);
+      throw err;
     }
   }
 

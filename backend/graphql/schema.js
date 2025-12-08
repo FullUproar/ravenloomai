@@ -444,6 +444,70 @@ export default gql`
   }
 
   # ============================================================================
+  # CALENDAR EVENTS
+  # ============================================================================
+
+  type Event {
+    id: ID!
+    teamId: ID!
+    title: String!
+    description: String
+    location: String
+    startAt: DateTime!
+    endAt: DateTime!
+    isAllDay: Boolean!
+    timezone: String
+    color: String
+    reminderMinutes: Int
+    recurrenceRule: String
+    # Google Calendar sync
+    googleEventId: String
+    googleCalendarId: String
+    syncStatus: String  # local, synced, sync_error
+    lastSyncedAt: DateTime
+    syncError: String
+    # Relationships
+    task: Task
+    taskId: ID
+    project: Project
+    projectId: ID
+    createdBy: String
+    createdByUser: User
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  input CreateEventInput {
+    title: String!
+    description: String
+    location: String
+    startAt: DateTime!
+    endAt: DateTime!
+    isAllDay: Boolean
+    timezone: String
+    color: String
+    reminderMinutes: Int
+    recurrenceRule: String
+    taskId: ID
+    projectId: ID
+  }
+
+  input UpdateEventInput {
+    title: String
+    description: String
+    location: String
+    startAt: DateTime
+    endAt: DateTime
+    isAllDay: Boolean
+    timezone: String
+    color: String
+    reminderMinutes: Int
+    recurrenceRule: String
+    taskId: ID
+    projectId: ID
+  }
+
+  # ============================================================================
   # INPUT TYPES
   # ============================================================================
 
@@ -806,6 +870,12 @@ export default gql`
     searchGifs(query: String!, limit: Int): [Gif!]!
     getTrendingGifs(limit: Int): [Gif!]!
     getGifCategories: [GifCategory!]!
+
+    # Calendar Events
+    getEvents(teamId: ID!, startDate: DateTime, endDate: DateTime, taskId: ID, projectId: ID): [Event!]!
+    getEvent(eventId: ID!): Event
+    getCalendarMonth(teamId: ID!, year: Int!, month: Int!): [Event!]!
+    exportCalendarICS(teamId: ID!, startDate: DateTime, endDate: DateTime): String!
   }
 
   # ============================================================================
@@ -914,5 +984,11 @@ export default gql`
     attachToMessage(attachmentId: ID!, messageId: ID!): Attachment
     attachToQuestion(attachmentId: ID!, questionId: ID!): Attachment
     deleteAttachment(attachmentId: ID!): Boolean!
+
+    # Calendar Events
+    createEvent(teamId: ID!, input: CreateEventInput!): Event!
+    updateEvent(eventId: ID!, input: UpdateEventInput!): Event!
+    deleteEvent(eventId: ID!): Boolean!
+    syncEventToGoogle(eventId: ID!): Event!
   }
 `;

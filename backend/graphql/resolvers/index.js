@@ -23,6 +23,9 @@ import GoogleDriveService from '../../services/GoogleDriveService.js';
 import UploadService from '../../services/UploadService.js';
 import GifService from '../../services/GifService.js';
 import KnowledgeBaseService from '../../services/KnowledgeBaseService.js';
+import { graphRAGSearch, getGraphStats } from '../../services/KnowledgeGraphService.js';
+import * as CalendarService from '../../services/CalendarService.js';
+import * as GoogleCalendarService from '../../services/GoogleCalendarService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -94,30 +97,43 @@ const resolvers = {
       return KnowledgeService.searchKnowledge(teamId, query);
     },
 
-    // Ask the Company (AI Q&A)
+    // Ask the Company (AI Q&A) - GraphRAG-powered
     askCompany: async (_, { teamId, input }, { userId }) => {
-      // Get all relevant knowledge (facts and decisions)
-      const knowledge = await KnowledgeService.getKnowledgeContext(teamId, input.question);
+      console.log(`[askCompany] Query: "${input.question}"`);
 
-      // Also search Knowledge Base documents (synced from Google Drive, etc.)
+      // Get traditional knowledge (facts and decisions)
+      const knowledge = await KnowledgeService.getKnowledgeContext(teamId, input.question);
+      console.log(`[askCompany] Found ${knowledge.facts.length} facts, ${knowledge.decisions.length} decisions`);
+
+      // GraphRAG search - vector search + graph traversal for richer context
+      let graphContext = { entryNodes: [], relatedNodes: [], chunks: [] };
+      try {
+        graphContext = await graphRAGSearch(teamId, input.question, { topK: 5, hopDepth: 1 });
+        console.log(`[askCompany] GraphRAG: ${graphContext.entryNodes.length} entry nodes, ${graphContext.relatedNodes.length} related nodes, ${graphContext.chunks.length} chunks`);
+      } catch (err) {
+        console.error('[askCompany] GraphRAG search error:', err);
+      }
+
+      // Fallback: Also search Knowledge Base documents directly (for non-graph-processed docs)
       let kbDocuments = [];
       try {
         kbDocuments = await KnowledgeBaseService.searchDocuments(teamId, input.question, 5);
+        console.log(`[askCompany] KB documents: ${kbDocuments.length}`);
       } catch (err) {
         console.error('Error searching KB documents:', err);
       }
 
-      // Generate AI answer with all context
+      // Generate AI answer with all context (facts, decisions, graph chunks, KB docs)
       const answer = await AIService.generateCompanyAnswer(
         input.question,
         knowledge.facts,
         knowledge.decisions,
-        kbDocuments
+        kbDocuments,
+        graphContext  // Pass graph context to AI
       );
 
       // Log the query for analytics
       try {
-        const { Pool } = await import('pg');
         const db = (await import('../../db.js')).default;
         await db.query(
           `INSERT INTO knowledge_queries (team_id, user_id, query, answer, facts_used, confidence_score)
@@ -334,6 +350,23 @@ const resolvers = {
 
     getGifCategories: async () => {
       return GifService.getCategories();
+    },
+
+    // Calendar Events
+    getEvents: async (_, { teamId, startDate, endDate, taskId, projectId }) => {
+      return CalendarService.getEvents(teamId, { startDate, endDate, taskId, projectId });
+    },
+
+    getEvent: async (_, { eventId }) => {
+      return CalendarService.getEventById(eventId);
+    },
+
+    getCalendarMonth: async (_, { teamId, year, month }) => {
+      return CalendarService.getEventsByMonth(teamId, year, month);
+    },
+
+    exportCalendarICS: async (_, { teamId, startDate, endDate }) => {
+      return CalendarService.exportToICS(teamId, startDate, endDate);
     }
   },
 
@@ -699,6 +732,27 @@ const resolvers = {
     deleteAttachment: async (_, { attachmentId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return UploadService.deleteAttachment(attachmentId, userId);
+    },
+
+    // Calendar Events
+    createEvent: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CalendarService.createEvent(teamId, { ...input, createdBy: userId });
+    },
+
+    updateEvent: async (_, { eventId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CalendarService.updateEvent(eventId, input);
+    },
+
+    deleteEvent: async (_, { eventId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CalendarService.deleteEvent(eventId);
+    },
+
+    syncEventToGoogle: async (_, { eventId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return GoogleCalendarService.syncEventToGoogle(userId, eventId);
     }
   },
 
@@ -938,6 +992,23 @@ const resolvers = {
 
     questions: async (objective) => {
       return LearningObjectiveService.getObjectiveQuestions(objective.id);
+    }
+  },
+
+  Event: {
+    createdByUser: async (event) => {
+      if (!event.createdBy) return null;
+      return UserService.getUserById(event.createdBy);
+    },
+
+    task: async (event) => {
+      if (!event.taskId) return null;
+      return TaskService.getTaskById(event.taskId);
+    },
+
+    project: async (event) => {
+      if (!event.projectId) return null;
+      return ProjectService.getProjectById(event.projectId);
     }
   }
 };

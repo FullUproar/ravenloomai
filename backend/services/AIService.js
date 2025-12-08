@@ -729,10 +729,43 @@ export async function callOpenAI(messages, { maxTokens = 500, temperature = 0.7 
  * Generate an answer for "Ask the Company" feature
  * Uses knowledge base to answer questions about the company
  */
-export async function generateCompanyAnswer(question, facts, decisions, kbDocuments = []) {
+export async function generateCompanyAnswer(question, facts, decisions, kbDocuments = [], graphContext = null) {
   // Build knowledge context
   let knowledgeContext = '';
 
+  // GraphRAG context (most relevant - from knowledge graph traversal)
+  if (graphContext && graphContext.chunks && graphContext.chunks.length > 0) {
+    knowledgeContext += 'KNOWLEDGE GRAPH CONTEXT:\n';
+
+    // Show relevant entities found
+    if (graphContext.entryNodes && graphContext.entryNodes.length > 0) {
+      const entitySummary = graphContext.entryNodes
+        .map(n => `${n.name} (${n.type})`)
+        .join(', ');
+      knowledgeContext += `Relevant entities: ${entitySummary}\n`;
+
+      // Show connected entities
+      if (graphContext.relatedNodes && graphContext.relatedNodes.length > 0) {
+        const relatedSummary = graphContext.relatedNodes
+          .map(n => `${n.name} (${n.type}) via ${n.relationship}`)
+          .slice(0, 5)
+          .join(', ');
+        knowledgeContext += `Connected to: ${relatedSummary}\n`;
+      }
+      knowledgeContext += '\n';
+    }
+
+    // Add graph chunks (these are the most contextually relevant)
+    knowledgeContext += 'Relevant excerpts from knowledge base:\n';
+    graphContext.chunks.forEach((chunk, i) => {
+      knowledgeContext += `\n[${i + 1}] `;
+      if (chunk.source_title) knowledgeContext += `From "${chunk.source_title}": `;
+      knowledgeContext += chunk.content + '\n';
+    });
+    knowledgeContext += '\n';
+  }
+
+  // Traditional facts
   if (facts.length > 0) {
     knowledgeContext += 'COMPANY KNOWLEDGE (Facts):\n';
     facts.forEach((fact, i) => {
@@ -746,6 +779,7 @@ export async function generateCompanyAnswer(question, facts, decisions, kbDocume
     knowledgeContext += '\n';
   }
 
+  // Decisions
   if (decisions.length > 0) {
     knowledgeContext += 'COMPANY DECISIONS:\n';
     decisions.forEach((decision, i) => {
@@ -756,8 +790,8 @@ export async function generateCompanyAnswer(question, facts, decisions, kbDocume
     knowledgeContext += '\n';
   }
 
-  // Add Knowledge Base documents (from Google Drive, etc.)
-  if (kbDocuments.length > 0) {
+  // Add Knowledge Base documents as fallback (when no graph chunks)
+  if (kbDocuments.length > 0 && (!graphContext || !graphContext.chunks || graphContext.chunks.length === 0)) {
     knowledgeContext += 'DOCUMENTS FROM KNOWLEDGE BASE:\n';
     kbDocuments.forEach((doc, i) => {
       knowledgeContext += `\n--- Document ${i + 1}: ${doc.title} ---\n`;

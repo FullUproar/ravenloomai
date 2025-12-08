@@ -2,6 +2,7 @@ import { gql, useQuery, useMutation, useLazyQuery } from '@apollo/client';
 import { useState, useEffect, useRef, Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import CalendarView from './CalendarView';
 
 // API base URL - uses /api prefix in production, localhost in development
 const API_BASE_URL = import.meta.env.PROD
@@ -847,7 +848,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   // Determine initial view from URL or default to 'chat'
   const getInitialView = () => {
-    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects' || initialView === 'knowledge') {
+    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects' || initialView === 'knowledge' || initialView === 'calendar') {
       return initialView;
     }
     if (initialView === 'channel' || initialView === 'chat') {
@@ -2583,6 +2584,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
           </div>
 
+          {/* Calendar */}
+          <div className="nav-section">
+            <button
+              className={`nav-section-header nav-single ${activeView === 'calendar' ? 'active' : ''}`}
+              onClick={() => handleSectionItemClick('calendar', 'calendar')}
+            >
+              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+              <span className="nav-icon">📅</span>
+              <span className="nav-label">Calendar</span>
+            </button>
+          </div>
+
           {/* Knowledge Base */}
           <div className={`nav-section ${expandedSections.knowledge ? 'expanded' : ''}`}>
             <button
@@ -3899,6 +3912,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
             )}
           </div>
+        </main>
+      ) : activeView === 'calendar' ? (
+        <main className="calendar-area">
+          <CalendarView teamId={teamId} />
         </main>
       ) : activeView === 'knowledge' ? (
         <main className="knowledge-area">
