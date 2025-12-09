@@ -2666,28 +2666,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </div>
 
-          {/* Help Link */}
-          <button
-            className="footer-help-btn"
-            onClick={() => navigate('/help')}
-            title="Help & Guide"
-          >
-            <span>?</span>
-            <span>Help</span>
-          </button>
-
-          {/* Site Admin Button (only for admins) */}
-          {isSiteAdmin && (
-            <button
-              className="footer-help-btn footer-admin-btn"
-              onClick={handleOpenSiteAdmin}
-              title="Site Admin"
-            >
-              <span>⚙</span>
-              <span>Admin</span>
-            </button>
-          )}
-
           {/* Google Drive Button */}
           <button
             className={`footer-help-btn ${googleIntegration ? 'footer-drive-connected' : ''}`}
@@ -3083,6 +3061,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <a href="/privacy" className="user-menu-item">Privacy Policy</a>
                     <a href="/terms" className="user-menu-item">Terms of Service</a>
                     <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
                     <div className="user-menu-divider"></div>
                     <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
                   </div>
@@ -3325,6 +3306,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <a href="/privacy" className="user-menu-item">Privacy Policy</a>
                     <a href="/terms" className="user-menu-item">Terms of Service</a>
                     <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
                     <div className="user-menu-divider"></div>
                     <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
                   </div>
@@ -3584,6 +3568,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <a href="/privacy" className="user-menu-item">Privacy Policy</a>
                     <a href="/terms" className="user-menu-item">Terms of Service</a>
                     <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
                     <div className="user-menu-divider"></div>
                     <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
                   </div>
@@ -3976,6 +3963,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <a href="/privacy" className="user-menu-item">Privacy Policy</a>
                     <a href="/terms" className="user-menu-item">Terms of Service</a>
                     <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
                     <div className="user-menu-divider"></div>
                     <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
                   </div>
@@ -4006,6 +3996,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <a href="/privacy" className="user-menu-item">Privacy Policy</a>
                     <a href="/terms" className="user-menu-item">Terms of Service</a>
                     <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
                     <div className="user-menu-divider"></div>
                     <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
                   </div>
@@ -4136,6 +4129,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <a href="/privacy" className="user-menu-item">Privacy Policy</a>
                     <a href="/terms" className="user-menu-item">Terms of Service</a>
                     <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
                     <div className="user-menu-divider"></div>
                     <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
                   </div>
@@ -4603,6 +4599,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <a href="/privacy" className="user-menu-item">Privacy Policy</a>
                     <a href="/terms" className="user-menu-item">Terms of Service</a>
                     <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
                     <div className="user-menu-divider"></div>
                     <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
                   </div>
@@ -4873,6 +4872,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <a href="/privacy" className="user-menu-item">Privacy Policy</a>
                     <a href="/terms" className="user-menu-item">Terms of Service</a>
                     <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
                     <div className="user-menu-divider"></div>
                     <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
                   </div>
