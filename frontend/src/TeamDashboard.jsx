@@ -941,6 +941,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [creatingLO, setCreatingLO] = useState(false);
   const [rejectingQuestionId, setRejectingQuestionId] = useState(null); // question ID for reject dropdown
   const [rejectingQuestion, setRejectingQuestion] = useState(false); // loading state
+  const [rejectDropdownPos, setRejectDropdownPos] = useState({ top: 0, left: 0 }); // position for fixed dropdown
   // @mentions autocomplete state (for chat input)
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -1253,7 +1254,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
       // "Escape" to close popups or cancel reply
       if (e.key === 'Escape') {
-        if (showMentions) {
+        if (rejectingQuestionId) {
+          setRejectingQuestionId(null);
+        } else if (showMentions) {
           setShowMentions(false);
         } else if (showCommands) {
           setShowCommands(false);
@@ -1290,7 +1293,19 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [activeView, showMentions, showCommands, replyingTo, showCreateChannel, showInviteModal]);
+  }, [activeView, showMentions, showCommands, replyingTo, showCreateChannel, showInviteModal, rejectingQuestionId]);
+
+  // Close reject dropdown when clicking outside
+  useEffect(() => {
+    if (!rejectingQuestionId) return;
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.reject-dropdown-container')) {
+        setRejectingQuestionId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [rejectingQuestionId]);
 
   // ============================================================================
   // Handlers
@@ -2120,6 +2135,20 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     { value: 'other', label: 'Other', description: 'Skip and try a different direction' }
   ];
 
+  // Toggle reject dropdown with position calculation
+  const toggleRejectDropdown = (questionId, event) => {
+    if (rejectingQuestionId === questionId) {
+      setRejectingQuestionId(null);
+    } else {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setRejectDropdownPos({
+        top: rect.bottom + 4,
+        left: Math.max(8, rect.right - 220) // align right edge, but keep 8px from left
+      });
+      setRejectingQuestionId(questionId);
+    }
+  };
+
   // Reject a question and get a replacement
   const handleRejectQuestion = async (questionId, reason = null) => {
     if (rejectingQuestion) return;
@@ -2675,33 +2704,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             )}
           </div>
 
-          {/* Ask - No expansion needed */}
-          <div className="nav-section">
-            <button
-              className={`nav-section-header nav-single ${activeView === 'ask' ? 'active' : ''}`}
-              onClick={() => handleSectionItemClick('ask', 'ask')}
-            >
-              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-              <span className="nav-icon">🔍</span>
-              <span className="nav-label">Ask the Team</span>
-            </button>
-          </div>
-
-          {/* Learning Objectives / Research */}
-          <div className="nav-section">
-            <button
-              className={`nav-section-header nav-single ${activeView === 'learning' ? 'active' : ''}`}
-              onClick={() => handleSectionItemClick('learning', 'learning')}
-            >
-              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-              <span className="nav-icon">📚</span>
-              <span className="nav-label">Research</span>
-              {losAvailable && learningObjectives.filter(lo => lo.status === 'active').length > 0 && (
-                <span className="nav-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
-              )}
-            </button>
-          </div>
-
           {/* Calendar */}
           <div className="nav-section">
             <button
@@ -2714,27 +2716,61 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
           </div>
 
-          {/* Knowledge Base - simplified single nav item */}
-          <div className="nav-section">
+          {/* Knowledge - Expandable section containing Ask, Research, KB, Connections */}
+          <div className={`nav-section ${expandedSections.knowledge ? 'expanded' : ''}`}>
             <button
-              className={`nav-section-header nav-single ${activeView === 'knowledge' ? 'active' : ''}`}
-              onClick={() => handleSectionItemClick('knowledge', 'knowledge')}
+              className={`nav-section-header ${activeView === 'ask' || activeView === 'learning' || activeView === 'knowledge' ? 'active' : ''}`}
+              onClick={() => toggleSection('knowledge')}
             >
-              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+              <span className="nav-expand-icon">{expandedSections.knowledge ? '▼' : '▶'}</span>
               <span className="nav-icon">🧠</span>
-              <span className="nav-label">Knowledge Base</span>
-              {kbSources.length > 0 && <span className="nav-count">{kbSources.length}</span>}
+              <span className="nav-label">Knowledge</span>
+              {(losAvailable && learningObjectives.filter(lo => lo.status === 'active').length > 0) && (
+                <span className="nav-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
+              )}
             </button>
-            {/* Google Drive - sub-item of Knowledge Base */}
-            <button
-              className={`nav-item nav-sub-item ${googleIntegration ? 'nav-drive-connected' : ''}`}
-              onClick={handleOpenDrivePanel}
-              title="Google Drive"
-            >
-              <span className="nav-icon">📁</span>
-              <span className="nav-label">Drive</span>
-              {googleIntegration && <span className="nav-status-dot connected"></span>}
-            </button>
+            {expandedSections.knowledge && (
+              <div className="nav-items">
+                {/* Ask the Team */}
+                <button
+                  className={`nav-item ${activeView === 'ask' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('ask', 'ask')}
+                >
+                  <span className="nav-item-icon">🔍</span>
+                  <span className="nav-item-label">Ask the Team</span>
+                </button>
+                {/* Research */}
+                <button
+                  className={`nav-item ${activeView === 'learning' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('learning', 'learning')}
+                >
+                  <span className="nav-item-icon">📚</span>
+                  <span className="nav-item-label">Research</span>
+                  {losAvailable && learningObjectives.filter(lo => lo.status === 'active').length > 0 && (
+                    <span className="nav-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
+                  )}
+                </button>
+                {/* Knowledge Base */}
+                <button
+                  className={`nav-item ${activeView === 'knowledge' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('knowledge', 'knowledge')}
+                >
+                  <span className="nav-item-icon">📖</span>
+                  <span className="nav-item-label">Knowledge Base</span>
+                  {kbSources.length > 0 && <span className="nav-count">{kbSources.length}</span>}
+                </button>
+                {/* Connections (Google Drive and future integrations) */}
+                <button
+                  className={`nav-item ${googleIntegration ? 'nav-connected' : ''}`}
+                  onClick={handleOpenDrivePanel}
+                  title="Connect data sources"
+                >
+                  <span className="nav-item-icon">🔗</span>
+                  <span className="nav-item-label">Connections</span>
+                  {googleIntegration && <span className="nav-status-dot connected"></span>}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Alerts indicator */}
@@ -4027,13 +4063,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                               <div className="reject-dropdown-container">
                                 <button
                                   className="btn-reject"
-                                  onClick={() => setRejectingQuestionId(rejectingQuestionId === q.id ? null : q.id)}
+                                  onClick={(e) => toggleRejectDropdown(q.id, e)}
                                   disabled={rejectingQuestion}
                                 >
                                   {rejectingQuestion && rejectingQuestionId === q.id ? 'Removing...' : 'Remove'}
                                 </button>
                                 {rejectingQuestionId === q.id && (
-                                  <div className="reject-dropdown">
+                                  <div className="reject-dropdown" style={{ top: rejectDropdownPos.top, left: rejectDropdownPos.left }}>
                                     {rejectReasons.map(reason => (
                                       <button
                                         key={reason.value}
@@ -4684,13 +4720,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                                 <div className="reject-dropdown-container">
                                   <button
                                     className="btn-reject"
-                                    onClick={() => setRejectingQuestionId(rejectingQuestionId === q.id ? null : q.id)}
+                                    onClick={(e) => toggleRejectDropdown(q.id, e)}
                                     disabled={rejectingQuestion}
                                   >
                                     {rejectingQuestion && rejectingQuestionId === q.id ? 'Removing...' : 'Remove'}
                                   </button>
                                   {rejectingQuestionId === q.id && (
-                                    <div className="reject-dropdown">
+                                    <div className="reject-dropdown" style={{ top: rejectDropdownPos.top, left: rejectDropdownPos.left }}>
                                       {rejectReasons.map(reason => (
                                         <button
                                           key={reason.value}
@@ -4770,13 +4806,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                                         <div className="reject-dropdown-container">
                                           <button
                                             className="btn-reject btn-small"
-                                            onClick={() => setRejectingQuestionId(rejectingQuestionId === fq.id ? null : fq.id)}
+                                            onClick={(e) => toggleRejectDropdown(fq.id, e)}
                                             disabled={rejectingQuestion}
                                           >
                                             {rejectingQuestion && rejectingQuestionId === fq.id ? '...' : 'Remove'}
                                           </button>
                                           {rejectingQuestionId === fq.id && (
-                                            <div className="reject-dropdown">
+                                            <div className="reject-dropdown" style={{ top: rejectDropdownPos.top, left: rejectDropdownPos.left }}>
                                               {rejectReasons.map(reason => (
                                                 <button
                                                   key={reason.value}
