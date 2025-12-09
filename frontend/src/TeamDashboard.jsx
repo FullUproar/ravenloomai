@@ -4118,15 +4118,15 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 }}
                 placeholder="Message Raven..."
                 rows={1}
-                disabled={sendingMessage}
+                disabled={isSending}
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!messageInput.trim() || sendingMessage}
+                disabled={!messageInput.trim() || isSending}
                 className="send-btn"
                 title="Send message"
               >
-                {sendingMessage ? '...' : '→'}
+                {isSending ? '...' : '→'}
               </button>
             </div>
           </div>
