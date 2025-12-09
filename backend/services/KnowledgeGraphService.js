@@ -627,6 +627,195 @@ export async function getGraphStats(teamId) {
   };
 }
 
+// ============================================================================
+// USER NODE OPERATIONS
+// ============================================================================
+
+/**
+ * Get or create a user's node in the knowledge graph
+ */
+export async function getOrCreateUserNode(teamId, userId, userInfo = {}) {
+  const { displayName, email } = userInfo;
+  const name = displayName || email?.split('@')[0] || `User ${userId.substring(0, 8)}`;
+
+  try {
+    // Check if user node already exists
+    const existing = await db.query(`
+      SELECT * FROM kg_nodes
+      WHERE team_id = $1 AND user_id = $2 AND type = 'team_member'
+    `, [teamId, userId]);
+
+    if (existing.rows.length > 0) {
+      return existing.rows[0];
+    }
+
+    // Create user node with embedding
+    const embedding = await generateEmbedding(`team_member: ${name}. Team member.`);
+
+    const result = await db.query(`
+      INSERT INTO kg_nodes (team_id, user_id, name, type, description, embedding, source_type, source_id)
+      VALUES ($1, $2, $3, 'team_member', $4, $5, 'user', $2)
+      ON CONFLICT (team_id, name, type) DO UPDATE SET
+        user_id = EXCLUDED.user_id,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      teamId,
+      userId,
+      name,
+      `Team member: ${name}`,
+      embedding ? `[${embedding.join(',')}]` : null
+    ]);
+
+    console.log(`[KG UserNode] Created: ${name}`);
+    return result.rows[0];
+  } catch (error) {
+    console.error('[KG UserNode] Error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get a user's node by user_id
+ */
+export async function getUserNode(teamId, userId) {
+  const result = await db.query(`
+    SELECT * FROM kg_nodes
+    WHERE team_id = $1 AND user_id = $2 AND type = 'team_member'
+  `, [teamId, userId]);
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Store a fact about a user (e.g., "call me Shawn", "I'm the marketing lead")
+ */
+export async function storeUserFact(teamId, userId, factType, key, value, context = null) {
+  const result = await db.query(`
+    INSERT INTO user_facts (team_id, user_id, fact_type, key, value, context)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (team_id, user_id, fact_type, key) DO UPDATE SET
+      value = EXCLUDED.value,
+      context = EXCLUDED.context,
+      updated_at = NOW()
+    RETURNING *
+  `, [teamId, userId, factType, key, value, context]);
+
+  console.log(`[UserFact] Stored: ${userId} ${factType}:${key} = ${value}`);
+  return result.rows[0];
+}
+
+/**
+ * Get all facts about a user
+ */
+export async function getUserFacts(teamId, userId) {
+  const result = await db.query(`
+    SELECT * FROM user_facts
+    WHERE team_id = $1 AND user_id = $2
+    ORDER BY fact_type, key
+  `, [teamId, userId]);
+
+  return result.rows;
+}
+
+/**
+ * Get a specific fact about a user
+ */
+export async function getUserFact(teamId, userId, factType, key) {
+  const result = await db.query(`
+    SELECT * FROM user_facts
+    WHERE team_id = $1 AND user_id = $2 AND fact_type = $3 AND key = $4
+  `, [teamId, userId, factType, key]);
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Get user context for AI - includes user info and all their facts
+ */
+export async function getUserContext(teamId, userId) {
+  // Get user node
+  const userNode = await getUserNode(teamId, userId);
+
+  // Get user facts
+  const facts = await getUserFacts(teamId, userId);
+
+  // Get user's basic info from users table
+  const userResult = await db.query(`
+    SELECT id, email, display_name, avatar_url FROM users WHERE id = $1
+  `, [userId]);
+  const user = userResult.rows[0];
+
+  // Build context object
+  const context = {
+    userId,
+    displayName: user?.display_name || userNode?.name || 'Unknown',
+    email: user?.email,
+    nodeId: userNode?.id,
+    facts: {}
+  };
+
+  // Organize facts by type
+  for (const fact of facts) {
+    if (!context.facts[fact.fact_type]) {
+      context.facts[fact.fact_type] = {};
+    }
+    context.facts[fact.fact_type][fact.key] = fact.value;
+  }
+
+  // Check for nickname/preferred name
+  if (context.facts.nickname?.preferred_name) {
+    context.preferredName = context.facts.nickname.preferred_name;
+  }
+
+  return context;
+}
+
+/**
+ * Find user by name/nickname in the knowledge graph
+ */
+export async function findUserByName(teamId, name) {
+  // First check user_facts for nicknames
+  const nicknameResult = await db.query(`
+    SELECT uf.user_id, u.display_name, u.email
+    FROM user_facts uf
+    JOIN users u ON uf.user_id = u.id
+    WHERE uf.team_id = $1 AND uf.fact_type = 'nickname'
+      AND lower(uf.value) = lower($2)
+    LIMIT 1
+  `, [teamId, name]);
+
+  if (nicknameResult.rows.length > 0) {
+    return nicknameResult.rows[0];
+  }
+
+  // Then check kg_nodes for team_member type
+  const nodeResult = await db.query(`
+    SELECT kn.user_id, u.display_name, u.email
+    FROM kg_nodes kn
+    JOIN users u ON kn.user_id = u.id
+    WHERE kn.team_id = $1 AND kn.type = 'team_member'
+      AND (lower(kn.name) = lower($2) OR $2 = ANY(SELECT lower(unnest(kn.aliases))))
+    LIMIT 1
+  `, [teamId, name]);
+
+  if (nodeResult.rows.length > 0) {
+    return nodeResult.rows[0];
+  }
+
+  // Finally check users table directly
+  const userResult = await db.query(`
+    SELECT tm.user_id, u.display_name, u.email
+    FROM team_members tm
+    JOIN users u ON tm.user_id = u.id
+    WHERE tm.team_id = $1
+      AND (lower(u.display_name) = lower($2) OR lower(split_part(u.email, '@', 1)) = lower($2))
+    LIMIT 1
+  `, [teamId, name]);
+
+  return userResult.rows[0] || null;
+}
+
 export default {
   extractEntitiesAndRelationships,
   chunkText,
@@ -636,5 +825,13 @@ export default {
   createChunk,
   processDocument,
   graphRAGSearch,
-  getGraphStats
+  getGraphStats,
+  // User node operations
+  getOrCreateUserNode,
+  getUserNode,
+  storeUserFact,
+  getUserFacts,
+  getUserFact,
+  getUserContext,
+  findUserByName
 };

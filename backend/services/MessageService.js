@@ -9,6 +9,8 @@ import AlertService from './AlertService.js';
 import TaskService from './TaskService.js';
 import DiscussionService from './DiscussionService.js';
 import * as CalendarService from './CalendarService.js';
+import * as KnowledgeGraphService from './KnowledgeGraphService.js';
+import * as DeepResearchService from './DeepResearchService.js';
 
 /**
  * Get a message by ID
@@ -138,7 +140,7 @@ export async function sendMessage(channelId, userId, content, options = {}) {
 async function processAICommand(command, teamId, channelId, userId, replyContext = null) {
   // If no explicit command but we have reply context, treat as a query
   if (!command && replyContext) {
-    return handleQuery('', teamId, channelId, replyContext);
+    return handleQuery('', teamId, channelId, replyContext, userId);
   }
 
   if (!command) {
@@ -219,9 +221,12 @@ async function processAICommand(command, teamId, channelId, userId, replyContext
     case 'due_dates_query':
       return handleDueDatesQuery(teamId);
 
+    case 'deep_research':
+      return handleDeepResearch(command.content, teamId, userId);
+
     case 'query':
     default:
-      return handleQuery(command.query, teamId, channelId, replyContext);
+      return handleQuery(command.query, teamId, channelId, replyContext, userId);
   }
 }
 
@@ -230,6 +235,38 @@ async function processAICommand(command, teamId, channelId, userId, replyContext
  */
 async function handleRemember(content, teamId, channelId, userId) {
   try {
+    // First, check if this is a personal user fact (e.g., "call me Shawn")
+    const userFact = await AIService.extractUserFact(content);
+    if (userFact) {
+      // Store as a user fact linked to the sender
+      await KnowledgeGraphService.storeUserFact(
+        teamId,
+        userId,
+        userFact.factType,
+        userFact.key,
+        userFact.value,
+        `Said in channel: ${content}`
+      );
+
+      // Also ensure user has a node in the KG
+      await KnowledgeGraphService.getOrCreateUserNode(teamId, userId);
+
+      // Personalized response based on fact type
+      let responseText;
+      if (userFact.factType === 'nickname' && userFact.key === 'preferred_name') {
+        responseText = `Got it, ${userFact.value}! I'll remember to call you that.`;
+      } else if (userFact.factType === 'role') {
+        responseText = `Noted! I'll remember you're ${userFact.value}.`;
+      } else {
+        responseText = `Saved your preference: ${userFact.key} = ${userFact.value}`;
+      }
+
+      return {
+        responseText,
+        metadata: { command: 'remember', type: 'user_fact', factType: userFact.factType, key: userFact.key }
+      };
+    }
+
     // Extract structured fact from content with rich metadata
     const extracted = await AIService.extractFact(content);
 
@@ -573,10 +610,16 @@ async function handleDecision(content, teamId, userId) {
 /**
  * Handle query (question)
  */
-async function handleQuery(query, teamId, channelId, replyContext = null) {
+async function handleQuery(query, teamId, channelId, replyContext = null, userId = null) {
   try {
     // Get relevant knowledge
     const knowledge = await KnowledgeService.getKnowledgeContext(teamId, query);
+
+    // Get user context if userId provided
+    let userContext = null;
+    if (userId) {
+      userContext = await KnowledgeGraphService.getUserContext(teamId, userId);
+    }
 
     // Get recent conversation history for context
     const historyResult = await db.query(
@@ -588,11 +631,29 @@ async function handleQuery(query, teamId, channelId, replyContext = null) {
     );
     const history = historyResult.rows.reverse().map(mapMessage);
 
-    // If this is a reply to a Raven message, include that context
+    // Build enhanced query with context
     let enhancedQuery = query;
+
+    // Add user context if available
+    if (userContext) {
+      const userInfo = [];
+      if (userContext.preferredName) {
+        userInfo.push(`The user's name is ${userContext.preferredName}`);
+      } else if (userContext.displayName && userContext.displayName !== 'Unknown') {
+        userInfo.push(`The user is ${userContext.displayName}`);
+      }
+      if (userContext.facts?.role?.job_title) {
+        userInfo.push(`Their role is ${userContext.facts.role.job_title}`);
+      }
+      if (userInfo.length > 0) {
+        enhancedQuery = `[User context: ${userInfo.join('. ')}]\n\n${query}`;
+      }
+    }
+
+    // If this is a reply to a Raven message, include that context
     if (replyContext?.originalMessage) {
       // Prepend the context of what Raven said to help understand the user's response
-      enhancedQuery = `[Context: You previously said: "${replyContext.originalMessage}"]\n\nUser's reply: ${query || '(User replied without additional text)'}`;
+      enhancedQuery = `[Context: You previously said: "${replyContext.originalMessage}"]\n\n${enhancedQuery || '(User replied without additional text)'}`;
     }
 
     // Generate AI response
@@ -1268,6 +1329,50 @@ async function handleDueDatesQuery(teamId) {
     return {
       responseText: `I had trouble checking due dates. ${error.message}`,
       metadata: { command: 'due_dates_query', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle deep research command
+ */
+async function handleDeepResearch(question, teamId, userId) {
+  try {
+    // Acknowledge and start research
+    const session = await DeepResearchService.startResearch(teamId, userId, question);
+
+    // Run the full research in background (don't wait)
+    DeepResearchService.runFullResearch(teamId, userId, question).then(result => {
+      console.log(`[DeepResearch] Completed: ${result.sessionId}`);
+    }).catch(err => {
+      console.error('[DeepResearch] Error:', err);
+    });
+
+    // Build immediate response with objectives
+    const objectivesList = session.objectives
+      .map((obj, i) => `${i + 1}. ${obj.objective}`)
+      .join('\n');
+
+    return {
+      responseText: `Starting deep research on: "${question}"
+
+**Learning Objectives:**
+${objectivesList}
+
+I'll explore our knowledge base and synthesize a comprehensive report. This may take a moment...
+
+Use \`@raven research status\` to check progress.`,
+      metadata: {
+        command: 'deep_research',
+        sessionId: session.sessionId,
+        status: 'started'
+      }
+    };
+  } catch (error) {
+    console.error('Deep research error:', error);
+    return {
+      responseText: `I had trouble starting the research. ${error.message}`,
+      metadata: { command: 'deep_research', error: error.message }
     };
   }
 }

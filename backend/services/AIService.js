@@ -203,6 +203,13 @@ export function parseRavenCommand(content) {
     return { type: 'due_dates_query', content: afterRaven };
   }
 
+  // Deep research command
+  if (lowerAfterRaven.startsWith('research ') || lowerAfterRaven.startsWith('deep research ') ||
+      lowerAfterRaven.startsWith('investigate ') || lowerAfterRaven.startsWith('analyze ')) {
+    const researchContent = afterRaven.replace(/^(research|deep research|investigate|analyze)\s+/i, '').trim();
+    return { type: 'deep_research', content: researchContent };
+  }
+
   // Default: treat as a query
   return {
     type: 'query',
@@ -377,6 +384,91 @@ Return ONLY valid JSON, no other text.`
       category: 'general',
       metadata: urls.length > 0 ? { urls } : null
     };
+  }
+}
+
+/**
+ * Detect if a message contains personal user facts (e.g., "call me Shawn", "I'm the marketing lead")
+ * Returns null if no user fact detected, otherwise returns the extracted fact
+ */
+export async function extractUserFact(content) {
+  // Quick check for common patterns before hitting the API
+  const lowerContent = content.toLowerCase();
+  const hasUserFactPattern =
+    lowerContent.includes('call me ') ||
+    lowerContent.includes('my name is ') ||
+    lowerContent.includes("i'm ") ||
+    lowerContent.includes('i am ') ||
+    lowerContent.includes('i go by ') ||
+    lowerContent.includes('prefer to be called ') ||
+    lowerContent.includes('my role is ') ||
+    lowerContent.includes('i work as ') ||
+    lowerContent.includes('my title is ') ||
+    lowerContent.includes('i handle ') ||
+    lowerContent.includes('i manage ') ||
+    lowerContent.includes('my email is ') ||
+    lowerContent.includes('my timezone is ') ||
+    lowerContent.includes('my phone is ');
+
+  if (!hasUserFactPattern) {
+    return null;
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: `You detect personal facts about a user from their message.
+
+Return JSON with:
+- isUserFact: boolean - true if this is a fact about the speaker themselves
+- factType: 'nickname' | 'role' | 'preference' | 'contact' | 'note'
+- key: the specific attribute (e.g., 'preferred_name', 'job_title', 'timezone')
+- value: the value to store
+
+Examples:
+"call me Shawn" -> {"isUserFact": true, "factType": "nickname", "key": "preferred_name", "value": "Shawn"}
+"I'm the marketing lead" -> {"isUserFact": true, "factType": "role", "key": "job_title", "value": "Marketing Lead"}
+"my timezone is EST" -> {"isUserFact": true, "factType": "preference", "key": "timezone", "value": "EST"}
+"the launch is next week" -> {"isUserFact": false}
+
+Return ONLY valid JSON.`
+    },
+    {
+      role: 'user',
+      content
+    }
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
+      max_tokens: 150,
+      temperature: 0
+    });
+
+    let resultText = response.choices[0].message.content;
+
+    // Strip markdown code blocks if present
+    const codeBlockMatch = resultText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      resultText = codeBlockMatch[1].trim();
+    }
+
+    const result = JSON.parse(resultText);
+
+    if (!result.isUserFact) {
+      return null;
+    }
+
+    return {
+      factType: result.factType,
+      key: result.key,
+      value: result.value
+    };
+  } catch (error) {
+    console.error('User fact extraction error:', error);
+    return null;
   }
 }
 
@@ -1765,6 +1857,7 @@ export default {
   parseRavenCommand,
   generateResponse,
   extractFact,
+  extractUserFact,
   extractAlert,
   extractTask,
   extractDecision,
