@@ -33,7 +33,7 @@ app.use(cors({
   ],
   credentials: true
 }));
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
 
 const server = new ApolloServer({
   typeDefs,
