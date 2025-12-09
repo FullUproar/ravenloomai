@@ -939,6 +939,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [replyingTo, setReplyingTo] = useState(null);
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // User menu dropdown state
+  const [showUserMenu, setShowUserMenu] = useState(false);
   // Sidebar tree expansion state
   const [expandedSections, setExpandedSections] = useState({
     channels: true,
@@ -1013,6 +1015,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     channels.find(c => c.isDefault)?.id ||
     channels[0]?.id;
   const activeChannel = channels.find(c => c.id === activeChannelId);
+
+  // Sync URL with active channel when channels load and we're in chat view
+  // This ensures deep links work properly on refresh
+  useEffect(() => {
+    if (activeChannelId && activeView === 'chat' && channels.length > 0) {
+      // Only update URL if it doesn't already include the channel
+      const currentChannelInUrl = initialView === 'channel' && initialItemId === activeChannelId;
+      if (!currentChannelInUrl) {
+        navigate(`/team/${teamId}/channel/${activeChannelId}`, { replace: true });
+      }
+    }
+  }, [activeChannelId, activeView, channels.length, teamId, initialView, initialItemId, navigate]);
 
   // Fetch messages for active channel
   const { data: messagesData, loading: messagesLoading, refetch: refetchMessages } = useQuery(GET_MESSAGES, {
@@ -1683,6 +1697,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       }
 
       const attachment = await response.json();
+      console.log('Upload successful:', attachment);
+      console.log('Image URL:', attachment.url);
       return attachment;
     } catch (error) {
       console.error('Image upload error:', error);
@@ -2596,51 +2612,17 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
           </div>
 
-          {/* Knowledge Base */}
-          <div className={`nav-section ${expandedSections.knowledge ? 'expanded' : ''}`}>
+          {/* Knowledge Base - simplified single nav item */}
+          <div className="nav-section">
             <button
-              className={`nav-section-header ${activeView === 'knowledge' ? 'active' : ''}`}
-              onClick={() => toggleSection('knowledge')}
+              className={`nav-section-header nav-single ${activeView === 'knowledge' ? 'active' : ''}`}
+              onClick={() => handleSectionItemClick('knowledge', 'knowledge')}
             >
-              <span className="nav-expand-icon">{expandedSections.knowledge ? '▼' : '▶'}</span>
+              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
               <span className="nav-icon">🧠</span>
               <span className="nav-label">Knowledge Base</span>
               {kbSources.length > 0 && <span className="nav-count">{kbSources.length}</span>}
             </button>
-            {expandedSections.knowledge && (
-              <div className="nav-children">
-                <button
-                  className={`nav-item ${activeView === 'knowledge' ? 'active' : ''}`}
-                  onClick={() => handleSectionItemClick('knowledge', 'knowledge')}
-                >
-                  <span className="nav-item-icon">📂</span>
-                  <span className="nav-item-label">All Sources</span>
-                </button>
-                {kbSources.slice(0, 5).map((source) => (
-                  <button
-                    key={source.id}
-                    className="nav-item nav-item-sub"
-                    onClick={() => handleSectionItemClick('knowledge', 'knowledge')}
-                    title={source.sourceName}
-                  >
-                    <span className="nav-item-icon">
-                      {source.sourceType === 'folder' ? '📁' : '📄'}
-                    </span>
-                    <span className="nav-item-label">{source.sourceName}</span>
-                    {source.status === 'syncing' && <span className="nav-item-badge">⟳</span>}
-                  </button>
-                ))}
-                {googleIntegration && (
-                  <button
-                    className="nav-item nav-action"
-                    onClick={openGooglePicker}
-                  >
-                    <span className="nav-item-icon">+</span>
-                    <span className="nav-item-label">Add from Drive</span>
-                  </button>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Alerts indicator */}
@@ -3080,6 +3062,33 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             {activeChannel?.description && (
               <p className="channel-description">{activeChannel.description}</p>
             )}
+            <div className="header-spacer"></div>
+            <div className="header-brand">
+              <img src="/web-app-manifest-192x192.png" alt="" className="header-brand-logo" />
+              <span className="header-brand-name">RavenLoom</span>
+            </div>
+            <div className="header-spacer"></div>
+            <div className="user-menu-container">
+              <button
+                className="user-menu-btn"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                aria-label="User menu"
+              >
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
           </header>
 
           {/* Messages */}
@@ -3304,6 +3313,23 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               >
                 All
               </button>
+            </div>
+            <div className="user-menu-container">
+              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
             </div>
           </header>
 
@@ -3546,6 +3572,24 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
             <h3>Ask the Team</h3>
             <p className="ask-subtitle">Ask questions about your team's knowledge base</p>
+            <div className="header-spacer"></div>
+            <div className="user-menu-container">
+              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
           </header>
 
           {/* Ask Form */}
@@ -3915,6 +3959,30 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         </main>
       ) : activeView === 'calendar' ? (
         <main className="calendar-area">
+          <header className="calendar-header-bar">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
+            <h3>Calendar</h3>
+            <div className="header-spacer"></div>
+            <div className="user-menu-container">
+              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </header>
           <CalendarView teamId={teamId} />
         </main>
       ) : activeView === 'knowledge' ? (
@@ -3926,6 +3994,24 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
             <h3>Knowledge Base</h3>
             <p className="knowledge-subtitle">Connect external documents to enhance your team's AI</p>
+            <div className="header-spacer"></div>
+            <div className="user-menu-container">
+              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
           </header>
 
           <div className="knowledge-content">
@@ -4038,6 +4124,24 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <button className="btn-primary btn-small" onClick={() => setShowCreateLO(true)}>
               + New Learning Objective
             </button>
+            <div className="header-spacer"></div>
+            <div className="user-menu-container">
+              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
           </header>
 
           <div className="learning-objectives-content">
@@ -4487,6 +4591,24 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <button className="btn-primary btn-small" onClick={() => setShowCreateGoal(true)}>
               + New Goal
             </button>
+            <div className="header-spacer"></div>
+            <div className="user-menu-container">
+              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
           </header>
 
           <div className="goals-content">
@@ -4739,6 +4861,24 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <button className="btn-primary btn-small" onClick={() => setShowCreateProject(true)}>
               + New Project
             </button>
+            <div className="header-spacer"></div>
+            <div className="user-menu-container">
+              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
           </header>
 
           <div className="projects-content">

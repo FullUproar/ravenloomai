@@ -144,6 +144,7 @@ const UPLOAD_DIR = IS_SERVERLESS
 app.use('/upload', express.json({ limit: '15mb' }));
 
 // Upload endpoint (accepts base64 encoded file)
+// Uses Vercel Blob in production (when BLOB_READ_WRITE_TOKEN is set), local storage otherwise
 app.post('/upload', async (req, res) => {
   const userId = req.headers['x-user-id'];
   if (!userId) {
@@ -155,11 +156,6 @@ app.post('/upload', async (req, res) => {
 
     if (!data || !filename || !mimeType) {
       return res.status(400).json({ error: 'Missing required fields: data, filename, mimeType' });
-    }
-
-    // Warn about serverless limitations
-    if (IS_SERVERLESS) {
-      console.warn('Note: Uploaded files in serverless environments are ephemeral (/tmp is cleared on function restart)');
     }
 
     const attachment = await UploadService.saveFile(userId, teamId, {

@@ -20,22 +20,28 @@ export async function createEvent(teamId, {
   color = '#3B82F6',
   reminderMinutes = 15,
   recurrenceRule = null,
-  createdBy = null
+  createdBy = null,
+  googleEventId = null,
+  googleCalendarId = null,
+  syncStatus = null,
+  lastSyncedAt = null
 }) {
   const result = await db.query(`
     INSERT INTO events (
       team_id, title, description, location,
       start_at, end_at, is_all_day, timezone,
       task_id, project_id, color, reminder_minutes,
-      recurrence_rule, created_by
+      recurrence_rule, created_by,
+      google_event_id, google_calendar_id, sync_status, last_synced_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
     RETURNING *
   `, [
     teamId, title, description, location,
     startAt, endAt, isAllDay, timezone,
     taskId, projectId, color, reminderMinutes,
-    recurrenceRule, createdBy
+    recurrenceRule, createdBy,
+    googleEventId, googleCalendarId, syncStatus, lastSyncedAt
   ]);
 
   return mapEvent(result.rows[0]);

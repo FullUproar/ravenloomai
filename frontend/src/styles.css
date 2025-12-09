@@ -427,6 +427,138 @@ button:active:not(:disabled),
   transform: translateY(-3px) rotate(-45deg);
 }
 
+/* Header Spacer - pushes user menu to the right */
+.header-spacer {
+  flex: 1;
+}
+
+/* Header Brand */
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.header-brand:hover {
+  opacity: 1;
+}
+
+.header-brand-logo {
+  width: 24px;
+  height: 24px;
+}
+
+.header-brand-name {
+  font-family: var(--font-header);
+  font-size: 0.875rem;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+/* User Menu (hamburger dropdown) */
+.user-menu-container {
+  position: relative;
+  margin-left: auto;
+}
+
+.user-menu-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  width: 32px;
+  height: 32px;
+  padding: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s var(--ease-out);
+}
+
+.user-menu-btn span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  transition: all 0.2s var(--ease-out);
+}
+
+.user-menu-btn:hover {
+  background: var(--bg-tertiary);
+}
+
+.user-menu-btn:hover span {
+  background: var(--text);
+}
+
+.user-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+}
+
+.user-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  min-width: 180px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 999;
+  animation: slideDown 0.15s var(--ease-out);
+  overflow: hidden;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.user-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.875rem;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s var(--ease-out);
+}
+
+.user-menu-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.user-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.25rem 0;
+}
+
+.user-menu-signout {
+  color: var(--error);
+}
+
+.user-menu-signout:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
 /* Sidebar Overlay - mobile only */
 .sidebar-overlay {
   display: none;
@@ -881,6 +1013,9 @@ button:active:not(:disabled),
 }
 
 .chat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
@@ -1139,6 +1274,20 @@ button:active:not(:disabled),
 .message-content pre code {
   background: none;
   padding: 0;
+}
+
+/* Image styling in messages */
+.message-content img {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.message-content img:hover {
+  transform: scale(1.02);
 }
 
 /* Reply quote styling - makes replies look like connected references */
@@ -3015,8 +3164,10 @@ button:active:not(:disabled),
 }
 
 .ask-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   padding: 2rem 1.5rem 1rem;
-  text-align: center;
 }
 
 .ask-header h3 {
@@ -5839,11 +5990,28 @@ input[type="date"].property-value {
   background: var(--bg);
 }
 
+.calendar-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.calendar-header-bar h3 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
 /* ============================================================================
    KNOWLEDGE HEADER (continued)
    ============================================================================ */
 
 .knowledge-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   padding: 1.5rem 2rem;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);

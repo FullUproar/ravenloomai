@@ -1,8 +1,6 @@
 /**
  * UploadService - Handles file uploads and storage
- * Currently uses local file storage, can be extended for S3/GCS
- *
- * Note: In serverless environments (Vercel), uses /tmp which is ephemeral
+ * Uses Vercel Blob in production, local storage in development
  */
 
 import db from '../db.js';
@@ -10,16 +8,20 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { put, del } from '@vercel/blob';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Use /tmp in serverless environments (Vercel), local uploads folder otherwise
+// Check if Vercel Blob is configured
+const USE_BLOB_STORAGE = !!process.env.BLOB_READ_WRITE_TOKEN;
+
+// Local storage fallback for development
 const IS_SERVERLESS = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
 const UPLOAD_DIR = IS_SERVERLESS
   ? '/tmp/uploads'
   : path.join(__dirname, '..', 'uploads');
 
-// Lazy directory creation - only when needed
+// Lazy directory creation - only when needed for local storage
 let uploadDirCreated = false;
 function ensureUploadDir() {
   if (!uploadDirCreated && !fs.existsSync(UPLOAD_DIR)) {
@@ -66,6 +68,31 @@ function getExtensionFromMime(mimeType) {
 }
 
 /**
+ * Save file to Vercel Blob storage
+ */
+async function saveToBlob(buffer, filename, mimeType) {
+  const blob = await put(filename, buffer, {
+    access: 'public',
+    contentType: mimeType,
+  });
+  return blob.url;
+}
+
+/**
+ * Save file to local storage
+ */
+function saveToLocal(buffer, filename) {
+  ensureUploadDir();
+  const storagePath = path.join(UPLOAD_DIR, filename);
+  fs.writeFileSync(storagePath, buffer);
+  const baseUrl = process.env.API_URL || 'http://localhost:4000';
+  return {
+    url: `${baseUrl}/uploads/${filename}`,
+    storagePath
+  };
+}
+
+/**
  * Save an uploaded file (from base64 or buffer)
  */
 export async function saveFile(userId, teamId, { data, originalName, mimeType }) {
@@ -82,26 +109,32 @@ export async function saveFile(userId, teamId, { data, originalName, mimeType })
     throw new Error(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
   }
 
-  // Ensure upload directory exists (lazy creation)
-  ensureUploadDir();
-
   // Generate unique filename
   const filename = generateFilename(originalName, mimeType);
-  const storagePath = path.join(UPLOAD_DIR, filename);
 
-  // Write file
-  fs.writeFileSync(storagePath, buffer);
+  let url, storagePath, storageType;
 
-  // Create URL
-  const baseUrl = process.env.API_URL || 'http://localhost:4000';
-  const url = `${baseUrl}/uploads/${filename}`;
+  if (USE_BLOB_STORAGE) {
+    // Use Vercel Blob for production
+    console.log('Using Vercel Blob storage');
+    url = await saveToBlob(buffer, filename, mimeType);
+    storagePath = url; // For blob, storage path is the URL
+    storageType = 'blob';
+  } else {
+    // Use local storage for development
+    console.log('Using local file storage');
+    const result = saveToLocal(buffer, filename);
+    url = result.url;
+    storagePath = result.storagePath;
+    storageType = 'local';
+  }
 
   // Save to database
   const result = await db.query(
     `INSERT INTO attachments (team_id, uploaded_by, filename, original_name, mime_type, file_size, storage_type, storage_path, url)
-     VALUES ($1, $2, $3, $4, $5, $6, 'local', $7, $8)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
-    [teamId, userId, filename, originalName, mimeType, buffer.length, storagePath, url]
+    [teamId, userId, filename, originalName, mimeType, buffer.length, storageType, storagePath, url]
   );
 
   return mapAttachment(result.rows[0]);
@@ -174,8 +207,16 @@ export async function deleteAttachment(attachmentId, userId) {
     throw new Error('Not authorized to delete this attachment');
   }
 
-  // Delete file from disk
-  if (attachment.storage_type === 'local' && fs.existsSync(attachment.storage_path)) {
+  // Delete from storage
+  if (attachment.storage_type === 'blob') {
+    // Delete from Vercel Blob
+    try {
+      await del(attachment.url);
+    } catch (err) {
+      console.error('Failed to delete from blob storage:', err);
+    }
+  } else if (attachment.storage_type === 'local' && fs.existsSync(attachment.storage_path)) {
+    // Delete from local storage
     fs.unlinkSync(attachment.storage_path);
   }
 
