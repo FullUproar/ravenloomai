@@ -2623,6 +2623,16 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               <span className="nav-label">Knowledge Base</span>
               {kbSources.length > 0 && <span className="nav-count">{kbSources.length}</span>}
             </button>
+            {/* Google Drive - sub-item of Knowledge Base */}
+            <button
+              className={`nav-item nav-sub-item ${googleIntegration ? 'nav-drive-connected' : ''}`}
+              onClick={handleOpenDrivePanel}
+              title="Google Drive"
+            >
+              <span className="nav-icon">📁</span>
+              <span className="nav-label">Drive</span>
+              {googleIntegration && <span className="nav-status-dot connected"></span>}
+            </button>
           </div>
 
           {/* Alerts indicator */}
@@ -2665,16 +2675,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               )}
             </div>
           </div>
-
-          {/* Google Drive Button */}
-          <button
-            className={`footer-help-btn ${googleIntegration ? 'footer-drive-connected' : ''}`}
-            onClick={handleOpenDrivePanel}
-            title="Google Drive"
-          >
-            <span>📁</span>
-            <span>Drive</span>
-          </button>
 
           {/* User Info & Sign Out */}
           <div className="footer-user">

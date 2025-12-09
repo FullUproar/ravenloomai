@@ -737,7 +737,27 @@ button:active:not(:disabled),
 .nav-item.nav-action:hover {
   opacity: 1;
   background: rgba(58, 141, 255, 0.1);
-  color: var(--cta);
+}
+
+/* Sub-items (indented under parent nav items) */
+.nav-sub-item {
+  padding-left: 3rem;
+  font-size: 0.8125rem;
+}
+
+.nav-sub-item .nav-icon {
+  font-size: 0.75rem;
+}
+
+.nav-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.nav-status-dot.connected {
+  background: #22c55e;
 }
 
 .nav-item.nav-action .nav-item-icon {
