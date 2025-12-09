@@ -872,6 +872,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [messageInput, setMessageInput] = useState('');
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
+  const [creatingChannel, setCreatingChannel] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -886,6 +887,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Google Drive state
   const [showDrivePanel, setShowDrivePanel] = useState(false);
   const [driveFolderId, setDriveFolderId] = useState('root');
+  const [connectingDrive, setConnectingDrive] = useState(false);
+  const [disconnectingDrive, setDisconnectingDrive] = useState(false);
   // Knowledge Base loading states
   const [deletingKbSourceId, setDeletingKbSourceId] = useState(null);
   const [syncingKbSourceId, setSyncingKbSourceId] = useState(null);
@@ -910,6 +913,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [statusPopupTaskId, setStatusPopupTaskId] = useState(null);
   const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
   const [addingTask, setAddingTask] = useState(false);
+  const [creatingTask, setCreatingTask] = useState(false);
   const taskInputRef = useRef(null);
   // Q&A state
   const [askQuestion, setAskQuestion] = useState('');
@@ -923,6 +927,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [showOpenQuestions, setShowOpenQuestions] = useState(false);
   const [answeringQuestionId, setAnsweringQuestionId] = useState(null);
   const [questionAnswerText, setQuestionAnswerText] = useState('');
+  const [postingQuestion, setPostingQuestion] = useState(false);
+  const [submittingAnswer, setSubmittingAnswer] = useState(false);
   // Learning Objectives state
   const [askTab, setAskTab] = useState('questions'); // 'questions' or 'learning'
   const [showCreateLO, setShowCreateLO] = useState(false);
@@ -932,6 +938,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [newLOAssignedTo, setNewLOAssignedTo] = useState(null); // null = Raven, or a user ID
   const [newLOMaxQuestions, setNewLOMaxQuestions] = useState(5);
   const [requestingFollowUp, setRequestingFollowUp] = useState(null); // question ID
+  const [creatingLO, setCreatingLO] = useState(false);
+  const [rejectingQuestionId, setRejectingQuestionId] = useState(null); // question ID for reject dropdown
+  const [rejectingQuestion, setRejectingQuestion] = useState(false); // loading state
   // @mentions autocomplete state (for chat input)
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -964,14 +973,17 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [showCreateGoal, setShowCreateGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalTargetDate, setNewGoalTargetDate] = useState('');
+  const [creatingGoal, setCreatingGoal] = useState(false);
   // Task detail panel state
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [taskComment, setTaskComment] = useState('');
+  const [addingComment, setAddingComment] = useState(false);
   // Projects state
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectGoalId, setNewProjectGoalId] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState('');
+  const [creatingProject, setCreatingProject] = useState(false);
 
   // Private Raven chat state
   const [ravenChannel, setRavenChannel] = useState(null);
@@ -1337,8 +1349,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   const handleCreateChannel = async (e) => {
     e.preventDefault();
-    if (!newChannelName.trim()) return;
+    if (!newChannelName.trim() || creatingChannel) return;
 
+    setCreatingChannel(true);
     try {
       const { data } = await createChannel({
         variables: {
@@ -1354,6 +1367,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error creating channel:', error);
       alert('Failed to create channel: ' + error.message);
+    } finally {
+      setCreatingChannel(false);
     }
   };
 
@@ -1443,6 +1458,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   // Google Drive handlers
   const handleConnectGoogleDrive = async () => {
+    if (connectingDrive) return;
+    setConnectingDrive(true);
     try {
       // Pass origin so callback knows where to redirect back
       const origin = encodeURIComponent(window.location.origin);
@@ -1456,6 +1473,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error connecting Google Drive:', error);
       alert('Failed to connect Google Drive: ' + error.message);
+      setConnectingDrive(false);
     }
   };
 
@@ -1483,7 +1501,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   const handleDisconnectGoogleDrive = async () => {
     if (!window.confirm('Are you sure you want to disconnect Google Drive?')) return;
+    if (disconnectingDrive) return;
 
+    setDisconnectingDrive(true);
     try {
       await disconnectIntegration({ variables: { provider: 'google' } });
       refetchIntegrations();
@@ -1491,6 +1511,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error disconnecting Google Drive:', error);
       alert('Failed to disconnect: ' + error.message);
+    } finally {
+      setDisconnectingDrive(false);
     }
   };
 
@@ -1802,8 +1824,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   const handleCreateTask = async (e) => {
     e?.preventDefault();
-    if (!newTaskTitle.trim()) return;
+    if (!newTaskTitle.trim() || creatingTask) return;
 
+    setCreatingTask(true);
     try {
       await createTaskDirect({
         variables: {
@@ -1828,6 +1851,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error creating task:', error);
       alert('Failed to create task: ' + error.message);
+    } finally {
+      setCreatingTask(false);
     }
   };
 
@@ -1977,8 +2002,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   // Post a question to the team when Raven doesn't have a confident answer
   const handlePostQuestion = async () => {
-    if (!askAnswer || !askHistory.length) return;
+    if (!askAnswer || !askHistory.length || postingQuestion) return;
 
+    setPostingQuestion(true);
     const lastQuestion = askHistory[0];
     try {
       await createTeamQuestion({
@@ -2007,13 +2033,16 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error posting question:', error);
       alert('Failed to post question: ' + error.message);
+    } finally {
+      setPostingQuestion(false);
     }
   };
 
   // Answer a posted team question
   const handleAnswerQuestion = async (questionId) => {
-    if (!questionAnswerText.trim()) return;
+    if (!questionAnswerText.trim() || submittingAnswer) return;
 
+    setSubmittingAnswer(true);
     try {
       await answerTeamQuestion({
         variables: {
@@ -2031,6 +2060,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error answering question:', error);
       alert('Failed to submit answer: ' + error.message);
+    } finally {
+      setSubmittingAnswer(false);
     }
   };
 
@@ -2081,12 +2112,23 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     }
   };
 
+  // Canned reasons for rejecting questions
+  const rejectReasons = [
+    { value: 'duplicate', label: 'Duplicate', description: 'Already asked or covered' },
+    { value: 'inappropriate', label: 'Inappropriate', description: 'Not suitable for this context' },
+    { value: 'irrelevant', label: 'Irrelevant', description: 'Not related to the objective' },
+    { value: 'other', label: 'Other', description: 'Skip and try a different direction' }
+  ];
+
   // Reject a question and get a replacement
   const handleRejectQuestion = async (questionId, reason = null) => {
+    if (rejectingQuestion) return;
+    setRejectingQuestion(true);
     try {
       await rejectQuestion({
         variables: { questionId, reason }
       });
+      setRejectingQuestionId(null);
       refetchQuestions();
       if (selectedLOId) {
         refetchSelectedLO();
@@ -2094,6 +2136,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error rejecting question:', error);
       alert('Failed to reject question: ' + error.message);
+    } finally {
+      setRejectingQuestion(false);
     }
   };
 
@@ -2765,7 +2809,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 className="input-field"
               />
               <div className="form-actions">
-                <button type="submit" className="btn-primary">Create</button>
+                <button type="submit" className="btn-primary" disabled={!newChannelName.trim() || creatingChannel}>
+                  {creatingChannel ? 'Creating...' : 'Create'}
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -2773,6 +2819,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     setNewChannelName('');
                   }}
                   className="btn-secondary"
+                  disabled={creatingChannel}
                 >
                   Cancel
                 </button>
@@ -2943,8 +2990,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             {!googleIntegration ? (
               <div className="drive-connect-prompt">
                 <p>Connect your Google Drive to import documents, spreadsheets, and presentations into your knowledge base.</p>
-                <button onClick={handleConnectGoogleDrive} className="btn-primary">
-                  Connect Google Drive
+                <button onClick={handleConnectGoogleDrive} className="btn-primary" disabled={connectingDrive}>
+                  {connectingDrive ? 'Connecting...' : 'Connect Google Drive'}
                 </button>
               </div>
             ) : (
@@ -3005,8 +3052,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     type="button"
                     onClick={handleDisconnectGoogleDrive}
                     className="btn-danger-small"
+                    disabled={disconnectingDrive}
                   >
-                    Disconnect
+                    {disconnectingDrive ? 'Disconnecting...' : 'Disconnect'}
                   </button>
                   <button
                     type="button"
@@ -3432,9 +3480,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <button
                       className="task-add-btn"
                       onClick={handleCreateTask}
-                      disabled={!newTaskTitle.trim()}
+                      disabled={!newTaskTitle.trim() || creatingTask}
                     >
-                      Add Task
+                      {creatingTask ? 'Adding...' : 'Add Task'}
                     </button>
                   </div>
                 </div>
@@ -3725,11 +3773,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                             </div>
                           </div>
                           <div className="post-question-actions">
-                            <button className="btn-secondary" onClick={() => setShowPostQuestion(false)}>
+                            <button className="btn-secondary" onClick={() => setShowPostQuestion(false)} disabled={postingQuestion}>
                               Cancel
                             </button>
-                            <button className="btn-primary" onClick={handlePostQuestion}>
-                              Post Question
+                            <button className="btn-primary" onClick={handlePostQuestion} disabled={postingQuestion}>
+                              {postingQuestion ? 'Posting...' : 'Post Question'}
                             </button>
                           </div>
                         </div>
@@ -3777,11 +3825,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                           </div>
                         </div>
                         <div className="post-question-actions">
-                          <button className="btn-secondary" onClick={() => setShowPostQuestion(false)}>
+                          <button className="btn-secondary" onClick={() => setShowPostQuestion(false)} disabled={postingQuestion}>
                             Cancel
                           </button>
-                          <button className="btn-primary" onClick={handlePostQuestion}>
-                            Post Question
+                          <button className="btn-primary" onClick={handlePostQuestion} disabled={postingQuestion}>
+                            {postingQuestion ? 'Posting...' : 'Post Question'}
                           </button>
                         </div>
                       </div>
@@ -3960,9 +4008,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                               <button
                                 className="btn-primary"
                                 onClick={() => handleAnswerQuestion(q.id)}
-                                disabled={!questionAnswerText.trim()}
+                                disabled={!questionAnswerText.trim() || submittingAnswer}
                               >
-                                Submit Answer
+                                {submittingAnswer ? 'Submitting...' : 'Submit Answer'}
                               </button>
                             </div>
                             <p className="answer-note">Your answer will be added to the knowledge base. @mention team members to tag them.</p>
@@ -3976,13 +4024,30 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                               I can answer this
                             </button>
                             {q.askedByRaven && (
-                              <button
-                                className="btn-reject"
-                                onClick={() => handleRejectQuestion(q.id, 'Too deep or off-topic')}
-                                title="Reject this question and get a different one"
-                              >
-                                Not relevant
-                              </button>
+                              <div className="reject-dropdown-container">
+                                <button
+                                  className="btn-reject"
+                                  onClick={() => setRejectingQuestionId(rejectingQuestionId === q.id ? null : q.id)}
+                                  disabled={rejectingQuestion}
+                                >
+                                  {rejectingQuestion && rejectingQuestionId === q.id ? 'Removing...' : 'Remove'}
+                                </button>
+                                {rejectingQuestionId === q.id && (
+                                  <div className="reject-dropdown">
+                                    {rejectReasons.map(reason => (
+                                      <button
+                                        key={reason.value}
+                                        className="reject-option"
+                                        onClick={() => handleRejectQuestion(q.id, reason.value)}
+                                        disabled={rejectingQuestion}
+                                      >
+                                        <span className="reject-option-label">{reason.label}</span>
+                                        <span className="reject-option-desc">{reason.description}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         )
@@ -4203,8 +4268,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <span className="connect-icon">🔗</span>
                   <h4>Connect Google Drive</h4>
                   <p>Link your Google Drive to add documents to your team's knowledge base.</p>
-                  <button onClick={handleConnectGoogleDrive} className="btn-primary">
-                    Connect Google Drive
+                  <button onClick={handleConnectGoogleDrive} className="btn-primary" disabled={connectingDrive}>
+                    {connectingDrive ? 'Connecting...' : 'Connect Google Drive'}
                   </button>
                 </div>
               </div>
@@ -4336,7 +4401,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <h3>Create Learning Objective</h3>
                   <form onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!newLOTitle.trim()) return;
+                    if (!newLOTitle.trim() || creatingLO) return;
+                    setCreatingLO(true);
                     try {
                       await createLearningObjective({
                         variables: {
@@ -4357,6 +4423,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       refetchLOs();
                     } catch (err) {
                       alert('Failed to create learning objective: ' + err.message);
+                    } finally {
+                      setCreatingLO(false);
                     }
                   }}>
                     <input
@@ -4426,11 +4494,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     )}
 
                     <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => setShowCreateLO(false)}>
+                      <button type="button" className="btn-secondary" onClick={() => setShowCreateLO(false)} disabled={creatingLO}>
                         Cancel
                       </button>
-                      <button type="submit" className="btn-primary" disabled={!newLOTitle.trim()}>
-                        Create
+                      <button type="submit" className="btn-primary" disabled={!newLOTitle.trim() || creatingLO}>
+                        {creatingLO ? 'Creating...' : 'Create'}
                       </button>
                     </div>
                   </form>
@@ -4574,26 +4642,33 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                                 <button
                                   className="btn-secondary"
                                   onClick={() => { setAnsweringQuestionId(null); setQuestionAnswerText(''); setAnswerShowMentions(false); }}
+                                  disabled={submittingAnswer}
                                 >
                                   Cancel
                                 </button>
                                 <button
                                   className="btn-primary"
                                   onClick={async () => {
-                                    await answerTeamQuestion({
-                                      variables: {
-                                        questionId: q.id,
-                                        input: { answer: questionAnswerText.trim(), addToKnowledge: true }
-                                      }
-                                    });
-                                    setAnsweringQuestionId(null);
-                                    setQuestionAnswerText('');
-                                    setAnswerShowMentions(false);
-                                    refetchSelectedLO();
+                                    if (submittingAnswer) return;
+                                    setSubmittingAnswer(true);
+                                    try {
+                                      await answerTeamQuestion({
+                                        variables: {
+                                          questionId: q.id,
+                                          input: { answer: questionAnswerText.trim(), addToKnowledge: true }
+                                        }
+                                      });
+                                      setAnsweringQuestionId(null);
+                                      setQuestionAnswerText('');
+                                      setAnswerShowMentions(false);
+                                      refetchSelectedLO();
+                                    } finally {
+                                      setSubmittingAnswer(false);
+                                    }
                                   }}
-                                  disabled={!questionAnswerText.trim()}
+                                  disabled={!questionAnswerText.trim() || submittingAnswer}
                                 >
-                                  Submit Answer
+                                  {submittingAnswer ? 'Submitting...' : 'Submit Answer'}
                                 </button>
                               </div>
                             </div>
@@ -4606,13 +4681,30 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                                 Answer this
                               </button>
                               {q.askedByRaven && (
-                                <button
-                                  className="btn-reject"
-                                  onClick={() => handleRejectQuestion(q.id, 'Too deep or off-topic')}
-                                  title="Reject this question and get a different one"
-                                >
-                                  Not relevant
-                                </button>
+                                <div className="reject-dropdown-container">
+                                  <button
+                                    className="btn-reject"
+                                    onClick={() => setRejectingQuestionId(rejectingQuestionId === q.id ? null : q.id)}
+                                    disabled={rejectingQuestion}
+                                  >
+                                    {rejectingQuestion && rejectingQuestionId === q.id ? 'Removing...' : 'Remove'}
+                                  </button>
+                                  {rejectingQuestionId === q.id && (
+                                    <div className="reject-dropdown">
+                                      {rejectReasons.map(reason => (
+                                        <button
+                                          key={reason.value}
+                                          className="reject-option"
+                                          onClick={() => handleRejectQuestion(q.id, reason.value)}
+                                          disabled={rejectingQuestion}
+                                        >
+                                          <span className="reject-option-label">{reason.label}</span>
+                                          <span className="reject-option-desc">{reason.description}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
                           )
@@ -4675,13 +4767,30 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                                         Answer
                                       </button>
                                       {fq.askedByRaven && (
-                                        <button
-                                          className="btn-reject btn-small"
-                                          onClick={() => handleRejectQuestion(fq.id, 'Too deep or off-topic')}
-                                          title="Reject this question"
-                                        >
-                                          Not relevant
-                                        </button>
+                                        <div className="reject-dropdown-container">
+                                          <button
+                                            className="btn-reject btn-small"
+                                            onClick={() => setRejectingQuestionId(rejectingQuestionId === fq.id ? null : fq.id)}
+                                            disabled={rejectingQuestion}
+                                          >
+                                            {rejectingQuestion && rejectingQuestionId === fq.id ? '...' : 'Remove'}
+                                          </button>
+                                          {rejectingQuestionId === fq.id && (
+                                            <div className="reject-dropdown">
+                                              {rejectReasons.map(reason => (
+                                                <button
+                                                  key={reason.value}
+                                                  className="reject-option"
+                                                  onClick={() => handleRejectQuestion(fq.id, reason.value)}
+                                                  disabled={rejectingQuestion}
+                                                >
+                                                  <span className="reject-option-label">{reason.label}</span>
+                                                  <span className="reject-option-desc">{reason.description}</span>
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
                                   )
@@ -4806,7 +4915,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <h3>Create Goal</h3>
                   <form onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!newGoalTitle.trim()) return;
+                    if (!newGoalTitle.trim() || creatingGoal) return;
+                    setCreatingGoal(true);
                     try {
                       await createGoal({
                         variables: {
@@ -4823,6 +4933,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       refetchGoals();
                     } catch (err) {
                       alert('Failed to create goal: ' + err.message);
+                    } finally {
+                      setCreatingGoal(false);
                     }
                   }}>
                     <input
@@ -4841,11 +4953,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       onChange={(e) => setNewGoalTargetDate(e.target.value)}
                     />
                     <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => setShowCreateGoal(false)}>
+                      <button type="button" className="btn-secondary" onClick={() => setShowCreateGoal(false)} disabled={creatingGoal}>
                         Cancel
                       </button>
-                      <button type="submit" className="btn-primary" disabled={!newGoalTitle.trim()}>
-                        Create Goal
+                      <button type="submit" className="btn-primary" disabled={!newGoalTitle.trim() || creatingGoal}>
+                        {creatingGoal ? 'Creating...' : 'Create Goal'}
                       </button>
                     </div>
                   </form>
@@ -4860,7 +4972,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <h3>Create Project</h3>
                   <form onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!newProjectName.trim()) return;
+                    if (!newProjectName.trim() || creatingProject) return;
+                    setCreatingProject(true);
                     try {
                       await createProject({
                         variables: {
@@ -4880,6 +4993,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       refetchGoals();
                     } catch (err) {
                       alert('Failed to create project: ' + err.message);
+                    } finally {
+                      setCreatingProject(false);
                     }
                   }}>
                     <input
@@ -4910,11 +5025,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       ))}
                     </select>
                     <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => setShowCreateProject(false)}>
+                      <button type="button" className="btn-secondary" onClick={() => setShowCreateProject(false)} disabled={creatingProject}>
                         Cancel
                       </button>
-                      <button type="submit" className="btn-primary" disabled={!newProjectName.trim()}>
-                        Create Project
+                      <button type="submit" className="btn-primary" disabled={!newProjectName.trim() || creatingProject}>
+                        {creatingProject ? 'Creating...' : 'Create Project'}
                       </button>
                     </div>
                   </form>
@@ -5079,7 +5194,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <h3>Create Project</h3>
                   <form onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!newProjectName.trim()) return;
+                    if (!newProjectName.trim() || creatingProject) return;
+                    setCreatingProject(true);
                     try {
                       await createProject({
                         variables: {
@@ -5098,6 +5214,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       refetchProjects();
                     } catch (err) {
                       alert('Failed to create project: ' + err.message);
+                    } finally {
+                      setCreatingProject(false);
                     }
                   }}>
                     <input
@@ -5128,11 +5246,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       ))}
                     </select>
                     <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => setShowCreateProject(false)}>
+                      <button type="button" className="btn-secondary" onClick={() => setShowCreateProject(false)} disabled={creatingProject}>
                         Cancel
                       </button>
-                      <button type="submit" className="btn-primary" disabled={!newProjectName.trim()}>
-                        Create Project
+                      <button type="submit" className="btn-primary" disabled={!newProjectName.trim() || creatingProject}>
+                        {creatingProject ? 'Creating...' : 'Create Project'}
                       </button>
                     </div>
                   </form>
@@ -5401,7 +5519,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   className="add-comment-form"
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!taskComment.trim()) return;
+                    if (!taskComment.trim() || addingComment) return;
+                    setAddingComment(true);
                     try {
                       await addTaskComment({
                         variables: {
@@ -5413,6 +5532,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       refetchTaskDetail();
                     } catch (err) {
                       alert('Failed to add comment: ' + err.message);
+                    } finally {
+                      setAddingComment(false);
                     }
                   }}
                 >
@@ -5423,8 +5544,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     onChange={(e) => setTaskComment(e.target.value)}
                     rows={2}
                   />
-                  <button type="submit" className="btn-primary btn-small" disabled={!taskComment.trim()}>
-                    Comment
+                  <button type="submit" className="btn-primary btn-small" disabled={!taskComment.trim() || addingComment}>
+                    {addingComment ? 'Adding...' : 'Comment'}
                   </button>
                 </form>
               </div>
