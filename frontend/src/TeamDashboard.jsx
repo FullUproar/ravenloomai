@@ -4111,12 +4111,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 type="text"
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
                 placeholder="Message Raven... (say 'remember' to save knowledge)"
                 disabled={isSending}
                 className="message-input"
