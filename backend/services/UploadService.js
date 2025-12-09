@@ -1,6 +1,6 @@
 /**
  * UploadService - Handles file uploads and storage
- * Uses Vercel Blob in production, local storage in development
+ * Uses Vercel Blob in production (when configured), local storage otherwise
  */
 
 import db from '../db.js';
@@ -8,12 +8,20 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { put, del } from '@vercel/blob';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Check if Vercel Blob is configured
 const USE_BLOB_STORAGE = !!process.env.BLOB_READ_WRITE_TOKEN;
+
+// Lazy load @vercel/blob only when needed
+let blobModule = null;
+async function getBlobModule() {
+  if (!blobModule && USE_BLOB_STORAGE) {
+    blobModule = await import('@vercel/blob');
+  }
+  return blobModule;
+}
 
 // Local storage fallback for development
 const IS_SERVERLESS = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
@@ -71,6 +79,7 @@ function getExtensionFromMime(mimeType) {
  * Save file to Vercel Blob storage
  */
 async function saveToBlob(buffer, filename, mimeType) {
+  const { put } = await getBlobModule();
   const blob = await put(filename, buffer, {
     access: 'public',
     contentType: mimeType,
@@ -211,6 +220,7 @@ export async function deleteAttachment(attachmentId, userId) {
   if (attachment.storage_type === 'blob') {
     // Delete from Vercel Blob
     try {
+      const { del } = await getBlobModule();
       await del(attachment.url);
     } catch (err) {
       console.error('Failed to delete from blob storage:', err);
