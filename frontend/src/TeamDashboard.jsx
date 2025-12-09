@@ -859,7 +859,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   // Determine initial view from URL or default to 'chat'
   const getInitialView = () => {
-    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects' || initialView === 'knowledge' || initialView === 'calendar') {
+    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects' || initialView === 'knowledge' || initialView === 'calendar' || initialView === 'raven') {
       return initialView;
     }
     if (initialView === 'channel' || initialView === 'chat') {
@@ -1208,6 +1208,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       }
     }
   });
+
+  // Fetch Raven channel if initial view is 'raven'
+  useEffect(() => {
+    if (initialView === 'raven' && teamId && !ravenChannel) {
+      fetchRavenChannel({ variables: { teamId } });
+    }
+  }, [initialView, teamId, ravenChannel, fetchRavenChannel]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
