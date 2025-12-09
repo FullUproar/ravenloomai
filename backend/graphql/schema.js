@@ -201,6 +201,8 @@ export default gql`
     name: String!
     description: String
     aiMode: String!  # mentions_only, active, silent
+    channelType: String!  # public, raven_dm, calendar
+    ownerId: String  # For raven_dm - the user who owns this DM
     isDefault: Boolean!
     createdBy: String
     threads(limit: Int): [Thread!]!
@@ -805,6 +807,7 @@ export default gql`
     # Channels
     getChannel(channelId: ID!): Channel
     getChannels(teamId: ID!): [Channel!]!
+    getMyRavenChannel(teamId: ID!): Channel!  # Gets or creates user's private Raven DM
 
     # Threads
     getThread(threadId: ID!): Thread

@@ -34,12 +34,12 @@ export async function getChannelById(channelId) {
 }
 
 /**
- * Get channels for a team
+ * Get channels for a team (excludes private Raven DMs)
  */
 export async function getChannels(teamId) {
   const result = await db.query(
     `SELECT * FROM channels
-     WHERE team_id = $1
+     WHERE team_id = $1 AND (channel_type IS NULL OR channel_type != 'raven_dm')
      ORDER BY is_default DESC, name ASC`,
     [teamId]
   );
@@ -118,6 +118,54 @@ export async function deleteChannel(channelId) {
   return result.rows.length > 0;
 }
 
+/**
+ * Get or create the user's private Raven DM channel
+ * This is a private channel between the user and Raven only
+ */
+export async function getOrCreateRavenDM(teamId, userId) {
+  // First, try to find existing Raven DM for this user
+  const existing = await db.query(
+    `SELECT * FROM channels
+     WHERE team_id = $1 AND channel_type = 'raven_dm' AND owner_id = $2`,
+    [teamId, userId]
+  );
+
+  if (existing.rows.length > 0) {
+    return mapChannel(existing.rows[0]);
+  }
+
+  // Create new Raven DM channel
+  const result = await db.query(
+    `INSERT INTO channels (team_id, name, description, ai_mode, channel_type, owner_id, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING *`,
+    [
+      teamId,
+      `raven-dm-${userId.substring(0, 8)}`,  // Unique name per user
+      'Private chat with Raven',
+      'active',  // Always active in Raven DMs
+      'raven_dm',
+      userId,
+      userId
+    ]
+  );
+
+  return mapChannel(result.rows[0]);
+}
+
+/**
+ * Get public channels for a team (excludes private DMs and system channels)
+ */
+export async function getPublicChannels(teamId) {
+  const result = await db.query(
+    `SELECT * FROM channels
+     WHERE team_id = $1 AND (channel_type = 'public' OR channel_type IS NULL)
+     ORDER BY is_default DESC, name ASC`,
+    [teamId]
+  );
+  return result.rows.map(mapChannel);
+}
+
 // ============================================================================
 // Helper functions
 // ============================================================================
@@ -130,6 +178,8 @@ function mapChannel(row) {
     name: row.name,
     description: row.description,
     aiMode: row.ai_mode,
+    channelType: row.channel_type || 'public',
+    ownerId: row.owner_id,
     isDefault: row.is_default,
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -141,7 +191,9 @@ export default {
   createChannel,
   getChannelById,
   getChannels,
+  getPublicChannels,
   getDefaultChannel,
+  getOrCreateRavenDM,
   updateChannel,
   deleteChannel
 };

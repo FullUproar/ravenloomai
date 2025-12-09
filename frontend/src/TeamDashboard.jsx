@@ -83,6 +83,17 @@ const GET_MESSAGES = gql`
   }
 `;
 
+const GET_MY_RAVEN_CHANNEL = gql`
+  query GetMyRavenChannel($teamId: ID!) {
+    getMyRavenChannel(teamId: $teamId) {
+      id
+      name
+      description
+      channelType
+    }
+  }
+`;
+
 const SEND_MESSAGE = gql`
   mutation SendMessage($channelId: ID!, $input: SendMessageInput!) {
     sendMessage(channelId: $channelId, input: $input) {
@@ -962,6 +973,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [newProjectGoalId, setNewProjectGoalId] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState('');
 
+  // Private Raven chat state
+  const [ravenChannel, setRavenChannel] = useState(null);
+
   // Active channel (from URL itemId when view is chat/channel)
   const [activeChannelIdState, setActiveChannelIdState] = useState(
     (initialView === 'channel' || initialView === 'chat') ? initialItemId : null
@@ -1183,6 +1197,17 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [addToKnowledgeBase] = useMutation(ADD_TO_KNOWLEDGE_BASE);
   const [removeFromKnowledgeBase] = useMutation(REMOVE_FROM_KNOWLEDGE_BASE);
   const [syncKnowledgeBaseSource] = useMutation(SYNC_KNOWLEDGE_BASE_SOURCE);
+
+  // Lazy query for private Raven channel
+  const [fetchRavenChannel] = useLazyQuery(GET_MY_RAVEN_CHANNEL, {
+    onCompleted: (data) => {
+      if (data?.getMyRavenChannel) {
+        setRavenChannel(data.getMyRavenChannel);
+        setActiveChannelIdState(data.getMyRavenChannel.id);
+        setActiveView('raven');
+      }
+    }
+  });
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -2349,6 +2374,19 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     }));
   };
 
+  // Handle opening private Raven chat
+  const handleOpenRavenChat = () => {
+    if (ravenChannel) {
+      // Already have the channel, just switch to it
+      setActiveChannelIdState(ravenChannel.id);
+      setActiveView('raven');
+    } else {
+      // Fetch/create the Raven channel
+      fetchRavenChannel({ variables: { teamId } });
+    }
+    setSidebarOpen(false);
+  };
+
   // Handle section item click - expand section and set view
   const handleSectionItemClick = (section, view) => {
     setActiveView(view);
@@ -2571,6 +2609,19 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Private Raven Chat */}
+          <div className="nav-section">
+            <button
+              className={`nav-section-header nav-single ${activeView === 'raven' ? 'active' : ''}`}
+              onClick={handleOpenRavenChat}
+            >
+              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+              <span className="nav-icon">🪶</span>
+              <span className="nav-label">Raven</span>
+              <span className="nav-badge nav-badge-private">Private</span>
+            </button>
           </div>
 
           {/* Ask - No expansion needed */}
@@ -3942,6 +3993,137 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               )}
             </div>
             )}
+          </div>
+        </main>
+      ) : activeView === 'raven' ? (
+        <main className="chat-area raven-chat">
+          {/* Raven Chat Header */}
+          <header className="chat-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
+            <h3>🪶 Raven <span className="header-badge-private">Private</span></h3>
+            <p className="channel-description">Your private chat with Raven</p>
+            <div className="header-spacer"></div>
+            <div className="header-brand">
+              <img src="/web-app-manifest-192x192.png" alt="" className="header-brand-logo" />
+              <span className="header-brand-name">RavenLoom</span>
+            </div>
+            <div className="header-spacer"></div>
+            <div className="user-menu-container">
+              <button
+                className="user-menu-btn"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                aria-label="User menu"
+              >
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </header>
+
+          {/* Messages */}
+          <div className="messages-container">
+            {messagesLoading && messages.length === 0 ? (
+              <div className="messages-loading">Loading messages...</div>
+            ) : messages.length === 0 ? (
+              <div className="messages-empty">
+                <div className="empty-icon">🪶</div>
+                <h4>Private Chat with Raven</h4>
+                <p>This is your private space to chat with Raven. Other team members won't see these messages.</p>
+                <p className="text-muted" style={{ marginTop: '8px', fontSize: '13px' }}>
+                  Note: When you use <code>@raven remember</code>, the knowledge is still shared with your team.
+                </p>
+                <div className="empty-suggestions">
+                  <button className="suggestion-btn" onClick={() => setMessageInput('@raven What do you know about our team?')}>
+                    What do you know?
+                  </button>
+                  <button className="suggestion-btn" onClick={() => setMessageInput('@raven remember ')}>
+                    @raven remember...
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="messages-list">
+                {messages.map((message, index) => {
+                  const prevMessage = messages[index - 1];
+                  const isGrouped = prevMessage &&
+                    !message.isAi && !prevMessage.isAi &&
+                    message.user?.id === prevMessage.user?.id &&
+                    (new Date(message.createdAt) - new Date(prevMessage.createdAt)) < 5 * 60 * 1000;
+
+                  const isAiGrouped = prevMessage &&
+                    message.isAi && prevMessage.isAi &&
+                    (new Date(message.createdAt) - new Date(prevMessage.createdAt)) < 60 * 1000;
+
+                  const shouldShowHeader = !isGrouped && !isAiGrouped;
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`message ${message.isAi ? 'ai-message' : 'user-message'} ${!shouldShowHeader ? 'grouped' : ''}`}
+                    >
+                      {shouldShowHeader && (
+                        <div className="message-header">
+                          <span className="message-avatar">
+                            {message.isAi ? '🪶' : (message.user?.displayName || message.user?.email || 'U')[0].toUpperCase()}
+                          </span>
+                          <span className="message-author">
+                            {message.isAi ? 'Raven' : (message.user?.displayName || message.user?.email || 'User')}
+                          </span>
+                          <span className="message-time">
+                            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      )}
+                      <div className={`message-body ${!shouldShowHeader ? 'no-header' : ''}`}>
+                        <div className="message-content">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+
+          {/* Message Input */}
+          <div className="message-input-area">
+            <div className="message-input-wrapper">
+              <textarea
+                ref={inputRef}
+                value={messageInput}
+                onChange={(e) => setMessageInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Message Raven..."
+                rows={1}
+                disabled={sendingMessage}
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!messageInput.trim() || sendingMessage}
+                className="send-btn"
+                title="Send message"
+              >
+                {sendingMessage ? '...' : '→'}
+              </button>
+            </div>
           </div>
         </main>
       ) : activeView === 'calendar' ? (

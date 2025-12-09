@@ -66,6 +66,12 @@ const resolvers = {
       return ChannelService.getChannels(teamId);
     },
 
+    getMyRavenChannel: async (_, { teamId }, context) => {
+      const userId = context.userId;
+      if (!userId) throw new Error('Must be authenticated');
+      return ChannelService.getOrCreateRavenDM(teamId, userId);
+    },
+
     // Threads
     getThread: async (_, { threadId }) => {
       return ThreadService.getThread(threadId);

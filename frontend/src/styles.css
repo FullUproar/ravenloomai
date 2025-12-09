@@ -660,6 +660,36 @@ button:active:not(:disabled),
   color: white;
 }
 
+/* Nav Badges */
+.nav-badge {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.nav-badge-private {
+  background: rgba(156, 39, 176, 0.15);
+  color: #9c27b0;
+}
+
+/* Header Badge */
+.header-badge-private {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 3px;
+  background: rgba(156, 39, 176, 0.15);
+  color: #9c27b0;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
 /* Nav Children (expanded content) */
 .nav-children {
   display: flex;
