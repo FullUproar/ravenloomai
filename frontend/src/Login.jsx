@@ -338,6 +338,22 @@ function Login({ onSignInStart }) {
           </p>
 
         </div>
+
+        {/* Footer with Privacy & Terms links */}
+        <div style={{
+          marginTop: '2rem',
+          textAlign: 'center',
+          color: '#666',
+          fontSize: '0.875rem'
+        }}>
+          <a href="/privacy" style={{ color: '#888', textDecoration: 'none', marginRight: '1rem' }}>
+            Privacy Policy
+          </a>
+          <span style={{ color: '#444' }}>|</span>
+          <a href="/terms" style={{ color: '#888', textDecoration: 'none', marginLeft: '1rem' }}>
+            Terms of Service
+          </a>
+        </div>
       </div>
     </div>
   );
