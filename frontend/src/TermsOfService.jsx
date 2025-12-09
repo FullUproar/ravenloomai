@@ -243,6 +243,7 @@ function TermsOfService() {
         </p>
         <p>
           <strong>RavenLoom</strong><br />
+          Website: <a href="https://www.ravenloom.ai">www.ravenloom.ai</a><br />
           Email: legal@ravenloom.ai<br />
           Location: Indiana, United States
         </p>
