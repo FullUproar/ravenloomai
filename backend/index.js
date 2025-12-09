@@ -146,6 +146,9 @@ app.use('/upload', express.json({ limit: '15mb' }));
 // Upload endpoint (accepts base64 encoded file)
 // Uses Vercel Blob in production (when BLOB_READ_WRITE_TOKEN is set), local storage otherwise
 app.post('/upload', async (req, res) => {
+  console.log('📤 Upload request received');
+  console.log('   BLOB_READ_WRITE_TOKEN configured:', !!process.env.BLOB_READ_WRITE_TOKEN);
+
   const userId = req.headers['x-user-id'];
   if (!userId) {
     return res.status(401).json({ error: 'User ID required' });
@@ -153,6 +156,7 @@ app.post('/upload', async (req, res) => {
 
   try {
     const { data, filename, mimeType, teamId } = req.body;
+    console.log('   File:', filename, 'Type:', mimeType, 'Size:', data?.length || 0, 'chars (base64)');
 
     if (!data || !filename || !mimeType) {
       return res.status(400).json({ error: 'Missing required fields: data, filename, mimeType' });
@@ -164,6 +168,7 @@ app.post('/upload', async (req, res) => {
       mimeType
     });
 
+    console.log('   ✅ Upload successful:', attachment.url);
     res.json(attachment);
   } catch (error) {
     console.error('Upload error:', error);
