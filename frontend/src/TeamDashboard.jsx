@@ -2441,6 +2441,19 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
         {/* Tree Navigation */}
         <nav className="nav-tree">
+          {/* Private Raven Chat */}
+          <div className="nav-section">
+            <button
+              className={`nav-section-header nav-single ${activeView === 'raven' ? 'active' : ''}`}
+              onClick={handleOpenRavenChat}
+            >
+              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+              <span className="nav-icon">🪶</span>
+              <span className="nav-label">Raven</span>
+              <span className="nav-badge nav-badge-private">Private</span>
+            </button>
+          </div>
+
           {/* Channels Section */}
           <div className={`nav-section ${expandedSections.channels ? 'expanded' : ''}`}>
             <button
@@ -2609,19 +2622,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 </button>
               </div>
             )}
-          </div>
-
-          {/* Private Raven Chat */}
-          <div className="nav-section">
-            <button
-              className={`nav-section-header nav-single ${activeView === 'raven' ? 'active' : ''}`}
-              onClick={handleOpenRavenChat}
-            >
-              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-              <span className="nav-icon">🪶</span>
-              <span className="nav-label">Raven</span>
-              <span className="nav-badge nav-badge-private">Private</span>
-            </button>
           </div>
 
           {/* Ask - No expansion needed */}
@@ -4046,14 +4046,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 <h4>Private Chat with Raven</h4>
                 <p>This is your private space to chat with Raven. Other team members won't see these messages.</p>
                 <p className="text-muted" style={{ marginTop: '8px', fontSize: '13px' }}>
-                  Note: When you use <code>@raven remember</code>, the knowledge is still shared with your team.
+                  Note: Say "remember" to save knowledge to your team's shared knowledge base.
                 </p>
                 <div className="empty-suggestions">
-                  <button className="suggestion-btn" onClick={() => setMessageInput('@raven What do you know about our team?')}>
+                  <button className="suggestion-btn" onClick={() => setMessageInput('What do you know about our team?')}>
                     What do you know?
                   </button>
-                  <button className="suggestion-btn" onClick={() => setMessageInput('@raven remember ')}>
-                    @raven remember...
+                  <button className="suggestion-btn" onClick={() => setMessageInput('remember ')}>
+                    remember...
                   </button>
                 </div>
               </div>
@@ -4105,9 +4105,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
           {/* Message Input */}
           <div className="message-input-area">
-            <div className="message-input-wrapper">
-              <textarea
+            <form onSubmit={handleSendMessage} className="message-form">
+              <input
                 ref={inputRef}
+                type="text"
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -4116,19 +4117,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     handleSendMessage();
                   }
                 }}
-                placeholder="Message Raven..."
-                rows={1}
+                placeholder="Message Raven... (say 'remember' to save knowledge)"
                 disabled={isSending}
+                className="message-input"
               />
               <button
-                onClick={handleSendMessage}
+                type="submit"
                 disabled={!messageInput.trim() || isSending}
                 className="send-btn"
-                title="Send message"
               >
-                {isSending ? '...' : '→'}
+                {isSending ? '...' : 'Send'}
               </button>
-            </div>
+            </form>
           </div>
         </main>
       ) : activeView === 'calendar' ? (

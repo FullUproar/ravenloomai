@@ -43,9 +43,10 @@ export async function sendMessage(channelId, userId, content, options = {}) {
   const channel = channelResult.rows[0];
   const teamId = channel.team_id;
 
-  // Check if message mentions @raven explicitly OR is in #calendar channel
+  // Check if message mentions @raven explicitly OR is in #calendar channel OR is Raven DM
   const isCalendarChannel = channel.name === 'calendar';
-  let mentionsAi = content.toLowerCase().includes('@raven') || isCalendarChannel;
+  const isRavenDM = channel.channel_type === 'raven_dm';
+  let mentionsAi = content.toLowerCase().includes('@raven') || isCalendarChannel || isRavenDM;
   let replyContext = null;
 
   // If replying to a message, check if it's a Raven message
@@ -64,11 +65,11 @@ export async function sendMessage(channelId, userId, content, options = {}) {
     }
   }
 
-  // Parse command - in calendar channel, parse without @raven prefix
+  // Parse command - in calendar channel or Raven DM, parse without @raven prefix
   let command = null;
   if (mentionsAi) {
-    if (isCalendarChannel && !content.toLowerCase().includes('@raven')) {
-      // In calendar channel without explicit @raven, prepend it for parsing
+    if ((isCalendarChannel || isRavenDM) && !content.toLowerCase().includes('@raven')) {
+      // In calendar channel or Raven DM without explicit @raven, prepend it for parsing
       command = AIService.parseRavenCommand('@raven ' + content);
     } else {
       command = AIService.parseRavenCommand(content);
