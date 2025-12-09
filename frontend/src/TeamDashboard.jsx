@@ -4390,7 +4390,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                           <span className="option-label">Raven</span>
                           <span className="option-desc">AI generates questions, team answers</span>
                         </label>
-                        {teamMembers?.map(member => (
+                        {members?.map(member => (
                           <label
                             key={member.userId}
                             className={`lo-assign-option ${newLOAssignedTo === member.userId ? 'selected' : ''}`}
