@@ -649,6 +649,109 @@ const GET_DAILY_DIGEST = gql`
   }
 `;
 
+// ============================================================================
+// AI Productivity & Insights Queries
+// ============================================================================
+
+const GET_MY_NUDGES = gql`
+  query GetMyNudges($teamId: ID!) {
+    getMyNudges(teamId: $teamId) {
+      id
+      nudgeType
+      title
+      message
+      priority
+      relatedTaskId
+      relatedEventId
+      suggestedActions
+      createdAt
+    }
+  }
+`;
+
+const GET_MORNING_FOCUS = gql`
+  query GetMorningFocus($teamId: ID!) {
+    getMorningFocus(teamId: $teamId) {
+      id
+      status
+      aiPlan
+      aiSummary
+      createdAt
+    }
+  }
+`;
+
+const GENERATE_MORNING_FOCUS = gql`
+  mutation GenerateMorningFocus($teamId: ID!) {
+    generateMorningFocus(teamId: $teamId) {
+      id
+      status
+      aiPlan
+      tasks {
+        id
+        title
+        priority
+        dueAt
+      }
+      events {
+        id
+        title
+        startAt
+        endAt
+      }
+      workload {
+        workloadLevel
+        recommendation
+      }
+    }
+  }
+`;
+
+const GET_TEAM_INSIGHTS = gql`
+  query GetTeamInsights($teamId: ID!) {
+    getTeamInsights(teamId: $teamId) {
+      insights {
+        title
+        description
+        sentiment
+      }
+      recommendations {
+        title
+        action
+      }
+      summary
+      metrics {
+        tasksCompleted
+        overdueTasks
+        atRiskTasks
+        messagesThisWeek
+      }
+    }
+  }
+`;
+
+const DISMISS_NUDGE = gql`
+  mutation DismissNudge($nudgeId: ID!) {
+    dismissNudge(nudgeId: $nudgeId) {
+      success
+    }
+  }
+`;
+
+const GET_MY_WORKLOAD = gql`
+  query GetMyWorkload($teamId: ID!) {
+    getMyWorkload(teamId: $teamId) {
+      tasksDue
+      estimatedTaskHours
+      meetingHours
+      availableHours
+      workloadRatio
+      workloadLevel
+      recommendation
+    }
+  }
+`;
+
 // Goals queries
 const GET_GOALS = gql`
   query GetGoals($teamId: ID!, $status: String) {
@@ -975,7 +1078,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     tasks: false,
     goals: false,
     projects: false,
-    knowledge: false
+    knowledge: false,
+    insights: false
   });
   // Goals state
   const [showCreateGoal, setShowCreateGoal] = useState(false);
@@ -992,6 +1096,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [newProjectGoalId, setNewProjectGoalId] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
+
+  // AI Productivity & Insights state
+  const [morningFocus, setMorningFocus] = useState(null);
+  const [generatingFocus, setGeneratingFocus] = useState(false);
+  const [showMorningFocus, setShowMorningFocus] = useState(false);
 
   // Private Raven chat state
   const [ravenChannel, setRavenChannel] = useState(null);
@@ -1217,6 +1326,21 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [addToKnowledgeBase] = useMutation(ADD_TO_KNOWLEDGE_BASE);
   const [removeFromKnowledgeBase] = useMutation(REMOVE_FROM_KNOWLEDGE_BASE);
   const [syncKnowledgeBaseSource] = useMutation(SYNC_KNOWLEDGE_BASE_SOURCE);
+
+  // AI Productivity hooks
+  const { data: nudgesData, refetch: refetchNudges } = useQuery(GET_MY_NUDGES, {
+    variables: { teamId },
+    skip: !teamId,
+    pollInterval: 60000 // Refresh every minute
+  });
+  const nudges = nudgesData?.getMyNudges || [];
+  const [generateMorningFocusMutation] = useMutation(GENERATE_MORNING_FOCUS);
+  const [dismissNudgeMutation] = useMutation(DISMISS_NUDGE);
+  const { data: workloadData } = useQuery(GET_MY_WORKLOAD, {
+    variables: { teamId },
+    skip: !teamId
+  });
+  const workload = workloadData?.getMyWorkload;
 
   // Lazy query for private Raven channel
   const [fetchRavenChannel] = useLazyQuery(GET_MY_RAVEN_CHANNEL, {
@@ -2732,6 +2856,84 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
           </div>
 
+          {/* AI Insights - Morning Focus, Nudges, Workload */}
+          <div className={`nav-section ${expandedSections.insights ? 'expanded' : ''}`}>
+            <button
+              className={`nav-section-header ${activeView === 'insights' ? 'active' : ''}`}
+              onClick={() => toggleSection('insights')}
+            >
+              <span className="nav-expand-icon">{expandedSections.insights ? '▼' : '▶'}</span>
+              <span className="nav-icon">✨</span>
+              <span className="nav-label">AI Insights</span>
+              {nudges.length > 0 && <span className="nav-badge">{nudges.length}</span>}
+            </button>
+            {expandedSections.insights && (
+              <div className="nav-items">
+                {/* Morning Focus */}
+                <button
+                  className="nav-item"
+                  onClick={async () => {
+                    setGeneratingFocus(true);
+                    try {
+                      const { data } = await generateMorningFocusMutation({ variables: { teamId } });
+                      if (data?.generateMorningFocus) {
+                        setMorningFocus(data.generateMorningFocus);
+                        setShowMorningFocus(true);
+                      }
+                    } catch (err) {
+                      console.error('Failed to generate morning focus:', err);
+                    }
+                    setGeneratingFocus(false);
+                    setSidebarOpen(false);
+                  }}
+                  disabled={generatingFocus}
+                >
+                  <span className="nav-item-icon">{generatingFocus ? '⏳' : '🌅'}</span>
+                  <span className="nav-item-label">{generatingFocus ? 'Generating...' : 'Morning Focus'}</span>
+                </button>
+                {/* My Workload */}
+                <button
+                  className={`nav-item ${activeView === 'insights' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('insights', 'insights')}
+                >
+                  <span className="nav-item-icon">📊</span>
+                  <span className="nav-item-label">My Workload</span>
+                  {workload && (
+                    <span className={`nav-status-dot ${workload.workloadLevel === 'overloaded' ? 'error' : workload.workloadLevel === 'heavy' ? 'warning' : 'connected'}`}></span>
+                  )}
+                </button>
+                {/* Nudges */}
+                {nudges.length > 0 && (
+                  <div className="nav-nudges">
+                    {nudges.slice(0, 3).map((nudge) => (
+                      <div key={nudge.id} className={`nav-nudge nav-nudge-${nudge.priority}`}>
+                        <span className="nudge-icon">
+                          {nudge.nudgeType === 'overdue_task' ? '⚠️' :
+                           nudge.nudgeType === 'upcoming_deadline' ? '⏰' :
+                           nudge.nudgeType === 'stale_task' ? '😴' :
+                           nudge.nudgeType === 'meeting_prep' ? '📋' : '💡'}
+                        </span>
+                        <span className="nudge-text">{nudge.message}</span>
+                        <button
+                          className="nudge-dismiss"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            dismissNudgeMutation({ variables: { nudgeId: nudge.id } })
+                              .then(() => refetchNudges());
+                          }}
+                          title="Dismiss"
+                        >×</button>
+                      </div>
+                    ))}
+                    {nudges.length > 3 && (
+                      <span className="nav-nudges-more">+{nudges.length - 3} more</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Knowledge - Expandable section containing Ask, Research, KB, Connections */}
           <div className={`nav-section ${expandedSections.knowledge ? 'expanded' : ''}`}>
             <button
@@ -2950,6 +3152,100 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Morning Focus Modal */}
+      {showMorningFocus && morningFocus && (
+        <div className="modal-overlay" onClick={() => setShowMorningFocus(false)}>
+          <div className="modal morning-focus-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="morning-focus-header">
+              <h3>🌅 Morning Focus</h3>
+              <button className="modal-close" onClick={() => setShowMorningFocus(false)}>×</button>
+            </div>
+
+            {morningFocus.aiPlan ? (
+              <div className="morning-focus-content">
+                {/* Greeting */}
+                <div className="focus-greeting">
+                  {morningFocus.aiPlan.greeting}
+                </div>
+
+                {/* Top Priority */}
+                <div className="focus-section focus-priority">
+                  <h4>🎯 Top Priority</h4>
+                  <p className="focus-top-priority">{morningFocus.aiPlan.topPriority}</p>
+                </div>
+
+                {/* Scheduled Blocks */}
+                {morningFocus.aiPlan.scheduledBlocks?.length > 0 && (
+                  <div className="focus-section">
+                    <h4>📅 Today's Schedule</h4>
+                    <div className="focus-schedule">
+                      {morningFocus.aiPlan.scheduledBlocks.map((block, i) => (
+                        <div key={i} className={`schedule-block schedule-${block.type}`}>
+                          <span className="block-time">{block.time}</span>
+                          <span className="block-activity">{block.activity}</span>
+                          <span className="block-duration">{block.duration}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tasks to Complete */}
+                {morningFocus.aiPlan.tasksToComplete?.length > 0 && (
+                  <div className="focus-section">
+                    <h4>✅ Tasks to Complete</h4>
+                    <ul className="focus-tasks">
+                      {morningFocus.aiPlan.tasksToComplete.map((task, i) => (
+                        <li key={i}>{task}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Warnings */}
+                {morningFocus.aiPlan.warnings?.length > 0 && (
+                  <div className="focus-section focus-warnings">
+                    <h4>⚠️ Heads Up</h4>
+                    <ul>
+                      {morningFocus.aiPlan.warnings.map((warning, i) => (
+                        <li key={i}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Tip */}
+                {morningFocus.aiPlan.tip && (
+                  <div className="focus-section focus-tip">
+                    <h4>💡 Pro Tip</h4>
+                    <p>{morningFocus.aiPlan.tip}</p>
+                  </div>
+                )}
+
+                {/* Workload indicator */}
+                {morningFocus.workload && (
+                  <div className={`focus-workload focus-workload-${morningFocus.workload.workloadLevel}`}>
+                    <span className="workload-label">Workload:</span>
+                    <span className="workload-level">{morningFocus.workload.workloadLevel}</span>
+                    <p className="workload-rec">{morningFocus.workload.recommendation}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="morning-focus-content">
+                <p className="focus-error">Unable to generate focus plan. Try again later.</p>
+              </div>
+            )}
+
+            <div className="morning-focus-footer">
+              <button className="btn-primary" onClick={() => setShowMorningFocus(false)}>
+                Let's Go! 🚀
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -5365,6 +5661,127 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 ))}
               </div>
             )}
+          </div>
+        </main>
+      ) : activeView === 'insights' ? (
+        <main className="main-content insights-view">
+          <header className="view-header">
+            <h2>📊 My Workload & Insights</h2>
+          </header>
+
+          <div className="insights-content">
+            {/* Workload Overview */}
+            {workload && (
+              <div className={`insights-card workload-card workload-${workload.workloadLevel}`}>
+                <h3>This Week's Workload</h3>
+                <div className="workload-stats">
+                  <div className="stat">
+                    <span className="stat-value">{workload.tasksDue}</span>
+                    <span className="stat-label">Tasks Due</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-value">{workload.estimatedTaskHours}h</span>
+                    <span className="stat-label">Est. Work</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-value">{workload.meetingHours}h</span>
+                    <span className="stat-label">Meetings</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-value">{workload.availableHours}h</span>
+                    <span className="stat-label">Available</span>
+                  </div>
+                </div>
+                <div className="workload-indicator">
+                  <span className={`workload-badge ${workload.workloadLevel}`}>
+                    {workload.workloadLevel === 'overloaded' ? '🔴' :
+                     workload.workloadLevel === 'heavy' ? '🟡' :
+                     workload.workloadLevel === 'light' ? '🔵' : '🟢'} {workload.workloadLevel}
+                  </span>
+                </div>
+                <p className="workload-recommendation">{workload.recommendation}</p>
+              </div>
+            )}
+
+            {/* Nudges Section */}
+            <div className="insights-card nudges-card">
+              <h3>🔔 Attention Needed</h3>
+              {nudges.length > 0 ? (
+                <div className="nudges-list">
+                  {nudges.map((nudge) => (
+                    <div key={nudge.id} className={`nudge-item nudge-${nudge.priority}`}>
+                      <span className="nudge-type-icon">
+                        {nudge.nudgeType === 'overdue_task' ? '⚠️' :
+                         nudge.nudgeType === 'upcoming_deadline' ? '⏰' :
+                         nudge.nudgeType === 'stale_task' ? '😴' :
+                         nudge.nudgeType === 'meeting_prep' ? '📋' : '💡'}
+                      </span>
+                      <div className="nudge-content">
+                        <strong>{nudge.title}</strong>
+                        <p>{nudge.message}</p>
+                        {nudge.suggestedActions && (
+                          <div className="nudge-actions">
+                            {nudge.suggestedActions.slice(0, 2).map((action, i) => (
+                              <button key={i} className="btn-small">{action.label}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        className="nudge-dismiss-btn"
+                        onClick={() => {
+                          dismissNudgeMutation({ variables: { nudgeId: nudge.id } })
+                            .then(() => refetchNudges());
+                        }}
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="no-nudges">✨ All clear! No attention items right now.</p>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="insights-card actions-card">
+              <h3>⚡ Quick Actions</h3>
+              <div className="quick-actions">
+                <button
+                  className="quick-action-btn"
+                  onClick={async () => {
+                    setGeneratingFocus(true);
+                    try {
+                      const { data } = await generateMorningFocusMutation({ variables: { teamId } });
+                      if (data?.generateMorningFocus) {
+                        setMorningFocus(data.generateMorningFocus);
+                        setShowMorningFocus(true);
+                      }
+                    } catch (err) {
+                      console.error('Failed to generate morning focus:', err);
+                    }
+                    setGeneratingFocus(false);
+                  }}
+                  disabled={generatingFocus}
+                >
+                  <span className="action-icon">{generatingFocus ? '⏳' : '🌅'}</span>
+                  <span>{generatingFocus ? 'Generating...' : 'Generate Morning Focus'}</span>
+                </button>
+                <button
+                  className="quick-action-btn"
+                  onClick={() => setActiveView('tasks')}
+                >
+                  <span className="action-icon">📋</span>
+                  <span>View Tasks</span>
+                </button>
+                <button
+                  className="quick-action-btn"
+                  onClick={() => setActiveView('calendar')}
+                >
+                  <span className="action-icon">📅</span>
+                  <span>View Calendar</span>
+                </button>
+              </div>
+            </div>
           </div>
         </main>
       ) : null}

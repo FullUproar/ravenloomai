@@ -26,6 +26,9 @@ import KnowledgeBaseService from '../../services/KnowledgeBaseService.js';
 import { graphRAGSearch, getGraphStats } from '../../services/KnowledgeGraphService.js';
 import * as CalendarService from '../../services/CalendarService.js';
 import * as GoogleCalendarService from '../../services/GoogleCalendarService.js';
+import * as CeremonyService from '../../services/CeremonyService.js';
+import * as ProactiveService from '../../services/ProactiveService.js';
+import * as MeetingPrepService from '../../services/MeetingPrepService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -395,6 +398,75 @@ const resolvers = {
       });
 
       return { events, tasksDue };
+    },
+
+    // ============================================================================
+    // PRODUCTIVITY & AI INSIGHTS
+    // ============================================================================
+
+    // Morning Focus / Daily Planning
+    getMorningFocus: async (_, { teamId, date }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CeremonyService.getMorningFocus(teamId, userId, date);
+    },
+
+    // Daily Standup
+    getMyStandup: async (_, { teamId, date }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CeremonyService.getOrCreateStandup(teamId, userId, date);
+    },
+
+    getTeamStandups: async (_, { teamId, date }) => {
+      return CeremonyService.getTeamStandups(teamId, date);
+    },
+
+    // Weekly Review
+    getWeeklyReview: async (_, { teamId, weekStart }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CeremonyService.getWeeklyReview(teamId, userId, weekStart);
+    },
+
+    // Workload Analysis
+    getMyWorkload: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ProactiveService.analyzeWorkload(teamId, userId);
+    },
+
+    // Proactive Nudges
+    getMyNudges: async (_, { teamId, status }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ProactiveService.getPendingNudges(teamId, userId, status);
+    },
+
+    // Task Health
+    getTaskHealth: async (_, { taskId }) => {
+      return ProactiveService.calculateTaskHealth(taskId);
+    },
+
+    getAtRiskTasks: async (_, { teamId, minRiskLevel }) => {
+      return ProactiveService.getAtRiskTasks(teamId, minRiskLevel);
+    },
+
+    // Team Insights
+    getTeamInsights: async (_, { teamId, insightType }) => {
+      return ProactiveService.getTeamInsights(teamId, insightType);
+    },
+
+    // Meeting Prep
+    getMeetingPrep: async (_, { eventId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return MeetingPrepService.getMeetingPrep(eventId, userId);
+    },
+
+    getUpcomingMeetingsNeedingPrep: async (_, { teamId, hoursAhead }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return MeetingPrepService.getUpcomingMeetingsNeedingPrep(teamId, userId, hoursAhead || 24);
+    },
+
+    // Focus Preferences
+    getMyFocusPreferences: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CeremonyService.getFocusPreferences(teamId, userId);
     }
   },
 
@@ -799,6 +871,76 @@ const resolvers = {
         timeMin,
         timeMax
       );
+    },
+
+    // ============================================================================
+    // PRODUCTIVITY & AI INSIGHTS MUTATIONS
+    // ============================================================================
+
+    // Morning Focus
+    generateMorningFocus: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CeremonyService.generateMorningFocus(teamId, userId);
+    },
+
+    // Daily Standup
+    submitStandup: async (_, { teamId, responses }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CeremonyService.submitStandup(teamId, userId, responses);
+    },
+
+    // Weekly Review
+    generateWeeklyReview: async (_, { teamId, weekStart }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CeremonyService.generateWeeklyReview(teamId, userId, weekStart);
+    },
+
+    // Proactive Nudges
+    dismissNudge: async (_, { nudgeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ProactiveService.dismissNudge(nudgeId, userId);
+    },
+
+    actOnNudge: async (_, { nudgeId, action }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ProactiveService.actOnNudge(nudgeId, action, userId);
+    },
+
+    // Task Health
+    refreshTaskHealth: async (_, { taskId }) => {
+      return ProactiveService.calculateTaskHealth(taskId);
+    },
+
+    refreshTeamTaskHealth: async (_, { teamId }) => {
+      return ProactiveService.refreshTeamTaskHealth(teamId);
+    },
+
+    // Team Insights
+    refreshTeamInsights: async (_, { teamId, insightType }) => {
+      return ProactiveService.generateTeamInsights(teamId, insightType);
+    },
+
+    // Meeting Prep
+    generateMeetingPrep: async (_, { teamId, eventId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return MeetingPrepService.generateMeetingPrep(teamId, eventId, userId);
+    },
+
+    markMeetingPrepViewed: async (_, { prepId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return MeetingPrepService.markPrepViewed(prepId, userId);
+    },
+
+    // Focus Preferences
+    updateFocusPreferences: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return CeremonyService.updateFocusPreferences(teamId, userId, input);
+    },
+
+    // Generate Nudges (typically called by scheduler)
+    generateNudges: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ProactiveService.generateNudgesForUser(teamId, userId);
     }
   },
 

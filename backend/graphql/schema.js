@@ -694,6 +694,222 @@ export default gql`
   }
 
   # ============================================================================
+  # AI PRODUCTIVITY FEATURES (Morning Focus, Standups, Insights, Nudges)
+  # ============================================================================
+
+  # Morning Focus - AI-generated daily plan
+  type MorningFocus {
+    id: ID!
+    status: String!
+    aiPlan: MorningFocusPlan
+    aiSummary: String
+    tasks: [Task!]
+    events: [Event!]
+    workload: WorkloadAnalysis
+  }
+
+  type MorningFocusPlan {
+    greeting: String!
+    topPriority: String!
+    scheduledBlocks: [ScheduledBlock!]
+    tasksToComplete: [String!]
+    warnings: [String!]
+    tip: String
+  }
+
+  type ScheduledBlock {
+    time: String!
+    activity: String!
+    duration: String!
+    type: String!  # focus, meeting, break
+  }
+
+  # Daily Standup
+  type DailyStandup {
+    id: ID!
+    status: String!
+    responses: JSON
+    aiSummary: String
+    questions: [StandupQuestion!]!
+  }
+
+  type StandupQuestion {
+    id: String!
+    question: String!
+    placeholder: String
+  }
+
+  type TeamStandup {
+    id: ID!
+    userId: String!
+    userName: String
+    avatarUrl: String
+    responses: JSON
+    aiSummary: String
+    completedAt: DateTime
+  }
+
+  # Weekly Review
+  type WeeklyReview {
+    id: ID!
+    status: String!
+    weekStart: DateTime
+    weekEnd: DateTime
+    review: WeeklyReviewContent
+    stats: WeeklyStats
+  }
+
+  type WeeklyReviewContent {
+    headline: String
+    highlights: [String!]
+    metrics: JSON
+    areasOfFocus: [String!]
+    celebration: String
+  }
+
+  type WeeklyStats {
+    tasksCompleted: Int!
+    tasksCreated: Int!
+    standupsCompleted: Int!
+    messagesSent: Int!
+    meetings: Int!
+  }
+
+  # Workload Analysis
+  type WorkloadAnalysis {
+    weekStart: DateTime
+    weekEnd: DateTime
+    tasksDue: Int!
+    estimatedTaskHours: Float!
+    meetingHours: Float!
+    availableHours: Float!
+    workloadRatio: Float!
+    workloadLevel: String!  # light, balanced, heavy, overloaded
+    recommendation: String
+  }
+
+  # Proactive Nudges
+  type ProactiveNudge {
+    id: ID!
+    nudgeType: String!  # overdue_task, stale_task, upcoming_deadline, meeting_prep
+    title: String!
+    message: String!
+    priority: String!  # low, medium, high, urgent
+    relatedTaskId: ID
+    relatedEventId: ID
+    suggestedActions: [NudgeAction!]
+    createdAt: DateTime!
+  }
+
+  type NudgeAction {
+    action: String!
+    label: String!
+  }
+
+  # Task Health
+  type TaskHealth {
+    taskId: ID!
+    taskTitle: String
+    healthScore: Float!  # 0.0 to 1.0
+    riskLevel: String!  # low, medium, high, critical
+    riskFactors: [String!]
+    interventions: [TaskIntervention!]
+  }
+
+  type TaskIntervention {
+    intervention: String!
+    impact: String!  # low, medium, high
+  }
+
+  # AI Insights
+  type TeamInsights {
+    insights: [Insight!]
+    recommendations: [Recommendation!]
+    summary: String
+    metrics: InsightMetrics
+    cached: Boolean
+    generatedAt: DateTime
+  }
+
+  type Insight {
+    title: String!
+    description: String!
+    sentiment: String!  # positive, neutral, warning
+  }
+
+  type Recommendation {
+    title: String!
+    action: String!
+  }
+
+  type InsightMetrics {
+    tasksCompleted: Int
+    overdueTasks: Int
+    atRiskTasks: Int
+    messagesThisWeek: Int
+  }
+
+  # Meeting Prep
+  type MeetingPrep {
+    id: ID!
+    eventId: ID!
+    eventTitle: String
+    eventDescription: String
+    eventStart: DateTime
+    relatedFacts: [Fact!]
+    relatedDecisions: [Decision!]
+    relatedTasks: [Task!]
+    suggestedAgenda: [AgendaItem!]
+    contextSummary: String
+    cached: Boolean
+  }
+
+  type AgendaItem {
+    item: String!
+    notes: String
+  }
+
+  # Focus Time Preferences
+  type FocusPreferences {
+    id: ID!
+    preferredFocusHours: JSON
+    minFocusBlockMinutes: Int
+    maxMeetingsPerDay: Int
+    workStartHour: Int
+    workEndHour: Int
+    workDays: [Int!]
+    morningFocusEnabled: Boolean
+    morningFocusTime: String
+    dailyStandupEnabled: Boolean
+    dailyStandupTime: String
+    weeklyReviewEnabled: Boolean
+    weeklyReviewDay: Int
+    weeklyReviewTime: String
+    nudgeOverdueTasks: Boolean
+    nudgeStaleTasks: Boolean
+    nudgeUpcomingDeadlines: Boolean
+  }
+
+  input UpdateFocusPreferencesInput {
+    preferredFocusHours: JSON
+    minFocusBlockMinutes: Int
+    maxMeetingsPerDay: Int
+    workStartHour: Int
+    workEndHour: Int
+    workDays: [Int!]
+    morningFocusEnabled: Boolean
+    morningFocusTime: String
+    dailyStandupEnabled: Boolean
+    dailyStandupTime: String
+    weeklyReviewEnabled: Boolean
+    weeklyReviewDay: Int
+    weeklyReviewTime: String
+    nudgeOverdueTasks: Boolean
+    nudgeStaleTasks: Boolean
+    nudgeUpcomingDeadlines: Boolean
+  }
+
+  # ============================================================================
   # TEAM QUESTIONS (for when Raven doesn't have a confident answer)
   # ============================================================================
 
@@ -887,6 +1103,40 @@ export default gql`
     getCalendarMonth(teamId: ID!, year: Int!, month: Int!): [Event!]!
     getCalendarItems(teamId: ID!, startDate: DateTime!, endDate: DateTime!): CalendarItemsResult!
     exportCalendarICS(teamId: ID!, startDate: DateTime, endDate: DateTime): String!
+
+    # ============================================================================
+    # AI PRODUCTIVITY FEATURES
+    # ============================================================================
+
+    # Morning Focus (AI daily plan)
+    getMorningFocus(teamId: ID!): MorningFocus
+
+    # Daily Standup
+    getMyStandup(teamId: ID!): DailyStandup
+    getTeamStandups(teamId: ID!): [TeamStandup!]!
+
+    # Weekly Review
+    getWeeklyReview(teamId: ID!): WeeklyReview
+
+    # Workload Analysis
+    getMyWorkload(teamId: ID!): WorkloadAnalysis
+
+    # Proactive Nudges
+    getMyNudges(teamId: ID!): [ProactiveNudge!]!
+
+    # Task Health
+    getTaskHealth(taskId: ID!): TaskHealth
+    getAtRiskTasks(teamId: ID!, threshold: Float): [TaskHealth!]!
+
+    # AI Insights
+    getTeamInsights(teamId: ID!): TeamInsights
+
+    # Meeting Prep
+    getMeetingPrep(eventId: ID!): MeetingPrep
+    getUpcomingMeetingsNeedingPrep(teamId: ID!, hoursAhead: Int): [Event!]!
+
+    # Focus Preferences
+    getMyFocusPreferences(teamId: ID!): FocusPreferences
   }
 
   # ============================================================================
@@ -1002,5 +1252,35 @@ export default gql`
     deleteEvent(eventId: ID!): Boolean!
     syncEventToGoogle(eventId: ID!): Event!
     importCalendarFromGoogle(teamId: ID!, calendarId: String, daysBack: Int, daysForward: Int): [Event!]!
+
+    # ============================================================================
+    # AI PRODUCTIVITY FEATURES
+    # ============================================================================
+
+    # Generate Morning Focus (AI daily plan)
+    generateMorningFocus(teamId: ID!): MorningFocus!
+
+    # Daily Standup
+    submitStandup(ceremonyId: ID!, responses: JSON!): DailyStandup!
+
+    # Generate Weekly Review
+    generateWeeklyReview(teamId: ID!): WeeklyReview!
+
+    # Nudge Actions
+    dismissNudge(nudgeId: ID!): Boolean!
+    actOnNudge(nudgeId: ID!): Boolean!
+
+    # Generate Task Health (recalculate)
+    refreshTaskHealth(taskId: ID!): TaskHealth!
+    refreshTeamTaskHealth(teamId: ID!): [TaskHealth!]!
+
+    # Generate AI Insights (refresh)
+    refreshTeamInsights(teamId: ID!): TeamInsights!
+
+    # Generate Meeting Prep
+    generateMeetingPrep(teamId: ID!, eventId: ID!): MeetingPrep!
+
+    # Update Focus Preferences
+    updateFocusPreferences(teamId: ID!, input: UpdateFocusPreferencesInput!): FocusPreferences!
   }
 `;
