@@ -186,163 +186,379 @@ function Login({ onSignInStart }) {
     }
   };
 
+  // Feature data for the landing page
+  const features = [
+    {
+      icon: '💬',
+      title: 'Team Chat',
+      description: 'Real-time messaging with channels, threads, and direct messages for seamless team communication.'
+    },
+    {
+      icon: '✅',
+      title: 'Task Management',
+      description: 'Create, assign, and track tasks with priorities, due dates, and status updates across your team.'
+    },
+    {
+      icon: '🤖',
+      title: 'AI Assistant (Raven)',
+      description: 'Get intelligent help with task creation, summaries, and answers to questions about your projects.'
+    },
+    {
+      icon: '📊',
+      title: 'Proactive Insights',
+      description: 'AI-powered daily focus plans, smart nudges for overdue tasks, and productivity recommendations.'
+    },
+    {
+      icon: '📅',
+      title: 'Calendar Integration',
+      description: 'Sync with Google Calendar for meeting prep, scheduling assistance, and time management.'
+    },
+    {
+      icon: '🔒',
+      title: 'Secure & Private',
+      description: 'Enterprise-grade security with role-based access control and data encryption.'
+    }
+  ];
+
   return (
     <div style={{
-      padding: '2rem',
       color: '#D9D9E3',
       fontFamily: 'Inter, sans-serif',
       backgroundColor: '#0D0D0D',
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center'
+      minHeight: '100vh'
     }}>
-      <div style={{ maxWidth: 400, width: '100%' }}>
+      {/* Header / Navigation */}
+      <header style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '1rem 2rem',
+        borderBottom: '1px solid #1A1A1A'
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <img src="/web-app-manifest-192x192.png" alt="RavenLoom Logo" style={{ width: '40px', height: '40px' }} />
+          <span style={{
+            color: '#5D4B8C',
+            fontFamily: 'Cinzel, serif',
+            fontSize: '1.5rem',
+            fontWeight: 'bold'
+          }}>RavenLoom</span>
+        </div>
+        <nav style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+          <a href="#features" style={{ color: '#888', textDecoration: 'none' }}>Features</a>
+          <a href="#about" style={{ color: '#888', textDecoration: 'none' }}>About</a>
+          <a href="#get-started" style={{
+            background: '#5D4B8C',
+            color: '#fff',
+            padding: '0.5rem 1rem',
+            borderRadius: '6px',
+            textDecoration: 'none',
+            fontWeight: '500'
+          }}>Get Started</a>
+        </nav>
+      </header>
+
+      {/* Hero Section */}
+      <section style={{
+        padding: '4rem 2rem',
+        textAlign: 'center',
+        maxWidth: '900px',
+        margin: '0 auto'
+      }}>
         <h1 style={{
-          textAlign: 'center',
           color: '#5D4B8C',
           fontFamily: 'Cinzel, serif',
-          marginBottom: '2rem',
+          fontSize: '3rem',
+          marginBottom: '1rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '0.25rem'
+          gap: '0.5rem'
         }}>
           <img src="/web-app-manifest-192x192.png" alt="RavenLoom Logo" style={{ width: '80px', height: '80px' }} />
           RavenLoom
         </h1>
-
-        <div style={{
-          background: '#1A1A1A',
-          padding: '2rem',
-          borderRadius: '12px',
-          border: '2px solid #2D2D40'
+        <p style={{
+          fontSize: '1.5rem',
+          color: '#B8B8C0',
+          marginBottom: '1rem'
         }}>
-          <h2 style={{ marginTop: 0 }}>{mode === 'signup' ? 'Create Account' : 'Log In'}</h2>
+          AI-Powered Team Productivity Platform
+        </p>
+        <p style={{
+          fontSize: '1.1rem',
+          color: '#888',
+          maxWidth: '700px',
+          margin: '0 auto 2rem',
+          lineHeight: '1.6'
+        }}>
+          RavenLoom combines team chat, task management, and intelligent AI assistance
+          to help your team work smarter. Our AI assistant &quot;Raven&quot; provides proactive
+          insights, daily focus plans, and smart recommendations to boost productivity.
+        </p>
+        <a href="#get-started" style={{
+          display: 'inline-block',
+          background: '#5D4B8C',
+          color: '#fff',
+          padding: '1rem 2rem',
+          borderRadius: '8px',
+          textDecoration: 'none',
+          fontWeight: '600',
+          fontSize: '1.1rem'
+        }}>
+          Start Free Today
+        </a>
+      </section>
 
-          {/* Google Sign-In Button */}
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            style={{
-              width: '100%',
-              background: '#fff',
-              color: '#333',
-              padding: '0.75rem',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '1rem',
-              cursor: 'pointer',
-              fontWeight: '500',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              marginBottom: '1.5rem'
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18">
-              <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
-              <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.183l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-              <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
-              <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
-            </svg>
-            Continue with Google
-          </button>
-
-          <div style={{
+      {/* Features Section */}
+      <section id="features" style={{
+        padding: '4rem 2rem',
+        backgroundColor: '#111'
+      }}>
+        <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+          <h2 style={{
             textAlign: 'center',
-            color: '#666',
-            margin: '1rem 0',
-            position: 'relative'
+            color: '#D9D9E3',
+            fontSize: '2rem',
+            marginBottom: '3rem'
           }}>
-            <span style={{
-              background: '#1A1A1A',
-              padding: '0 1rem',
-              position: 'relative',
-              zIndex: 1
-            }}>or</span>
-            <hr style={{
-              border: 'none',
-              borderTop: '1px solid #333',
-              position: 'absolute',
-              top: '50%',
-              left: 0,
-              right: 0,
-              zIndex: 0
-            }} />
+            Everything Your Team Needs
+          </h2>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '2rem'
+          }}>
+            {features.map((feature, index) => (
+              <div key={index} style={{
+                background: '#1A1A1A',
+                padding: '1.5rem',
+                borderRadius: '12px',
+                border: '1px solid #2D2D40'
+              }}>
+                <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>{feature.icon}</div>
+                <h3 style={{ color: '#D9D9E3', marginBottom: '0.5rem', fontSize: '1.2rem' }}>{feature.title}</h3>
+                <p style={{ color: '#888', lineHeight: '1.5', margin: 0 }}>{feature.description}</p>
+              </div>
+            ))}
           </div>
+        </div>
+      </section>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{
-                padding: '0.75rem',
-                background: '#0D0D0D',
-                border: '1px solid #333',
-                borderRadius: '6px',
-                color: '#D9D9E3',
-                fontSize: '1rem'
-              }}
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              style={{
-                padding: '0.75rem',
-                background: '#0D0D0D',
-                border: '1px solid #333',
-                borderRadius: '6px',
-                color: '#D9D9E3',
-                fontSize: '1rem'
-              }}
-            />
-            <button type="submit" style={{
-              background: '#5D4B8C',
-              color: '#fff',
-              padding: '0.75rem',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '1rem',
-              cursor: 'pointer',
-              fontWeight: '500'
-            }}>
-              {mode === 'signup' ? 'Sign Up' : 'Log In'}
-            </button>
-          </form>
+      {/* About Section */}
+      <section id="about" style={{
+        padding: '4rem 2rem',
+        maxWidth: '800px',
+        margin: '0 auto'
+      }}>
+        <h2 style={{
+          textAlign: 'center',
+          color: '#D9D9E3',
+          fontSize: '2rem',
+          marginBottom: '1.5rem'
+        }}>
+          Why RavenLoom?
+        </h2>
+        <div style={{
+          color: '#B8B8C0',
+          lineHeight: '1.8',
+          fontSize: '1.05rem'
+        }}>
+          <p>
+            <strong style={{ color: '#D9D9E3' }}>RavenLoom</strong> is designed for modern teams who want
+            to communicate effectively and stay on top of their work without the chaos of scattered tools.
+          </p>
+          <p>
+            Our intelligent AI assistant, <strong style={{ color: '#5D4B8C' }}>Raven</strong>, learns
+            your team&apos;s patterns and provides personalized recommendations—from daily focus plans
+            each morning to gentle nudges when tasks are at risk of falling behind.
+          </p>
+          <p>
+            Whether you&apos;re a startup team of 5 or a growing organization, RavenLoom scales with
+            you while keeping everything organized in one place: conversations, tasks, files, and insights.
+          </p>
+        </div>
+      </section>
 
-          {error && <p style={{ color: '#FF6F59', marginTop: '1rem' }}>{error}</p>}
-
-          <p style={{ textAlign: 'center', marginTop: '1.5rem', color: '#888' }}>
-            {mode === 'signup' ? 'Already have an account?' : 'Need to create one?'}{' '}
-            <button
-              onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#5D4B8C',
-                cursor: 'pointer',
-                textDecoration: 'underline'
-              }}
-            >
-              {mode === 'signup' ? 'Log In' : 'Sign Up'}
-            </button>
+      {/* Get Started / Sign Up Section */}
+      <section id="get-started" style={{
+        padding: '4rem 2rem',
+        backgroundColor: '#111'
+      }}>
+        <div style={{ maxWidth: '450px', margin: '0 auto' }}>
+          <h2 style={{
+            textAlign: 'center',
+            color: '#D9D9E3',
+            fontSize: '2rem',
+            marginBottom: '0.5rem'
+          }}>
+            Get Started with RavenLoom
+          </h2>
+          <p style={{
+            textAlign: 'center',
+            color: '#888',
+            marginBottom: '2rem'
+          }}>
+            Create your free account and start collaborating today.
           </p>
 
-        </div>
+          <div style={{
+            background: '#1A1A1A',
+            padding: '2rem',
+            borderRadius: '12px',
+            border: '2px solid #2D2D40'
+          }}>
+            <h3 style={{ marginTop: 0, textAlign: 'center' }}>
+              {mode === 'signup' ? 'Create Account' : 'Log In'}
+            </h3>
 
-        {/* Footer with Privacy & Terms links */}
+            {/* Google Sign-In Button */}
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              style={{
+                width: '100%',
+                background: '#fff',
+                color: '#333',
+                padding: '0.75rem',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '1rem',
+                cursor: 'pointer',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                marginBottom: '1.5rem'
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18">
+                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.183l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+                <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+              </svg>
+              Continue with Google
+            </button>
+
+            <div style={{
+              textAlign: 'center',
+              color: '#666',
+              margin: '1rem 0',
+              position: 'relative'
+            }}>
+              <span style={{
+                background: '#1A1A1A',
+                padding: '0 1rem',
+                position: 'relative',
+                zIndex: 1
+              }}>or</span>
+              <hr style={{
+                border: 'none',
+                borderTop: '1px solid #333',
+                position: 'absolute',
+                top: '50%',
+                left: 0,
+                right: 0,
+                zIndex: 0
+              }} />
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                style={{
+                  padding: '0.75rem',
+                  background: '#0D0D0D',
+                  border: '1px solid #333',
+                  borderRadius: '6px',
+                  color: '#D9D9E3',
+                  fontSize: '1rem'
+                }}
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={{
+                  padding: '0.75rem',
+                  background: '#0D0D0D',
+                  border: '1px solid #333',
+                  borderRadius: '6px',
+                  color: '#D9D9E3',
+                  fontSize: '1rem'
+                }}
+              />
+              <button type="submit" style={{
+                background: '#5D4B8C',
+                color: '#fff',
+                padding: '0.75rem',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '1rem',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}>
+                {mode === 'signup' ? 'Sign Up' : 'Log In'}
+              </button>
+            </form>
+
+            {error && <p style={{ color: '#FF6F59', marginTop: '1rem' }}>{error}</p>}
+
+            <p style={{ textAlign: 'center', marginTop: '1.5rem', color: '#888' }}>
+              {mode === 'signup' ? 'Already have an account?' : 'Need to create one?'}{' '}
+              <button
+                onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#5D4B8C',
+                  cursor: 'pointer',
+                  textDecoration: 'underline'
+                }}
+              >
+                {mode === 'signup' ? 'Log In' : 'Sign Up'}
+              </button>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{
+        padding: '2rem',
+        borderTop: '1px solid #1A1A1A',
+        textAlign: 'center'
+      }}>
         <div style={{
-          marginTop: '2rem',
-          textAlign: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          marginBottom: '1rem'
+        }}>
+          <img src="/web-app-manifest-192x192.png" alt="RavenLoom Logo" style={{ width: '24px', height: '24px' }} />
+          <span style={{
+            color: '#5D4B8C',
+            fontFamily: 'Cinzel, serif',
+            fontSize: '1rem'
+          }}>RavenLoom</span>
+        </div>
+        <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '1rem' }}>
+          AI-Powered Team Productivity Platform
+        </p>
+        <div style={{
           color: '#666',
           fontSize: '0.875rem'
         }}>
@@ -354,7 +570,10 @@ function Login({ onSignInStart }) {
             Terms of Service
           </a>
         </div>
-      </div>
+        <p style={{ color: '#444', fontSize: '0.8rem', marginTop: '1rem' }}>
+          © {new Date().getFullYear()} RavenLoom. All rights reserved.
+        </p>
+      </footer>
     </div>
   );
 }

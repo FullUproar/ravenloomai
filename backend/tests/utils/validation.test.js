@@ -234,7 +234,8 @@ describe('Validation Utils', () => {
     it('should pass for valid date string', () => {
       const result = validateDate('2025-01-01', 'testField');
       expect(result).toBeInstanceOf(Date);
-      expect(result.getFullYear()).toBe(2025);
+      // Use UTC to avoid timezone issues
+      expect(result.getUTCFullYear()).toBe(2025);
     });
 
     it('should throw for invalid date string', () => {
