@@ -1259,7 +1259,6 @@ export default gql`
     # Teams
     createTeam(input: CreateTeamInput!): Team!
     updateTeam(teamId: ID!, name: String!): Team!
-    deleteTeam(teamId: ID!): Boolean!
     updateTeamSettings(teamId: ID!, input: UpdateTeamSettingsInput!): TeamSettings!
 
     # Team Members & Invites

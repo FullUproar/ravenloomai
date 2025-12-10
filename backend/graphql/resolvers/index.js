@@ -598,10 +598,6 @@ const resolvers = {
       return TeamService.updateTeam(teamId, name);
     },
 
-    deleteTeam: async (_, { teamId }, { userId }) => {
-      // TODO: Check owner permission
-      return TeamService.deleteTeam(teamId);
-    },
 
     updateTeamSettings: async (_, { teamId, input }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
