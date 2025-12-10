@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import CalendarView from './CalendarView';
 import { useToast } from './Toast.jsx';
+import AdminDashboard from './pages/AdminDashboard';
 
 // API base URL - uses /api prefix in production, localhost in development
 const API_BASE_URL = import.meta.env.PROD
@@ -3435,83 +3436,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         </div>
       )}
 
-      {/* Site Admin Panel Modal */}
+      {/* Site Admin Panel - Full Dashboard */}
       {showSiteAdminPanel && (
-        <div className="modal-overlay" onClick={() => setShowSiteAdminPanel(false)}>
-          <div className="modal site-admin-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Site Administration</h3>
-            <p className="modal-subtitle">Manage who can join RavenLoom</p>
-
-            {/* Create Site Invite Form */}
-            <form onSubmit={handleCreateSiteInvite} className="site-invite-form">
-              <input
-                type="email"
-                value={siteInviteEmail}
-                onChange={(e) => setSiteInviteEmail(e.target.value)}
-                placeholder="email@example.com"
-                className="input-field"
-                required
-              />
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={siteInviteSending}
-              >
-                {siteInviteSending ? 'Inviting...' : 'Invite to Site'}
-              </button>
-            </form>
-
-            {/* Site Invites List */}
-            <div className="site-invites-list">
-              <h4>Pending Invites</h4>
-              {siteInvites.filter(i => i.status === 'pending').length === 0 ? (
-                <p className="no-invites">No pending invites</p>
-              ) : (
-                siteInvites.filter(i => i.status === 'pending').map(invite => (
-                  <div key={invite.id} className="site-invite-item">
-                    <div className="invite-info">
-                      <span className="invite-email">{invite.email}</span>
-                      <span className="invite-date">
-                        Invited {new Date(invite.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => handleRevokeSiteInvite(invite.id)}
-                      className="btn-danger-small"
-                      title="Revoke invite"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))
-              )}
-
-              <h4>Accepted Invites</h4>
-              {siteInvites.filter(i => i.status === 'accepted').length === 0 ? (
-                <p className="no-invites">No accepted invites yet</p>
-              ) : (
-                siteInvites.filter(i => i.status === 'accepted').map(invite => (
-                  <div key={invite.id} className="site-invite-item accepted">
-                    <div className="invite-info">
-                      <span className="invite-email">{invite.email}</span>
-                      <span className="invite-status">✓ Accepted</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="form-actions">
-              <button
-                type="button"
-                onClick={() => setShowSiteAdminPanel(false)}
-                className="btn-secondary"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <AdminDashboard onClose={() => setShowSiteAdminPanel(false)} />
       )}
 
       {/* Google Drive Panel Modal */}

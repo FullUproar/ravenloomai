@@ -105,6 +105,7 @@ export default gql`
     digestEnabled: Boolean
     preferences: JSON
     isSiteAdmin: Boolean
+    siteRole: String  # 'user', 'team_creator', 'super_admin'
     createdAt: DateTime!
   }
 
@@ -120,6 +121,45 @@ export default gql`
     expiresAt: DateTime
     acceptedAt: DateTime
     createdAt: DateTime!
+  }
+
+  # Access code (alternative to email invite for site access)
+  type AccessCode {
+    id: ID!
+    code: String!
+    description: String
+    createdBy: ID
+    createdByName: String
+    createdByEmail: String
+    maxUses: Int
+    usesRemaining: Int
+    teamId: ID
+    teamName: String
+    isActive: Boolean!
+    expiresAt: DateTime
+    createdAt: DateTime!
+  }
+
+  type AccessCodeUse {
+    id: ID!
+    userId: String
+    email: String!
+    displayName: String
+    usedAt: DateTime!
+  }
+
+  type AccessCodeValidation {
+    valid: Boolean!
+    message: String
+    teamId: ID
+    teamName: String
+  }
+
+  input CreateAccessCodeInput {
+    description: String
+    maxUses: Int
+    teamId: ID
+    expiresAt: DateTime
   }
 
   # ============================================================================
@@ -1134,6 +1174,16 @@ export default gql`
     getSiteInvites: [SiteInvite!]!
     checkSiteInvite(email: String!): Boolean!
     amISiteAdmin: Boolean!
+    getMySiteRole: String!
+
+    # Super Admin Dashboard
+    getAllUsers: [User!]!  # Super admin only
+    getAllTeams: [Team!]!  # Super admin only
+
+    # Access Codes (alternative to email invites)
+    validateAccessCode(code: String!): AccessCodeValidation!
+    getAccessCodes: [AccessCode!]!  # Admin only
+    getAccessCodeUses(codeId: ID!): [AccessCodeUse!]!  # Admin only
 
     # Integrations (Google Drive, etc.)
     getMyIntegrations: [Integration!]!
@@ -1290,6 +1340,16 @@ export default gql`
     createSiteInvite(email: String!): SiteInvite!
     revokeSiteInvite(inviteId: ID!): SiteInvite
     makeSiteAdmin(userId: ID!, isAdmin: Boolean!): User
+
+    # Super Admin (site management)
+    updateUserSiteRole(userId: ID!, role: String!): User  # Super admin only
+    deleteUser(userId: ID!): Boolean!  # Super admin only
+    deleteTeam(teamId: ID!): Boolean!  # Super admin only
+
+    # Access Codes (alternative to email invites)
+    createAccessCode(input: CreateAccessCodeInput): AccessCode!  # Admin only
+    deactivateAccessCode(codeId: ID!): AccessCode  # Admin only
+    redeemAccessCode(code: String!, email: String!): AccessCodeValidation!  # Pre-login validation
 
     # Integrations
     disconnectIntegration(provider: String!): Boolean!

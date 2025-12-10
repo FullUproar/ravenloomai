@@ -292,6 +292,54 @@ const resolvers = {
       return UserService.isSiteAdmin(userId);
     },
 
+    // Access Codes
+    validateAccessCode: async (_, { code }) => {
+      const accessCode = await UserService.validateAccessCode(code);
+      if (!accessCode) {
+        return { valid: false, message: 'Invalid or expired access code' };
+      }
+      return {
+        valid: true,
+        message: 'Access code is valid',
+        teamId: accessCode.team_id,
+        teamName: accessCode.team_name
+      };
+    },
+
+    getAccessCodes: async (_, __, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Site admin required');
+      return UserService.getAccessCodes();
+    },
+
+    getAccessCodeUses: async (_, { codeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Site admin required');
+      return UserService.getAccessCodeUses(codeId);
+    },
+
+    getMySiteRole: async (_, __, { userId }) => {
+      if (!userId) return 'user';
+      return UserService.getUserSiteRole(userId);
+    },
+
+    // Super Admin Dashboard
+    getAllUsers: async (_, __, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Super admin required');
+      return UserService.getAllUsers();
+    },
+
+    getAllTeams: async (_, __, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Super admin required');
+      return TeamService.getAllTeams();
+    },
+
     // Integrations
     getMyIntegrations: async (_, __, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
@@ -537,6 +585,11 @@ const resolvers = {
     // Teams
     createTeam: async (_, { input }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
+      // Only team_creator or super_admin roles can create teams
+      const canCreate = await UserService.canCreateTeams(userId);
+      if (!canCreate) {
+        throw new Error('Only team creators or super admins can create teams. Contact an admin for access.');
+      }
       return TeamService.createTeam(input.name, userId);
     },
 
@@ -837,6 +890,66 @@ const resolvers = {
       const currentIsAdmin = await UserService.isSiteAdmin(userId);
       if (!currentIsAdmin) throw new Error('Not authorized: Site admin required');
       return UserService.makeSiteAdmin(targetUserId, isAdmin);
+    },
+
+    // Access Codes
+    createAccessCode: async (_, { input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Site admin required');
+      return UserService.createAccessCode(userId, input || {});
+    },
+
+    deactivateAccessCode: async (_, { codeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Site admin required');
+      return UserService.deactivateAccessCode(codeId);
+    },
+
+    redeemAccessCode: async (_, { code, email }) => {
+      // Public mutation - validates and stores access code for later use during signup
+      const accessCode = await UserService.validateAccessCode(code);
+      if (!accessCode) {
+        return { valid: false, message: 'Invalid or expired access code' };
+      }
+      // Store the access code for this email to be used when they sign up
+      UserService.storePendingAccessCode(email, accessCode);
+      return {
+        valid: true,
+        message: 'Access code validated. You can now sign up.',
+        teamId: accessCode.team_id,
+        teamName: accessCode.team_name
+      };
+    },
+
+    // Super Admin (site management)
+    updateUserSiteRole: async (_, { userId: targetUserId, role }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Super admin required');
+      return UserService.updateSiteRole(targetUserId, role);
+    },
+
+    deleteUser: async (_, { userId: targetUserId }, { userId, db }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Super admin required');
+      if (targetUserId === userId) throw new Error('Cannot delete yourself');
+
+      // Delete user from database (cascades handle related records)
+      await db.query('DELETE FROM users WHERE id = $1', [targetUserId]);
+      return true;
+    },
+
+    deleteTeam: async (_, { teamId }, { userId, db }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const isAdmin = await UserService.isSiteAdmin(userId);
+      if (!isAdmin) throw new Error('Not authorized: Super admin required');
+
+      // Delete team (cascades handle related records)
+      await db.query('DELETE FROM teams WHERE id = $1', [teamId]);
+      return true;
     },
 
     // Integrations

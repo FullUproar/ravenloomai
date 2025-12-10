@@ -159,6 +159,23 @@ export async function getTeamsForUser(userId) {
 }
 
 /**
+ * Get all teams (for admin dashboard)
+ */
+export async function getAllTeams() {
+  const result = await db.query(
+    `SELECT t.*, COUNT(tm.user_id) as member_count
+     FROM teams t
+     LEFT JOIN team_members tm ON t.id = tm.team_id
+     GROUP BY t.id
+     ORDER BY t.created_at DESC`
+  );
+  return result.rows.map(row => ({
+    ...mapTeam(row),
+    memberCount: parseInt(row.member_count) || 0
+  }));
+}
+
+/**
  * Update team
  */
 export async function updateTeam(teamId, name) {
@@ -407,6 +424,7 @@ export default {
   getTeamById,
   getTeamBySlug,
   getTeamsForUser,
+  getAllTeams,
   updateTeam,
   deleteTeam,
   getTeamMembers,

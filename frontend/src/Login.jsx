@@ -8,12 +8,29 @@ import {
   getRedirectResult,
   GoogleAuthProvider
 } from 'firebase/auth';
+import { gql, useMutation } from '@apollo/client';
+
+const REDEEM_ACCESS_CODE = gql`
+  mutation RedeemAccessCode($code: String!, $email: String!) {
+    redeemAccessCode(code: $code, email: $email) {
+      valid
+      message
+      teamId
+      teamName
+    }
+  }
+`;
 
 function Login({ onSignInStart }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState('login'); // or 'signup'
   const [error, setError] = useState('');
+  const [accessCode, setAccessCode] = useState('');
+  const [showAccessCode, setShowAccessCode] = useState(false);
+  const [accessCodeValidated, setAccessCodeValidated] = useState(false);
+
+  const [redeemAccessCode] = useMutation(REDEEM_ACCESS_CODE);
 
   // Detect if running in a native app (Capacitor)
   // Note: window.Capacitor exists in web too due to imports, so we need to check isNativePlatform()
@@ -168,6 +185,32 @@ function Login({ onSignInStart }) {
       } else {
         setError(err.message);
       }
+    }
+  };
+
+  // Validate access code before allowing signup
+  const handleValidateAccessCode = async () => {
+    if (!accessCode.trim()) {
+      setError('Please enter an access code');
+      return;
+    }
+    if (!email.trim()) {
+      setError('Please enter your email first');
+      return;
+    }
+    setError('');
+    try {
+      const { data } = await redeemAccessCode({
+        variables: { code: accessCode.trim(), email: email.trim() }
+      });
+      if (data.redeemAccessCode.valid) {
+        setAccessCodeValidated(true);
+        setError('');
+      } else {
+        setError(data.redeemAccessCode.message || 'Invalid access code');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to validate access code');
     }
   };
 
@@ -396,14 +439,16 @@ function Login({ onSignInStart }) {
             fontSize: '2rem',
             marginBottom: '0.5rem'
           }}>
-            Get Started with RavenLoom
+            {mode === 'signup' ? 'Join RavenLoom' : 'Welcome Back'}
           </h2>
           <p style={{
             textAlign: 'center',
             color: '#888',
             marginBottom: '2rem'
           }}>
-            Create your free account and start collaborating today.
+            {mode === 'signup'
+              ? 'RavenLoom is currently invite-only. You need an invite or access code to join.'
+              : 'Sign in to your existing account.'}
           </p>
 
           <div style={{
@@ -415,6 +460,40 @@ function Login({ onSignInStart }) {
             <h3 style={{ marginTop: 0, textAlign: 'center' }}>
               {mode === 'signup' ? 'Create Account' : 'Log In'}
             </h3>
+
+            {/* Show invite-only notice for signup */}
+            {mode === 'signup' && !accessCodeValidated && (
+              <div style={{
+                background: '#2D2D40',
+                padding: '1rem',
+                borderRadius: '8px',
+                marginBottom: '1.5rem',
+                fontSize: '0.9rem',
+                color: '#B8B8C0'
+              }}>
+                <p style={{ margin: '0 0 0.5rem 0' }}>
+                  <strong>Invite Required:</strong> New accounts require either:
+                </p>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                  <li>An email invite from an existing member</li>
+                  <li>A valid access code</li>
+                </ul>
+              </div>
+            )}
+
+            {/* Access code validated message */}
+            {mode === 'signup' && accessCodeValidated && (
+              <div style={{
+                background: '#1a4d1a',
+                padding: '1rem',
+                borderRadius: '8px',
+                marginBottom: '1.5rem',
+                fontSize: '0.9rem',
+                color: '#8fdf8f'
+              }}>
+                Access code validated! You can now sign up.
+              </div>
+            )}
 
             {/* Google Sign-In Button */}
             <button
@@ -500,6 +579,64 @@ function Login({ onSignInStart }) {
                   fontSize: '1rem'
                 }}
               />
+
+              {/* Access Code Section for Signup */}
+              {mode === 'signup' && !accessCodeValidated && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowAccessCode(!showAccessCode)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#5D4B8C',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      textAlign: 'left',
+                      padding: 0
+                    }}
+                  >
+                    {showAccessCode ? '- Hide access code' : '+ Have an access code?'}
+                  </button>
+                  {showAccessCode && (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input
+                        type="text"
+                        placeholder="Enter access code"
+                        value={accessCode}
+                        onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
+                        style={{
+                          flex: 1,
+                          padding: '0.75rem',
+                          background: '#0D0D0D',
+                          border: '1px solid #5D4B8C',
+                          borderRadius: '6px',
+                          color: '#D9D9E3',
+                          fontSize: '1rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.1rem'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleValidateAccessCode}
+                        style={{
+                          background: '#5D4B8C',
+                          color: '#fff',
+                          padding: '0.75rem 1rem',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: '500'
+                        }}
+                      >
+                        Validate
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
               <button type="submit" style={{
                 background: '#5D4B8C',
                 color: '#fff',
@@ -519,7 +656,12 @@ function Login({ onSignInStart }) {
             <p style={{ textAlign: 'center', marginTop: '1.5rem', color: '#888' }}>
               {mode === 'signup' ? 'Already have an account?' : 'Need to create one?'}{' '}
               <button
-                onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')}
+                onClick={() => {
+                  setMode(mode === 'signup' ? 'login' : 'signup');
+                  setError('');
+                  setAccessCodeValidated(false);
+                  setShowAccessCode(false);
+                }}
                 style={{
                   background: 'none',
                   border: 'none',
