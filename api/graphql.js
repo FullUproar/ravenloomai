@@ -78,6 +78,8 @@ const handler = async (req, res) => {
     'https://localhost', // Capacitor native apps
     'capacitor://localhost',
     'https://ravenloom-ai-site.vercel.app',
+    'https://www.ravenloom.ai', // Production custom domain
+    'https://ravenloom.ai', // Production without www
   ];
 
   const origin = req.headers.origin;
@@ -95,7 +97,12 @@ const handler = async (req, res) => {
     return;
   }
 
-  return baseHandler(req, res);
+  try {
+    return await baseHandler(req, res);
+  } catch (error) {
+    console.error('GraphQL handler error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
 };
 
 export default handler;
