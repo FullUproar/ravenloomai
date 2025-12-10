@@ -59,6 +59,84 @@ export async function getTeamById(teamId) {
 }
 
 /**
+ * Get team settings
+ */
+export async function getTeamSettings(teamId) {
+  const result = await db.query('SELECT settings FROM teams WHERE id = $1', [teamId]);
+  if (result.rows.length === 0) return getDefaultSettings();
+  return result.rows[0].settings || getDefaultSettings();
+}
+
+/**
+ * Update team settings
+ */
+export async function updateTeamSettings(teamId, settings) {
+  // Merge with existing settings
+  const existing = await getTeamSettings(teamId);
+  const merged = deepMerge(existing, settings);
+
+  const result = await db.query(
+    `UPDATE teams SET settings = $2, updated_at = NOW() WHERE id = $1 RETURNING settings`,
+    [teamId, JSON.stringify(merged)]
+  );
+
+  return result.rows[0]?.settings || merged;
+}
+
+/**
+ * Check if proactive AI is enabled for a team
+ */
+export async function isProactiveAIEnabled(teamId) {
+  const settings = await getTeamSettings(teamId);
+  return settings?.proactiveAI?.enabled !== false;
+}
+
+/**
+ * Get specific proactive AI feature status
+ */
+export async function getProactiveFeatureStatus(teamId, feature) {
+  const settings = await getTeamSettings(teamId);
+  const proactive = settings?.proactiveAI || {};
+
+  // Master switch must be on
+  if (proactive.enabled === false) return false;
+
+  // Check specific feature
+  const featureKey = `${feature}Enabled`;
+  return proactive[featureKey] !== false;
+}
+
+/**
+ * Get default team settings
+ */
+function getDefaultSettings() {
+  return {
+    proactiveAI: {
+      enabled: true,
+      morningFocusEnabled: true,
+      smartNudgesEnabled: true,
+      insightsEnabled: true,
+      meetingPrepEnabled: true
+    }
+  };
+}
+
+/**
+ * Deep merge two objects
+ */
+function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key in source) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      result[key] = deepMerge(result[key] || {}, source[key]);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
+/**
  * Get team by slug
  */
 export async function getTeamBySlug(slug) {
@@ -339,5 +417,9 @@ export default {
   createInvite,
   getTeamInvites,
   validateInviteToken,
-  acceptInvite
+  acceptInvite,
+  getTeamSettings,
+  updateTeamSettings,
+  isProactiveAIEnabled,
+  getProactiveFeatureStatus
 };

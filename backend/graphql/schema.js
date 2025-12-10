@@ -41,6 +41,60 @@ export default gql`
     createdAt: DateTime!
   }
 
+  # Team Settings (proactive AI, rate limits, etc.)
+  type TeamSettings {
+    proactiveAI: ProactiveAISettings!
+  }
+
+  type ProactiveAISettings {
+    enabled: Boolean!
+    morningFocusEnabled: Boolean!
+    smartNudgesEnabled: Boolean!
+    insightsEnabled: Boolean!
+    meetingPrepEnabled: Boolean!
+  }
+
+  input ProactiveAISettingsInput {
+    enabled: Boolean
+    morningFocusEnabled: Boolean
+    smartNudgesEnabled: Boolean
+    insightsEnabled: Boolean
+    meetingPrepEnabled: Boolean
+  }
+
+  input UpdateTeamSettingsInput {
+    proactiveAI: ProactiveAISettingsInput
+  }
+
+  # AI Usage Statistics
+  type AIUsageStats {
+    period: String!
+    byService: [ServiceUsage!]!
+    totals: UsageTotals
+    rateLimits: [RateLimitStatus!]!
+  }
+
+  type ServiceUsage {
+    service: String!
+    calls: Int!
+    tokens: Int
+  }
+
+  type UsageTotals {
+    totalCalls: Int!
+    totalTokens: Int
+    avgDuration: Float
+    failedCalls: Int
+  }
+
+  type RateLimitStatus {
+    windowType: String!
+    callCount: Int!
+    tokenCount: Int!
+    limit: Int!
+    remaining: Int!
+  }
+
   type User {
     id: ID!
     email: String!
@@ -1137,6 +1191,10 @@ export default gql`
 
     # Focus Preferences
     getMyFocusPreferences(teamId: ID!): FocusPreferences
+
+    # Team Settings (admin only)
+    getTeamSettings(teamId: ID!): TeamSettings!
+    getAIUsageStats(teamId: ID!, period: String): AIUsageStats
   }
 
   # ============================================================================
@@ -1152,6 +1210,7 @@ export default gql`
     createTeam(input: CreateTeamInput!): Team!
     updateTeam(teamId: ID!, name: String!): Team!
     deleteTeam(teamId: ID!): Boolean!
+    updateTeamSettings(teamId: ID!, input: UpdateTeamSettingsInput!): TeamSettings!
 
     # Team Members & Invites
     inviteTeamMember(teamId: ID!, input: InviteTeamMemberInput!): TeamInvite!

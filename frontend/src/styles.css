@@ -7295,6 +7295,119 @@ input[type="date"].property-value {
   justify-content: flex-end;
 }
 
+/* Team Settings Modal */
+.team-settings-modal {
+  max-width: 480px;
+  width: 100%;
+}
+
+.team-settings-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.team-settings-modal .modal-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.settings-section {
+  padding: 1.25rem;
+}
+
+.settings-section h4 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.settings-description {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+}
+
+.settings-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+  padding: 0.5rem 0;
+}
+
+.toggle-row input[type="checkbox"] {
+  margin-top: 0.125rem;
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+.toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.toggle-label strong {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.toggle-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.toggle-indent {
+  padding-left: 1.25rem;
+  border-left: 2px solid var(--border);
+  margin-left: 0.5rem;
+}
+
+.team-settings-modal .modal-footer {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Footer Settings Button */
+.footer-settings-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: 0.75rem;
+}
+
+.footer-settings-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.footer-settings-btn .footer-icon {
+  font-size: 0.875rem;
+}
+
 /* Insights View */
 .insights-view {
   padding: 0;

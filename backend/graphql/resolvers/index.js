@@ -29,6 +29,7 @@ import * as GoogleCalendarService from '../../services/GoogleCalendarService.js'
 import * as CeremonyService from '../../services/CeremonyService.js';
 import * as ProactiveService from '../../services/ProactiveService.js';
 import * as MeetingPrepService from '../../services/MeetingPrepService.js';
+import * as RateLimiterService from '../../services/RateLimiterService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -467,6 +468,53 @@ const resolvers = {
     getMyFocusPreferences: async (_, { teamId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return CeremonyService.getFocusPreferences(teamId, userId);
+    },
+
+    // Team Settings (admin only)
+    getTeamSettings: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      // Check if user is admin or owner
+      const role = await TeamService.getMemberRole(teamId, userId);
+      if (!['admin', 'owner'].includes(role)) {
+        throw new Error('Only admins can view team settings');
+      }
+      const settings = await TeamService.getTeamSettings(teamId);
+      // Transform to GraphQL shape
+      return {
+        proactiveAI: {
+          enabled: settings?.proactiveAI?.enabled !== false,
+          morningFocusEnabled: settings?.proactiveAI?.morningFocusEnabled !== false,
+          smartNudgesEnabled: settings?.proactiveAI?.smartNudgesEnabled !== false,
+          insightsEnabled: settings?.proactiveAI?.insightsEnabled !== false,
+          meetingPrepEnabled: settings?.proactiveAI?.meetingPrepEnabled !== false
+        }
+      };
+    },
+
+    getAIUsageStats: async (_, { teamId, period }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      // Check if user is admin or owner
+      const role = await TeamService.getMemberRole(teamId, userId);
+      if (!['admin', 'owner'].includes(role)) {
+        throw new Error('Only admins can view AI usage stats');
+      }
+      const stats = await RateLimiterService.getUsageStats(teamId, period || 'day');
+      if (!stats) return null;
+      return {
+        period: stats.period,
+        byService: stats.byService.map(s => ({
+          service: s.service,
+          calls: parseInt(s.calls) || 0,
+          tokens: parseInt(s.tokens) || 0
+        })),
+        totals: stats.totals ? {
+          totalCalls: parseInt(stats.totals.total_calls) || 0,
+          totalTokens: parseInt(stats.totals.total_tokens) || 0,
+          avgDuration: parseFloat(stats.totals.avg_duration) || 0,
+          failedCalls: parseInt(stats.totals.failed_calls) || 0
+        } : null,
+        rateLimits: stats.rateLimits
+      };
     }
   },
 
@@ -500,6 +548,26 @@ const resolvers = {
     deleteTeam: async (_, { teamId }, { userId }) => {
       // TODO: Check owner permission
       return TeamService.deleteTeam(teamId);
+    },
+
+    updateTeamSettings: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      // Check if user is admin or owner
+      const role = await TeamService.getMemberRole(teamId, userId);
+      if (!['admin', 'owner'].includes(role)) {
+        throw new Error('Only admins can update team settings');
+      }
+      const updatedSettings = await TeamService.updateTeamSettings(teamId, input);
+      // Transform to GraphQL shape
+      return {
+        proactiveAI: {
+          enabled: updatedSettings?.proactiveAI?.enabled !== false,
+          morningFocusEnabled: updatedSettings?.proactiveAI?.morningFocusEnabled !== false,
+          smartNudgesEnabled: updatedSettings?.proactiveAI?.smartNudgesEnabled !== false,
+          insightsEnabled: updatedSettings?.proactiveAI?.insightsEnabled !== false,
+          meetingPrepEnabled: updatedSettings?.proactiveAI?.meetingPrepEnabled !== false
+        }
+      };
     },
 
     // Team Members & Invites

@@ -14,6 +14,8 @@ import OpenAI from 'openai';
 import * as TaskService from './TaskService.js';
 import * as CalendarService from './CalendarService.js';
 import * as KnowledgeService from './KnowledgeService.js';
+import * as TeamService from './TeamService.js';
+import * as RateLimiterService from './RateLimiterService.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -192,6 +194,12 @@ export async function getAtRiskTasks(teamId, threshold = 0.6) {
  * Generate proactive nudges for a user
  */
 export async function generateNudgesForUser(teamId, userId) {
+  // Check if smart nudges are enabled for this team
+  const nudgesEnabled = await TeamService.getProactiveFeatureStatus(teamId, 'smartNudges');
+  if (!nudgesEnabled) {
+    return []; // Return empty if disabled
+  }
+
   const nudges = [];
   const now = new Date();
 
@@ -530,6 +538,33 @@ export async function analyzeWorkload(teamId, userId) {
  * Generate AI insights for a team
  */
 export async function generateTeamInsights(teamId) {
+  // Check if insights are enabled for this team
+  const insightsEnabled = await TeamService.getProactiveFeatureStatus(teamId, 'insights');
+  if (!insightsEnabled) {
+    return {
+      insights: [],
+      recommendations: [],
+      summary: 'AI insights are disabled for this team.',
+      metrics: {},
+      disabled: true
+    };
+  }
+
+  // Check rate limits before making AI call
+  try {
+    await RateLimiterService.enforceRateLimit(teamId);
+  } catch (error) {
+    console.warn('Rate limit hit for team insights:', teamId, error.message);
+    return {
+      insights: [],
+      recommendations: [],
+      summary: 'Rate limit reached. Please try again later.',
+      metrics: {},
+      rateLimited: true
+    };
+  }
+
+  const startTime = Date.now();
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
@@ -582,6 +617,22 @@ Provide JSON response:
       temperature: 0.3
     });
 
+    // Track API usage
+    const durationMs = Date.now() - startTime;
+    const usage = response.usage || {};
+    await RateLimiterService.incrementRateLimit(teamId, usage.total_tokens || 0);
+    await RateLimiterService.logApiCall({
+      teamId,
+      service: 'proactive',
+      operation: 'generate_insights',
+      model: 'gpt-4o',
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
+      durationMs,
+      success: true
+    });
+
     let content = response.choices[0].message.content;
     const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlockMatch) content = codeBlockMatch[1].trim();
@@ -618,6 +669,16 @@ Provide JSON response:
     };
   } catch (error) {
     console.error('Error generating insights:', error);
+    // Log failed API call
+    await RateLimiterService.logApiCall({
+      teamId,
+      service: 'proactive',
+      operation: 'generate_insights',
+      model: 'gpt-4o',
+      durationMs: Date.now() - startTime,
+      success: false,
+      errorMessage: error.message
+    });
     return {
       insights: [],
       recommendations: [],

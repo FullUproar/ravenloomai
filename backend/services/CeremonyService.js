@@ -15,6 +15,8 @@ import * as TaskService from './TaskService.js';
 import * as CalendarService from './CalendarService.js';
 import * as ProactiveService from './ProactiveService.js';
 import * as KnowledgeService from './KnowledgeService.js';
+import * as TeamService from './TeamService.js';
+import * as RateLimiterService from './RateLimiterService.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -29,6 +31,27 @@ const openai = new OpenAI({
  * This is the "Motion/Reclaim-style" AI daily planning
  */
 export async function generateMorningFocus(teamId, userId) {
+  // Check if Morning Focus is enabled for this team
+  const morningFocusEnabled = await TeamService.getProactiveFeatureStatus(teamId, 'morningFocus');
+  if (!morningFocusEnabled) {
+    return {
+      status: 'disabled',
+      message: 'Morning Focus is disabled for this team.'
+    };
+  }
+
+  // Check rate limits before making AI call
+  try {
+    await RateLimiterService.enforceRateLimit(teamId);
+  } catch (error) {
+    console.warn('Rate limit hit for morning focus:', teamId, error.message);
+    return {
+      status: 'rate_limited',
+      message: 'Rate limit reached. Please try again later.'
+    };
+  }
+
+  const startTime = Date.now();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -121,6 +144,23 @@ Generate a daily plan in JSON format:
       temperature: 0.4
     });
 
+    // Track API usage
+    const durationMs = Date.now() - startTime;
+    const usage = response.usage || {};
+    await RateLimiterService.incrementRateLimit(teamId, usage.total_tokens || 0);
+    await RateLimiterService.logApiCall({
+      teamId,
+      userId,
+      service: 'ceremony',
+      operation: 'morning_focus',
+      model: 'gpt-4o',
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
+      durationMs,
+      success: true
+    });
+
     let content = response.choices[0].message.content;
     const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlockMatch) content = codeBlockMatch[1].trim();
@@ -155,6 +195,17 @@ Generate a daily plan in JSON format:
     };
   } catch (error) {
     console.error('Error generating morning focus:', error);
+    // Log failed API call
+    await RateLimiterService.logApiCall({
+      teamId,
+      userId,
+      service: 'ceremony',
+      operation: 'morning_focus',
+      model: 'gpt-4o',
+      durationMs: Date.now() - startTime,
+      success: false,
+      errorMessage: error.message
+    });
     return {
       status: 'error',
       error: error.message

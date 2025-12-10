@@ -752,6 +752,35 @@ const GET_MY_WORKLOAD = gql`
   }
 `;
 
+// Team Settings (admin only)
+const GET_TEAM_SETTINGS = gql`
+  query GetTeamSettings($teamId: ID!) {
+    getTeamSettings(teamId: $teamId) {
+      proactiveAI {
+        enabled
+        morningFocusEnabled
+        smartNudgesEnabled
+        insightsEnabled
+        meetingPrepEnabled
+      }
+    }
+  }
+`;
+
+const UPDATE_TEAM_SETTINGS = gql`
+  mutation UpdateTeamSettings($teamId: ID!, $input: UpdateTeamSettingsInput!) {
+    updateTeamSettings(teamId: $teamId, input: $input) {
+      proactiveAI {
+        enabled
+        morningFocusEnabled
+        smartNudgesEnabled
+        insightsEnabled
+        meetingPrepEnabled
+      }
+    }
+  }
+`;
+
 // Goals queries
 const GET_GOALS = gql`
   query GetGoals($teamId: ID!, $status: String) {
@@ -1102,6 +1131,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [generatingFocus, setGeneratingFocus] = useState(false);
   const [showMorningFocus, setShowMorningFocus] = useState(false);
 
+  // Team Settings state
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
   // Private Raven chat state
   const [ravenChannel, setRavenChannel] = useState(null);
 
@@ -1341,6 +1373,21 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     skip: !teamId
   });
   const workload = workloadData?.getMyWorkload;
+
+  // Team Settings (admin only - will fail silently for non-admins)
+  const { data: settingsData, refetch: refetchSettings } = useQuery(GET_TEAM_SETTINGS, {
+    variables: { teamId },
+    skip: !teamId,
+    // Don't show errors in console for non-admin users
+    onError: () => {}
+  });
+  const teamSettings = settingsData?.getTeamSettings;
+  const isAdmin = !!teamSettings; // If we can fetch settings, user is admin
+  const proactiveAIEnabled = teamSettings?.proactiveAI?.enabled !== false;
+
+  const [updateTeamSettingsMutation] = useMutation(UPDATE_TEAM_SETTINGS, {
+    onCompleted: () => refetchSettings()
+  });
 
   // Lazy query for private Raven channel
   const [fetchRavenChannel] = useLazyQuery(GET_MY_RAVEN_CHANNEL, {
@@ -3032,6 +3079,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </div>
 
+          {/* Team Settings (admin only) */}
+          {isAdmin && (
+            <button
+              className="footer-settings-btn"
+              onClick={() => setShowSettingsModal(true)}
+              title="Team Settings"
+            >
+              <span className="footer-icon">⚙️</span>
+              <span className="footer-label">Team Settings</span>
+            </button>
+          )}
+
           {/* User Info & Sign Out */}
           <div className="footer-user">
             <div className="user-info">
@@ -3244,6 +3303,132 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <div className="morning-focus-footer">
               <button className="btn-primary" onClick={() => setShowMorningFocus(false)}>
                 Let's Go! 🚀
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Settings Modal (admin only) */}
+      {showSettingsModal && teamSettings && (
+        <div className="modal-overlay" onClick={() => setShowSettingsModal(false)}>
+          <div className="modal team-settings-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>⚙️ Team Settings</h3>
+              <button className="modal-close" onClick={() => setShowSettingsModal(false)}>×</button>
+            </div>
+
+            <div className="settings-section">
+              <h4>Proactive AI Features</h4>
+              <p className="settings-description">
+                Control AI-powered productivity features for your team.
+              </p>
+
+              <div className="settings-toggles">
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={teamSettings.proactiveAI.enabled}
+                    onChange={(e) => {
+                      updateTeamSettingsMutation({
+                        variables: {
+                          teamId,
+                          input: { proactiveAI: { enabled: e.target.checked } }
+                        }
+                      });
+                    }}
+                  />
+                  <span className="toggle-label">
+                    <strong>Enable Proactive AI</strong>
+                    <span className="toggle-hint">Master toggle for all AI features</span>
+                  </span>
+                </label>
+
+                {teamSettings.proactiveAI.enabled && (
+                  <>
+                    <label className="toggle-row toggle-indent">
+                      <input
+                        type="checkbox"
+                        checked={teamSettings.proactiveAI.morningFocusEnabled}
+                        onChange={(e) => {
+                          updateTeamSettingsMutation({
+                            variables: {
+                              teamId,
+                              input: { proactiveAI: { morningFocusEnabled: e.target.checked } }
+                            }
+                          });
+                        }}
+                      />
+                      <span className="toggle-label">
+                        <strong>Morning Focus</strong>
+                        <span className="toggle-hint">AI-generated daily plans</span>
+                      </span>
+                    </label>
+
+                    <label className="toggle-row toggle-indent">
+                      <input
+                        type="checkbox"
+                        checked={teamSettings.proactiveAI.smartNudgesEnabled}
+                        onChange={(e) => {
+                          updateTeamSettingsMutation({
+                            variables: {
+                              teamId,
+                              input: { proactiveAI: { smartNudgesEnabled: e.target.checked } }
+                            }
+                          });
+                        }}
+                      />
+                      <span className="toggle-label">
+                        <strong>Smart Nudges</strong>
+                        <span className="toggle-hint">Reminders for overdue/stale tasks</span>
+                      </span>
+                    </label>
+
+                    <label className="toggle-row toggle-indent">
+                      <input
+                        type="checkbox"
+                        checked={teamSettings.proactiveAI.insightsEnabled}
+                        onChange={(e) => {
+                          updateTeamSettingsMutation({
+                            variables: {
+                              teamId,
+                              input: { proactiveAI: { insightsEnabled: e.target.checked } }
+                            }
+                          });
+                        }}
+                      />
+                      <span className="toggle-label">
+                        <strong>AI Insights</strong>
+                        <span className="toggle-hint">Productivity analytics and recommendations</span>
+                      </span>
+                    </label>
+
+                    <label className="toggle-row toggle-indent">
+                      <input
+                        type="checkbox"
+                        checked={teamSettings.proactiveAI.meetingPrepEnabled}
+                        onChange={(e) => {
+                          updateTeamSettingsMutation({
+                            variables: {
+                              teamId,
+                              input: { proactiveAI: { meetingPrepEnabled: e.target.checked } }
+                            }
+                          });
+                        }}
+                      />
+                      <span className="toggle-label">
+                        <strong>Meeting Prep</strong>
+                        <span className="toggle-hint">Auto-generated context before meetings</span>
+                      </span>
+                    </label>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowSettingsModal(false)}>
+                Close
               </button>
             </div>
           </div>
