@@ -1,11 +1,56 @@
 /**
  * CalendarView - Calendar component with Month, Week, and Work-Week views
+ * Includes a Raven calendar assistant chat panel
  */
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import EventModal from './EventModal';
 import './CalendarView.css';
+
+// Calendar Chat queries and mutations
+const GET_CALENDAR_CHAT = gql`
+  query GetMyCalendarChat($teamId: ID!) {
+    getMyCalendarChat(teamId: $teamId) {
+      id
+      name
+    }
+  }
+`;
+
+const GET_MESSAGES = gql`
+  query GetMessages($channelId: ID!, $limit: Int) {
+    getMessages(channelId: $channelId, limit: $limit) {
+      id
+      content
+      isAi
+      user {
+        id
+        displayName
+        avatarUrl
+      }
+      createdAt
+    }
+  }
+`;
+
+const SEND_MESSAGE = gql`
+  mutation SendMessage($channelId: ID!, $input: SendMessageInput!) {
+    sendMessage(channelId: $channelId, input: $input) {
+      message {
+        id
+        content
+        isAi
+        user {
+          id
+          displayName
+          avatarUrl
+        }
+        createdAt
+      }
+    }
+  }
+`;
 
 const GET_CALENDAR_ITEMS = gql`
   query GetCalendarItems($teamId: ID!, $startDate: DateTime!, $endDate: DateTime!) {
@@ -115,6 +160,59 @@ export default function CalendarView({ teamId }) {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [newEventDate, setNewEventDate] = useState(null);
+
+  // Calendar Chat state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessage, setChatMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const chatMessagesRef = useRef(null);
+
+  // Get calendar chat channel
+  const { data: chatData } = useQuery(GET_CALENDAR_CHAT, {
+    variables: { teamId },
+    skip: !teamId
+  });
+  const calendarChatId = chatData?.getMyCalendarChat?.id;
+
+  // Get chat messages
+  const { data: messagesData, refetch: refetchMessages } = useQuery(GET_MESSAGES, {
+    variables: { channelId: calendarChatId, limit: 50 },
+    skip: !calendarChatId,
+    pollInterval: chatOpen ? 3000 : 0 // Poll when open
+  });
+  const chatMessages = messagesData?.getMessages || [];
+
+  // Send message mutation
+  const [sendMessage] = useMutation(SEND_MESSAGE);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (chatMessagesRef.current && chatOpen) {
+      chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+    }
+  }, [chatMessages, chatOpen]);
+
+  // Handle sending chat message
+  const handleSendChatMessage = async (e) => {
+    e.preventDefault();
+    if (!chatMessage.trim() || !calendarChatId || sendingMessage) return;
+
+    setSendingMessage(true);
+    try {
+      await sendMessage({
+        variables: {
+          channelId: calendarChatId,
+          input: { content: chatMessage.trim() }
+        }
+      });
+      setChatMessage('');
+      await refetchMessages();
+    } catch (err) {
+      console.error('Error sending message:', err);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
 
   // Calculate date range based on view
   const dateRange = useMemo(() => {
@@ -598,6 +696,87 @@ export default function CalendarView({ teamId }) {
             setNewEventDate(null);
           }}
         />
+      )}
+
+      {/* Calendar Chat Toggle Button */}
+      <button
+        className={`calendar-chat-toggle ${chatOpen ? 'open' : ''}`}
+        onClick={() => setChatOpen(!chatOpen)}
+        title="Chat with Raven about your calendar"
+      >
+        <span className="chat-toggle-icon">🪶</span>
+        <span className="chat-toggle-label">Calendar Assistant</span>
+      </button>
+
+      {/* Calendar Chat Panel */}
+      {chatOpen && (
+        <div className="calendar-chat-panel">
+          <div className="calendar-chat-header">
+            <div className="chat-header-title">
+              <span className="raven-icon">🪶</span>
+              <span>Calendar Assistant</span>
+            </div>
+            <button className="chat-close-btn" onClick={() => setChatOpen(false)}>×</button>
+          </div>
+
+          <div className="calendar-chat-messages" ref={chatMessagesRef}>
+            {chatMessages.length === 0 ? (
+              <div className="chat-welcome">
+                <div className="chat-welcome-icon">🪶</div>
+                <h4>Hi! I'm your calendar assistant.</h4>
+                <p>Ask me about your schedule, add events, or check what's coming up.</p>
+                <div className="chat-suggestions">
+                  <button onClick={() => setChatMessage("What's on my calendar this week?")}>
+                    What's on my calendar?
+                  </button>
+                  <button onClick={() => setChatMessage("What tasks are due soon?")}>
+                    What's due soon?
+                  </button>
+                  <button onClick={() => setChatMessage("Add a meeting")}>
+                    Add an event
+                  </button>
+                </div>
+              </div>
+            ) : (
+              chatMessages.map(msg => (
+                <div key={msg.id} className={`chat-message ${msg.isAi ? 'ai' : 'user'}`}>
+                  <div className="message-avatar">
+                    {msg.isAi ? '🪶' : (msg.user?.displayName?.[0] || '?')}
+                  </div>
+                  <div className="message-content">
+                    <div className="message-text">{msg.content}</div>
+                    <div className="message-time">
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+            {sendingMessage && (
+              <div className="chat-message ai typing">
+                <div className="message-avatar">🪶</div>
+                <div className="message-content">
+                  <div className="typing-indicator">
+                    <span></span><span></span><span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <form className="calendar-chat-input" onSubmit={handleSendChatMessage}>
+            <input
+              type="text"
+              value={chatMessage}
+              onChange={(e) => setChatMessage(e.target.value)}
+              placeholder="Ask about your calendar..."
+              disabled={sendingMessage}
+            />
+            <button type="submit" disabled={!chatMessage.trim() || sendingMessage}>
+              Send
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );

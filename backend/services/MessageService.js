@@ -45,10 +45,10 @@ export async function sendMessage(channelId, userId, content, options = {}) {
   const channel = channelResult.rows[0];
   const teamId = channel.team_id;
 
-  // Check if message mentions @raven explicitly OR is in #calendar channel OR is Raven DM
-  const isCalendarChannel = channel.name === 'calendar';
+  // Check if message mentions @raven explicitly OR is Raven DM OR is Calendar Chat
   const isRavenDM = channel.channel_type === 'raven_dm';
-  let mentionsAi = content.toLowerCase().includes('@raven') || isCalendarChannel || isRavenDM;
+  const isCalendarChat = channel.channel_type === 'calendar_chat';
+  let mentionsAi = content.toLowerCase().includes('@raven') || isRavenDM || isCalendarChat;
   let replyContext = null;
 
   // If replying to a message, check if it's a Raven message
@@ -67,11 +67,11 @@ export async function sendMessage(channelId, userId, content, options = {}) {
     }
   }
 
-  // Parse command - in calendar channel or Raven DM, parse without @raven prefix
+  // Parse command - in Raven DM or Calendar Chat, parse without @raven prefix
   let command = null;
   if (mentionsAi) {
-    if ((isCalendarChannel || isRavenDM) && !content.toLowerCase().includes('@raven')) {
-      // In calendar channel or Raven DM without explicit @raven, prepend it for parsing
+    if ((isRavenDM || isCalendarChat) && !content.toLowerCase().includes('@raven')) {
+      // In Raven DM or Calendar Chat without explicit @raven, prepend it for parsing
       command = AIService.parseRavenCommand('@raven ' + content);
     } else {
       command = AIService.parseRavenCommand(content);
@@ -116,7 +116,7 @@ export async function sendMessage(channelId, userId, content, options = {}) {
   }
 
   // Process the AI command (with reply context if available)
-  const aiResponse = await processAICommand(command, teamId, channelId, userId, replyContext);
+  const aiResponse = await processAICommand(command, teamId, channelId, userId, replyContext, { isCalendarChat });
 
   // Save the AI response message
   const aiMessageResult = await db.query(
@@ -137,13 +137,27 @@ export async function sendMessage(channelId, userId, content, options = {}) {
 /**
  * Process an AI command and return the response
  */
-async function processAICommand(command, teamId, channelId, userId, replyContext = null) {
+async function processAICommand(command, teamId, channelId, userId, replyContext = null, options = {}) {
+  const { isCalendarChat } = options;
+
   // If no explicit command but we have reply context, treat as a query
   if (!command && replyContext) {
-    return handleQuery('', teamId, channelId, replyContext, userId);
+    return handleQuery('', teamId, channelId, replyContext, userId, { isCalendarChat });
   }
 
   if (!command) {
+    // Default response differs for calendar chat
+    if (isCalendarChat) {
+      return {
+        responseText: `I'm your calendar assistant! I can help you:
+• View upcoming events - "What's on my calendar this week?"
+• Add events - "Add meeting tomorrow at 2pm"
+• Check due dates - "What's due soon?"
+• Schedule reminders - "Remind me about the report on Friday"
+
+Just type naturally and I'll help manage your schedule!`
+      };
+    }
     return {
       responseText: `I'm here! Commands I understand:
 • \`@raven remember [fact]\` - Save information
@@ -226,7 +240,7 @@ async function processAICommand(command, teamId, channelId, userId, replyContext
 
     case 'query':
     default:
-      return handleQuery(command.query, teamId, channelId, replyContext, userId);
+      return handleQuery(command.query, teamId, channelId, replyContext, userId, { isCalendarChat });
   }
 }
 
@@ -610,7 +624,9 @@ async function handleDecision(content, teamId, userId) {
 /**
  * Handle query (question)
  */
-async function handleQuery(query, teamId, channelId, replyContext = null, userId = null) {
+async function handleQuery(query, teamId, channelId, replyContext = null, userId = null, options = {}) {
+  const { isCalendarChat } = options;
+
   try {
     // Get relevant knowledge
     const knowledge = await KnowledgeService.getKnowledgeContext(teamId, query);
@@ -634,6 +650,14 @@ async function handleQuery(query, teamId, channelId, replyContext = null, userId
     // Build enhanced query with context
     let enhancedQuery = query;
 
+    // Add calendar context if this is a calendar chat
+    if (isCalendarChat) {
+      const calendarContext = await getCalendarContext(teamId);
+      if (calendarContext) {
+        enhancedQuery = `[CALENDAR CONTEXT - You are acting as a calendar assistant. Use this information to answer the user's question:\n${calendarContext}]\n\n${query}`;
+      }
+    }
+
     // Add user context if available
     if (userContext) {
       const userInfo = [];
@@ -646,7 +670,7 @@ async function handleQuery(query, teamId, channelId, replyContext = null, userId
         userInfo.push(`Their role is ${userContext.facts.role.job_title}`);
       }
       if (userInfo.length > 0) {
-        enhancedQuery = `[User context: ${userInfo.join('. ')}]\n\n${query}`;
+        enhancedQuery = `[User context: ${userInfo.join('. ')}]\n\n${enhancedQuery}`;
       }
     }
 
@@ -665,7 +689,8 @@ async function handleQuery(query, teamId, channelId, replyContext = null, userId
         command: 'query',
         factsUsed: knowledge.facts.length,
         decisionsUsed: knowledge.decisions.length,
-        isReply: !!replyContext
+        isReply: !!replyContext,
+        isCalendarChat
       }
     };
   } catch (error) {
@@ -673,6 +698,61 @@ async function handleQuery(query, teamId, channelId, replyContext = null, userId
     return {
       responseText: `I had trouble answering that. Error: ${error.message}`
     };
+  }
+}
+
+/**
+ * Get calendar context for AI queries in calendar chat
+ */
+async function getCalendarContext(teamId) {
+  try {
+    const now = new Date();
+    const nextTwoWeeks = new Date(now);
+    nextTwoWeeks.setDate(nextTwoWeeks.getDate() + 14);
+
+    // Get upcoming events
+    const events = await CalendarService.getEvents(teamId, {
+      startDate: now.toISOString(),
+      endDate: nextTwoWeeks.toISOString()
+    });
+
+    // Get tasks with due dates
+    const allTasks = await TaskService.getTasks(teamId, {});
+    const tasksDue = allTasks.filter(t => t.dueAt).sort((a, b) =>
+      new Date(a.dueAt) - new Date(b.dueAt)
+    ).slice(0, 15);
+
+    let context = `Today is ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.\n\n`;
+
+    if (events.length > 0) {
+      context += `UPCOMING EVENTS (next 2 weeks):\n`;
+      events.forEach(event => {
+        const start = new Date(event.startAt);
+        const dateStr = start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const timeStr = event.isAllDay ? 'All day' : start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        context += `• ${dateStr} ${timeStr}: ${event.title}${event.location ? ` @ ${event.location}` : ''}\n`;
+      });
+      context += '\n';
+    } else {
+      context += `No upcoming events in the next 2 weeks.\n\n`;
+    }
+
+    if (tasksDue.length > 0) {
+      context += `TASKS WITH DUE DATES:\n`;
+      tasksDue.forEach(task => {
+        const due = new Date(task.dueAt);
+        const dueStr = due.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const overdue = due < now ? ' (OVERDUE)' : '';
+        context += `• ${dueStr}: ${task.title} [${task.status}]${overdue}\n`;
+      });
+    } else {
+      context += `No tasks with due dates.`;
+    }
+
+    return context;
+  } catch (error) {
+    console.error('Error getting calendar context:', error);
+    return null;
   }
 }
 

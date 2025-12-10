@@ -34,12 +34,12 @@ export async function getChannelById(channelId) {
 }
 
 /**
- * Get channels for a team (excludes private Raven DMs)
+ * Get channels for a team (excludes private Raven DMs and Calendar Chats)
  */
 export async function getChannels(teamId) {
   const result = await db.query(
     `SELECT * FROM channels
-     WHERE team_id = $1 AND (channel_type IS NULL OR channel_type != 'raven_dm')
+     WHERE team_id = $1 AND (channel_type IS NULL OR channel_type NOT IN ('raven_dm', 'calendar_chat'))
      ORDER BY is_default DESC, name ASC`,
     [teamId]
   );
@@ -154,6 +154,41 @@ export async function getOrCreateRavenDM(teamId, userId) {
 }
 
 /**
+ * Get or create the user's private Calendar Chat channel
+ * This is a private channel between the user and Raven for calendar assistance
+ */
+export async function getOrCreateCalendarChat(teamId, userId) {
+  // First, try to find existing Calendar Chat for this user
+  const existing = await db.query(
+    `SELECT * FROM channels
+     WHERE team_id = $1 AND channel_type = 'calendar_chat' AND owner_id = $2`,
+    [teamId, userId]
+  );
+
+  if (existing.rows.length > 0) {
+    return mapChannel(existing.rows[0]);
+  }
+
+  // Create new Calendar Chat channel
+  const result = await db.query(
+    `INSERT INTO channels (team_id, name, description, ai_mode, channel_type, owner_id, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING *`,
+    [
+      teamId,
+      `calendar-chat-${userId.substring(0, 8)}`,  // Unique name per user
+      'Private calendar assistant',
+      'active',  // Always active in Calendar Chat
+      'calendar_chat',
+      userId,
+      userId
+    ]
+  );
+
+  return mapChannel(result.rows[0]);
+}
+
+/**
  * Get public channels for a team (excludes private DMs and system channels)
  */
 export async function getPublicChannels(teamId) {
@@ -194,6 +229,7 @@ export default {
   getPublicChannels,
   getDefaultChannel,
   getOrCreateRavenDM,
+  getOrCreateCalendarChat,
   updateChannel,
   deleteChannel
 };

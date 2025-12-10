@@ -808,6 +808,7 @@ export default gql`
     getChannel(channelId: ID!): Channel
     getChannels(teamId: ID!): [Channel!]!
     getMyRavenChannel(teamId: ID!): Channel!  # Gets or creates user's private Raven DM
+    getMyCalendarChat(teamId: ID!): Channel!  # Gets or creates user's private Calendar Chat
 
     # Threads
     getThread(threadId: ID!): Thread
