@@ -1342,5 +1342,8 @@ export default gql`
 
     # Update Focus Preferences
     updateFocusPreferences(teamId: ID!, input: UpdateFocusPreferencesInput!): FocusPreferences!
+
+    # Generate Nudges
+    generateNudges(teamId: ID!): [ProactiveNudge!]!
   }
 `;
