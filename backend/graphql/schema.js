@@ -1338,6 +1338,7 @@ export default gql`
 
     # Generate Meeting Prep
     generateMeetingPrep(teamId: ID!, eventId: ID!): MeetingPrep!
+    markMeetingPrepViewed(prepId: ID!): MeetingPrep!
 
     # Update Focus Preferences
     updateFocusPreferences(teamId: ID!, input: UpdateFocusPreferencesInput!): FocusPreferences!
