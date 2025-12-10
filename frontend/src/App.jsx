@@ -5,6 +5,7 @@ import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import Login from './Login.jsx';
 import TeamDashboard from './TeamDashboard.jsx';
+import AdminDashboard from './pages/AdminDashboard';
 
 // ============================================================================
 // GraphQL Operations
@@ -40,6 +41,12 @@ const CREATE_OR_UPDATE_USER = gql`
   }
 `;
 
+const AM_I_SITE_ADMIN = gql`
+  query AmISiteAdmin {
+    amISiteAdmin
+  }
+`;
+
 // ============================================================================
 // App Component
 // ============================================================================
@@ -55,6 +62,7 @@ function App({ apolloClient }) {
   // UI state
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // Mutations
   const [createTeam] = useMutation(CREATE_TEAM);
@@ -65,6 +73,12 @@ function App({ apolloClient }) {
     skip: !user,
     fetchPolicy: 'network-only'
   });
+
+  // Check if user is a super admin
+  const { data: adminData } = useQuery(AM_I_SITE_ADMIN, {
+    skip: !user
+  });
+  const isSuperAdmin = adminData?.amISiteAdmin || false;
 
   // ============================================================================
   // Auth Effect
@@ -187,12 +201,26 @@ function App({ apolloClient }) {
   // User is logged in - show team selector
   const teams = teamsData?.getMyTeams || [];
 
+  // Show admin dashboard if requested
+  if (showAdminDashboard) {
+    return <AdminDashboard onClose={() => setShowAdminDashboard(false)} />;
+  }
+
   return (
     <div className="app-container">
       {/* Header */}
       <header className="app-header">
         <h1 className="app-title">RavenLoom</h1>
         <div className="header-actions">
+          {isSuperAdmin && (
+            <button
+              onClick={() => setShowAdminDashboard(true)}
+              className="btn-secondary"
+              style={{ marginRight: '0.5rem' }}
+            >
+              Admin
+            </button>
+          )}
           <span className="user-email">{user.email}</span>
           <button onClick={handleSignOut} className="btn-secondary">
             Sign Out
