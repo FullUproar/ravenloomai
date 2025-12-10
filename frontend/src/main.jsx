@@ -6,6 +6,7 @@ import InviteAccept from './InviteAccept.jsx';
 import HelpPage from './HelpPage.jsx';
 import PrivacyPolicy from './PrivacyPolicy.jsx';
 import TermsOfService from './TermsOfService.jsx';
+import { ToastProvider } from './Toast.jsx';
 import './styles.css';
 
 import {
@@ -68,17 +69,19 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <ApolloProvider client={client}>
-        <Routes>
-          <Route path="/help" element={<HelpPage />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          <Route path="/invite/:token" element={<InviteAccept apolloClient={client} />} />
-          {/* Team routes with view support */}
-          <Route path="/team/:teamId/:view" element={<App apolloClient={client} />} />
-          <Route path="/team/:teamId/:view/:itemId" element={<App apolloClient={client} />} />
-          <Route path="/team/:teamId" element={<App apolloClient={client} />} />
-          <Route path="*" element={<App apolloClient={client} />} />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path="/help" element={<HelpPage />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/invite/:token" element={<InviteAccept apolloClient={client} />} />
+            {/* Team routes with view support */}
+            <Route path="/team/:teamId/:view" element={<App apolloClient={client} />} />
+            <Route path="/team/:teamId/:view/:itemId" element={<App apolloClient={client} />} />
+            <Route path="/team/:teamId" element={<App apolloClient={client} />} />
+            <Route path="*" element={<App apolloClient={client} />} />
+          </Routes>
+        </ToastProvider>
       </ApolloProvider>
     </BrowserRouter>
   </React.StrictMode>

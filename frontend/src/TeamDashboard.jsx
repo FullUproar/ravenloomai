@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import CalendarView from './CalendarView';
+import { useToast } from './Toast.jsx';
 
 // API base URL - uses /api prefix in production, localhost in development
 const API_BASE_URL = import.meta.env.PROD
@@ -854,8 +855,14 @@ const REOPEN_TASK = gql`
 
 function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) {
   const navigate = useNavigate();
+  const toast = useToast();
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Keyboard shortcuts modal state
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  // Confirmation modal state
+  const [confirmModal, setConfirmModal] = useState(null);
 
   // Determine initial view from URL or default to 'chat'
   const getInitialView = () => {
@@ -1252,9 +1259,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         return;
       }
 
+      // "?" to show keyboard shortcuts (when not typing)
+      if (e.key === '?' && !isTyping) {
+        e.preventDefault();
+        setShowShortcuts(true);
+        return;
+      }
+
       // "Escape" to close popups or cancel reply
       if (e.key === 'Escape') {
-        if (rejectingQuestionId) {
+        if (showShortcuts) {
+          setShowShortcuts(false);
+        } else if (rejectingQuestionId) {
           setRejectingQuestionId(null);
         } else if (showMentions) {
           setShowMentions(false);
@@ -1293,7 +1309,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [activeView, showMentions, showCommands, replyingTo, showCreateChannel, showInviteModal, rejectingQuestionId]);
+  }, [activeView, showMentions, showCommands, replyingTo, showCreateChannel, showInviteModal, rejectingQuestionId, showShortcuts]);
 
   // Close reject dropdown when clicking outside
   useEffect(() => {
@@ -1355,7 +1371,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     } catch (error) {
       console.error('Error sending message:', error);
       setMessageInput(messageInput); // Restore original message on error
-      alert('Failed to send message: ' + error.message);
+      toast.error('Failed to send message: ' + error.message);
     } finally {
       setIsSending(false);
       inputRef.current?.focus();
@@ -1381,7 +1397,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       navigate(`/team/${teamId}/channel/${data.createChannel.id}`);
     } catch (error) {
       console.error('Error creating channel:', error);
-      alert('Failed to create channel: ' + error.message);
+      toast.error('Failed to create channel: ' + error.message);
     } finally {
       setCreatingChannel(false);
     }
@@ -1419,7 +1435,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       await refetchInvites();
     } catch (error) {
       console.error('Error inviting member:', error);
-      alert('Failed to send invite: ' + error.message);
+      toast.error('Failed to send invite: ' + error.message);
     } finally {
       setInviteSending(false);
     }
@@ -1428,7 +1444,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const copyInviteLink = async () => {
     if (lastInviteLink) {
       await navigator.clipboard.writeText(lastInviteLink);
-      alert('Invite link copied to clipboard!');
+      toast.success('Invite link copied to clipboard!');
     }
   };
 
@@ -1451,7 +1467,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       fetchSiteInvites();
     } catch (error) {
       console.error('Error creating site invite:', error);
-      alert('Failed to create invite: ' + error.message);
+      toast.error('Failed to create invite: ' + error.message);
     } finally {
       setSiteInviteSending(false);
     }
@@ -1467,7 +1483,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       fetchSiteInvites();
     } catch (error) {
       console.error('Error revoking invite:', error);
-      alert('Failed to revoke invite: ' + error.message);
+      toast.error('Failed to revoke invite: ' + error.message);
     }
   };
 
@@ -1487,7 +1503,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       }
     } catch (error) {
       console.error('Error connecting Google Drive:', error);
-      alert('Failed to connect Google Drive: ' + error.message);
+      toast.error('Failed to connect Google Drive: ' + error.message);
       setConnectingDrive(false);
     }
   };
@@ -1525,7 +1541,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       setShowDrivePanel(false);
     } catch (error) {
       console.error('Error disconnecting Google Drive:', error);
-      alert('Failed to disconnect: ' + error.message);
+      toast.error('Failed to disconnect: ' + error.message);
     } finally {
       setDisconnectingDrive(false);
     }
@@ -1536,10 +1552,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       await importDriveFile({
         variables: { teamId, fileId: file.id }
       });
-      alert(`Imported "${file.name}" to knowledge base!`);
+      toast.success(`Imported "${file.name}" to knowledge base!`);
     } catch (error) {
       console.error('Error importing file:', error);
-      alert('Failed to import file: ' + error.message);
+      toast.error('Failed to import file: ' + error.message);
     }
   };
 
@@ -1592,7 +1608,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       const config = data?.getGooglePickerConfig;
 
       if (!config) {
-        alert('Failed to get Google Picker configuration. Please reconnect Google Drive.');
+        toast.error('Failed to get Google Picker configuration. Please reconnect Google Drive.');
         return;
       }
 
@@ -1614,7 +1630,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       picker.setVisible(true);
     } catch (error) {
       console.error('Error opening Google Picker:', error);
-      alert('Failed to open file picker: ' + error.message);
+      toast.error('Failed to open file picker: ' + error.message);
     }
   };
 
@@ -1640,7 +1656,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
           });
         } catch (error) {
           console.error(`Error adding ${doc.name} to KB:`, error);
-          alert(`Failed to add "${doc.name}": ${error.message}`);
+          toast.error(`Failed to add "${doc.name}": ${error.message}`);
         }
       }
 
@@ -1679,7 +1695,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         refetchKbSources();
       } catch (error) {
         console.error('Error removing KB source:', error);
-        alert('Failed to remove: ' + error.message);
+        toast.error('Failed to remove: ' + error.message);
       } finally {
         setDeletingKbSourceId(null);
       }
@@ -1692,12 +1708,12 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       const { data } = await syncKnowledgeBaseSource({ variables: { teamId, sourceId } });
       const result = data?.syncKnowledgeBaseSource;
       if (result) {
-        alert(`Synced! Added: ${result.documentsAdded}, Updated: ${result.documentsUpdated}`);
+        toast.success(`Synced! Added: ${result.documentsAdded}, Updated: ${result.documentsUpdated}`);
       }
       refetchKbSources();
     } catch (error) {
       console.error('Error syncing KB source:', error);
-      alert('Failed to sync: ' + error.message);
+      toast.error('Failed to sync: ' + error.message);
     } finally {
       setSyncingKbSourceId(null);
     }
@@ -1710,13 +1726,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+      toast.warning('Please select an image file');
       return;
     }
 
     // Validate file size (10MB max)
     if (file.size > 10 * 1024 * 1024) {
-      alert('Image too large. Maximum size is 10MB');
+      toast.warning('Image too large. Maximum size is 10MB');
       return;
     }
 
@@ -1771,7 +1787,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       return attachment;
     } catch (error) {
       console.error('Image upload error:', error);
-      alert('Failed to upload image: ' + error.message);
+      toast.error('Failed to upload image: ' + error.message);
       return null;
     } finally {
       setImageUploading(false);
@@ -1865,7 +1881,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       await refetchTasks();
     } catch (error) {
       console.error('Error creating task:', error);
-      alert('Failed to create task: ' + error.message);
+      toast.error('Failed to create task: ' + error.message);
     } finally {
       setCreatingTask(false);
     }
@@ -2047,7 +2063,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       });
     } catch (error) {
       console.error('Error posting question:', error);
-      alert('Failed to post question: ' + error.message);
+      toast.error('Failed to post question: ' + error.message);
     } finally {
       setPostingQuestion(false);
     }
@@ -2074,7 +2090,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       refetchQuestions();
     } catch (error) {
       console.error('Error answering question:', error);
-      alert('Failed to submit answer: ' + error.message);
+      toast.error('Failed to submit answer: ' + error.message);
     } finally {
       setSubmittingAnswer(false);
     }
@@ -2104,7 +2120,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       refetchLOs();
     } catch (error) {
       console.error('Error creating learning objective:', error);
-      alert('Failed to create learning objective: ' + error.message);
+      toast.error('Failed to create learning objective: ' + error.message);
     }
   };
 
@@ -2121,7 +2137,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       }
     } catch (error) {
       console.error('Error requesting follow-up:', error);
-      alert('Failed to request follow-up: ' + error.message);
+      toast.error('Failed to request follow-up: ' + error.message);
     } finally {
       setRequestingFollowUp(null);
     }
@@ -2164,7 +2180,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       }
     } catch (error) {
       console.error('Error rejecting question:', error);
-      alert('Failed to reject question: ' + error.message);
+      toast.error('Failed to reject question: ' + error.message);
     } finally {
       setRejectingQuestion(false);
     }
@@ -3184,7 +3200,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             )}
             <div className="header-spacer"></div>
             <div className="header-brand">
-              <img src="/web-app-manifest-192x192.png" alt="" className="header-brand-logo" />
+              <img src="/web-app-manifest-192x192.png" alt="RavenLoom" className="header-brand-logo" />
               <span className="header-brand-name">RavenLoom</span>
             </div>
             <div className="header-spacer"></div>
@@ -4114,7 +4130,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <p className="channel-description">Your private chat with Raven</p>
             <div className="header-spacer"></div>
             <div className="header-brand">
-              <img src="/web-app-manifest-192x192.png" alt="" className="header-brand-logo" />
+              <img src="/web-app-manifest-192x192.png" alt="RavenLoom" className="header-brand-logo" />
               <span className="header-brand-name">RavenLoom</span>
             </div>
             <div className="header-spacer"></div>
@@ -4458,7 +4474,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       setShowCreateLO(false);
                       refetchLOs();
                     } catch (err) {
-                      alert('Failed to create learning objective: ' + err.message);
+                      toast.error('Failed to create learning objective: ' + err.message);
                     } finally {
                       setCreatingLO(false);
                     }
@@ -4968,7 +4984,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       setShowCreateGoal(false);
                       refetchGoals();
                     } catch (err) {
-                      alert('Failed to create goal: ' + err.message);
+                      toast.error('Failed to create goal: ' + err.message);
                     } finally {
                       setCreatingGoal(false);
                     }
@@ -5028,7 +5044,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       refetchProjects();
                       refetchGoals();
                     } catch (err) {
-                      alert('Failed to create project: ' + err.message);
+                      toast.error('Failed to create project: ' + err.message);
                     } finally {
                       setCreatingProject(false);
                     }
@@ -5249,7 +5265,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       setShowCreateProject(false);
                       refetchProjects();
                     } catch (err) {
-                      alert('Failed to create project: ' + err.message);
+                      toast.error('Failed to create project: ' + err.message);
                     } finally {
                       setCreatingProject(false);
                     }
@@ -5567,7 +5583,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       setTaskComment('');
                       refetchTaskDetail();
                     } catch (err) {
-                      alert('Failed to add comment: ' + err.message);
+                      toast.error('Failed to add comment: ' + err.message);
                     } finally {
                       setAddingComment(false);
                     }
@@ -5616,6 +5632,64 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 Created {new Date(selectedTask.createdAt).toLocaleDateString()}
                 {selectedTask.createdByUser && ` by ${selectedTask.createdByUser.displayName}`}
               </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcuts && (
+        <div className="shortcuts-modal-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="shortcuts-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="shortcuts-title">
+            <div className="shortcuts-modal-header">
+              <h3 className="shortcuts-modal-title" id="shortcuts-title">
+                <span>⌨️</span> Keyboard Shortcuts
+              </h3>
+              <button className="modal-close" onClick={() => setShowShortcuts(false)} aria-label="Close">×</button>
+            </div>
+
+            <div className="shortcuts-section">
+              <div className="shortcuts-section-title">Navigation</div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Go to Chat</span>
+                <span className="shortcut-keys"><kbd className="kbd">Alt</kbd><kbd className="kbd">1</kbd></span>
+              </div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Go to Tasks</span>
+                <span className="shortcut-keys"><kbd className="kbd">Alt</kbd><kbd className="kbd">2</kbd></span>
+              </div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Go to Ask</span>
+                <span className="shortcut-keys"><kbd className="kbd">Alt</kbd><kbd className="kbd">3</kbd></span>
+              </div>
+            </div>
+
+            <div className="shortcuts-section">
+              <div className="shortcuts-section-title">Chat</div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Focus message input</span>
+                <span className="shortcut-keys"><kbd className="kbd">/</kbd></span>
+              </div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Send message</span>
+                <span className="shortcut-keys"><kbd className="kbd">Enter</kbd></span>
+              </div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">New line in message</span>
+                <span className="shortcut-keys"><kbd className="kbd">Shift</kbd><kbd className="kbd">Enter</kbd></span>
+              </div>
+            </div>
+
+            <div className="shortcuts-section">
+              <div className="shortcuts-section-title">General</div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Close modal/popup</span>
+                <span className="shortcut-keys"><kbd className="kbd">Esc</kbd></span>
+              </div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Show this help</span>
+                <span className="shortcut-keys"><kbd className="kbd">?</kbd></span>
+              </div>
             </div>
           </div>
         </div>
