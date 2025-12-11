@@ -1110,6 +1110,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
   const [statusPopupTaskId, setStatusPopupTaskId] = useState(null);
   const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
+  const [tasksViewMode, setTasksViewMode] = useState('list'); // 'list' or 'matrix'
   const [addingTask, setAddingTask] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
   const taskInputRef = useRef(null);
@@ -1180,6 +1181,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [addingComment, setAddingComment] = useState(false);
   // Projects state
   const [showCreateProject, setShowCreateProject] = useState(false);
+  const [projectsViewMode, setProjectsViewMode] = useState('list'); // 'list', 'board', or 'gantt'
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectGoalId, setNewProjectGoalId] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState('');
@@ -3103,10 +3105,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             )}
           </div>
 
-          {/* PM Features (Pro Mode) - Only show if any PM feature is enabled */}
-          {isProModeEnabled && (
+          {/* PM Features - Team Workload, Time Blocks, Milestones (Eisenhower/Gantt are now in Tasks/Projects) */}
+          {(featureFlags.showWorkloadHistogram || featureFlags.showTimeBlocking || featureFlags.showMilestones) && (
             <div className="nav-section nav-pm-section">
-              <div className="nav-pm-label">Pro Mode</div>
+              <div className="nav-pm-label">Team Tools</div>
               {featureFlags.showWorkloadHistogram && (
                 <button
                   className={`nav-item ${activeView === 'workload' ? 'active' : ''}`}
@@ -3116,30 +3118,12 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <span className="nav-item-label">Team Workload</span>
                 </button>
               )}
-              {featureFlags.showEisenhowerMatrix && (
-                <button
-                  className={`nav-item ${activeView === 'eisenhower' ? 'active' : ''}`}
-                  onClick={() => setActiveView('eisenhower')}
-                >
-                  <span className="nav-item-icon">⚡</span>
-                  <span className="nav-item-label">Eisenhower Matrix</span>
-                </button>
-              )}
-              {featureFlags.showGanttChart && (
-                <button
-                  className={`nav-item ${activeView === 'gantt' ? 'active' : ''}`}
-                  onClick={() => setActiveView('gantt')}
-                >
-                  <span className="nav-item-icon">📊</span>
-                  <span className="nav-item-label">Gantt Chart</span>
-                </button>
-              )}
               {featureFlags.showTimeBlocking && (
                 <button
                   className={`nav-item ${activeView === 'timeblocks' ? 'active' : ''}`}
                   onClick={() => setActiveView('timeblocks')}
                 >
-                  <span className="nav-item-icon">📅</span>
+                  <span className="nav-item-icon">⏱️</span>
                   <span className="nav-item-label">Time Blocks</span>
                 </button>
               )}
@@ -3986,6 +3970,25 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 All
               </button>
             </div>
+            {/* View Mode Toggle - List vs Matrix (Pro Mode) */}
+            {featureFlags.showEisenhowerMatrix && (
+              <div className="view-mode-toggle">
+                <button
+                  className={`view-mode-btn ${tasksViewMode === 'list' ? 'active' : ''}`}
+                  onClick={() => setTasksViewMode('list')}
+                  title="List View"
+                >
+                  ☰
+                </button>
+                <button
+                  className={`view-mode-btn ${tasksViewMode === 'matrix' ? 'active' : ''}`}
+                  onClick={() => setTasksViewMode('matrix')}
+                  title="Priority Matrix"
+                >
+                  ⊞
+                </button>
+              </div>
+            )}
             <div className="user-menu-container">
               <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
                 <span></span><span></span><span></span>
@@ -4008,7 +4011,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </header>
 
-          {/* Tasks List */}
+          {/* Tasks Content - List or Matrix View */}
+          {tasksViewMode === 'matrix' && featureFlags.showEisenhowerMatrix ? (
+            <EisenhowerMatrix
+              teamId={teamId}
+              onClose={() => setTasksViewMode('list')}
+              onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+            />
+          ) : (
           <div className="tasks-container">
             {/* Inline Add Task */}
             <div className="task-add-section">
@@ -4237,6 +4247,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
         </main>
       ) : activeView === 'ask' ? (
         <main className="ask-area">
@@ -5748,6 +5759,32 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <button className="btn-primary btn-small" onClick={() => setShowCreateProject(true)}>
               + New Project
             </button>
+            {/* View Mode Toggle - List/Board/Gantt (Pro Mode) */}
+            {featureFlags.showGanttChart && (
+              <div className="view-mode-toggle">
+                <button
+                  className={`view-mode-btn ${projectsViewMode === 'list' ? 'active' : ''}`}
+                  onClick={() => setProjectsViewMode('list')}
+                  title="List View"
+                >
+                  ☰
+                </button>
+                <button
+                  className={`view-mode-btn ${projectsViewMode === 'board' ? 'active' : ''}`}
+                  onClick={() => setProjectsViewMode('board')}
+                  title="Board View"
+                >
+                  ⊞
+                </button>
+                <button
+                  className={`view-mode-btn ${projectsViewMode === 'gantt' ? 'active' : ''}`}
+                  onClick={() => setProjectsViewMode('gantt')}
+                  title="Timeline/Gantt"
+                >
+                  ▤
+                </button>
+              </div>
+            )}
             <div className="header-spacer"></div>
             <div className="user-menu-container">
               <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
@@ -5771,6 +5808,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </header>
 
+          {/* Projects Content - List, Board, or Gantt View */}
+          {projectsViewMode === 'gantt' && featureFlags.showGanttChart ? (
+            <GanttChart
+              teamId={teamId}
+              onClose={() => setProjectsViewMode('list')}
+              onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+            />
+          ) : (
           <div className="projects-content">
             {/* Create Project Modal */}
             {showCreateProject && (
@@ -5899,6 +5944,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
         </main>
       ) : activeView === 'insights' ? (
         <main className="main-content insights-view">
