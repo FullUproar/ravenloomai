@@ -1169,6 +1169,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     tasks: false,
     goals: false,
     projects: false,
+    team: false,
     knowledge: false,
     insights: false
   });
@@ -1194,11 +1195,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [generatingFocus, setGeneratingFocus] = useState(false);
   const [showMorningFocus, setShowMorningFocus] = useState(false);
 
-  // Team Settings state
+  // Settings modal state (combined Team + Personal)
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-
-  // User Settings state (workflow persona)
-  const [showUserSettingsModal, setShowUserSettingsModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('personal'); // 'personal' | 'team'
 
   // Private Raven chat state
   const [ravenChannel, setRavenChannel] = useState(null);
@@ -3053,10 +3052,64 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             )}
           </div>
 
-          {/* Knowledge - Expandable section containing Ask, Research, KB, Connections */}
+          {/* Team - Ask, Workload, Time Blocks, Milestones */}
+          <div className={`nav-section ${expandedSections.team ? 'expanded' : ''}`}>
+            <button
+              className={`nav-section-header ${activeView === 'ask' || activeView === 'workload' || activeView === 'timeblocks' || activeView === 'milestones' ? 'active' : ''}`}
+              onClick={() => toggleSection('team')}
+            >
+              <span className="nav-expand-icon">{expandedSections.team ? '▼' : '▶'}</span>
+              <span className="nav-icon">👥</span>
+              <span className="nav-label">Team</span>
+            </button>
+            {expandedSections.team && (
+              <div className="nav-items">
+                {/* Ask the Team */}
+                <button
+                  className={`nav-item ${activeView === 'ask' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('ask', 'ask')}
+                >
+                  <span className="nav-item-icon">🔍</span>
+                  <span className="nav-item-label">Ask the Team</span>
+                </button>
+                {/* Team Workload */}
+                {featureFlags.showWorkloadHistogram && (
+                  <button
+                    className={`nav-item ${activeView === 'workload' ? 'active' : ''}`}
+                    onClick={() => setActiveView('workload')}
+                  >
+                    <span className="nav-item-icon">📊</span>
+                    <span className="nav-item-label">Workload</span>
+                  </button>
+                )}
+                {/* Time Blocks */}
+                {featureFlags.showTimeBlocking && (
+                  <button
+                    className={`nav-item ${activeView === 'timeblocks' ? 'active' : ''}`}
+                    onClick={() => setActiveView('timeblocks')}
+                  >
+                    <span className="nav-item-icon">⏱️</span>
+                    <span className="nav-item-label">Time Blocks</span>
+                  </button>
+                )}
+                {/* Milestones */}
+                {featureFlags.showMilestones && (
+                  <button
+                    className={`nav-item ${activeView === 'milestones' ? 'active' : ''}`}
+                    onClick={() => setActiveView('milestones')}
+                  >
+                    <span className="nav-item-icon">🏁</span>
+                    <span className="nav-item-label">Milestones</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Knowledge - Research, KB, Connections */}
           <div className={`nav-section ${expandedSections.knowledge ? 'expanded' : ''}`}>
             <button
-              className={`nav-section-header ${activeView === 'ask' || activeView === 'learning' || activeView === 'knowledge' ? 'active' : ''}`}
+              className={`nav-section-header ${activeView === 'learning' || activeView === 'knowledge' ? 'active' : ''}`}
               onClick={() => toggleSection('knowledge')}
             >
               <span className="nav-expand-icon">{expandedSections.knowledge ? '▼' : '▶'}</span>
@@ -3068,14 +3121,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
             {expandedSections.knowledge && (
               <div className="nav-items">
-                {/* Ask the Team */}
-                <button
-                  className={`nav-item ${activeView === 'ask' ? 'active' : ''}`}
-                  onClick={() => handleSectionItemClick('ask', 'ask')}
-                >
-                  <span className="nav-item-icon">🔍</span>
-                  <span className="nav-item-label">Ask the Team</span>
-                </button>
                 {/* Research */}
                 <button
                   className={`nav-item ${activeView === 'learning' ? 'active' : ''}`}
@@ -3109,40 +3154,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
-
-          {/* PM Features - Team Workload, Time Blocks, Milestones (Eisenhower/Gantt are now in Tasks/Projects) */}
-          {(featureFlags.showWorkloadHistogram || featureFlags.showTimeBlocking || featureFlags.showMilestones) && (
-            <div className="nav-section nav-pm-section">
-              <div className="nav-pm-label">Team Tools</div>
-              {featureFlags.showWorkloadHistogram && (
-                <button
-                  className={`nav-item ${activeView === 'workload' ? 'active' : ''}`}
-                  onClick={() => setActiveView('workload')}
-                >
-                  <span className="nav-item-icon">👥</span>
-                  <span className="nav-item-label">Team Workload</span>
-                </button>
-              )}
-              {featureFlags.showTimeBlocking && (
-                <button
-                  className={`nav-item ${activeView === 'timeblocks' ? 'active' : ''}`}
-                  onClick={() => setActiveView('timeblocks')}
-                >
-                  <span className="nav-item-icon">⏱️</span>
-                  <span className="nav-item-label">Time Blocks</span>
-                </button>
-              )}
-              {featureFlags.showMilestones && (
-                <button
-                  className={`nav-item ${activeView === 'milestones' ? 'active' : ''}`}
-                  onClick={() => setActiveView('milestones')}
-                >
-                  <span className="nav-item-icon">🏁</span>
-                  <span className="nav-item-label">Milestones</span>
-                </button>
-              )}
-            </div>
-          )}
 
           {/* Alerts indicator */}
           {pendingAlerts.length > 0 && (
@@ -3185,29 +3196,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </div>
 
-          {/* Team Settings (admin only) */}
-          {isAdmin && (
-            <button
-              className="footer-settings-btn"
-              onClick={() => setShowSettingsModal(true)}
-              title="Team Settings"
-            >
-              <span className="footer-icon">⚙️</span>
-              <span className="footer-label">Team Settings</span>
-            </button>
-          )}
-
-          {/* My Settings - Workflow Persona */}
-          <button
-            className="footer-settings-btn"
-            onClick={() => setShowUserSettingsModal(true)}
-            title="My Settings"
-          >
-            <span className="footer-icon">👤</span>
-            <span className="footer-label">My Settings</span>
-          </button>
-
-          {/* User Info & Sign Out */}
+          {/* User Info with Settings */}
           <div className="footer-user">
             <div className="user-info">
               <span className="user-avatar">
@@ -3215,8 +3204,12 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </span>
               <span className="user-name">{user.displayName || user.email}</span>
             </div>
-            <button onClick={onSignOut} className="sign-out-btn" title="Sign out">
-              ↪
+            <button
+              className="user-settings-btn"
+              onClick={() => setShowSettingsModal(true)}
+              title="Settings"
+            >
+              ⚙️
             </button>
           </div>
         </div>
@@ -3425,150 +3418,156 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         </div>
       )}
 
-      {/* Team Settings Modal (admin only) */}
-      {showSettingsModal && teamSettings && (
+      {/* Settings Modal (Combined Personal + Team) */}
+      {showSettingsModal && (
         <div className="modal-overlay" onClick={() => setShowSettingsModal(false)}>
-          <div className="modal team-settings-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>⚙️ Team Settings</h3>
+              <h3>⚙️ Settings</h3>
               <button className="modal-close" onClick={() => setShowSettingsModal(false)}>×</button>
             </div>
 
-            <div className="modal-body">
-              <div className="settings-section">
-                <h4>Proactive AI Features</h4>
-              <p className="settings-description">
-                Control AI-powered productivity features for your team.
-              </p>
-
-              <div className="settings-toggles">
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={teamSettings.proactiveAI.enabled}
-                    onChange={(e) => {
-                      updateTeamSettingsMutation({
-                        variables: {
-                          teamId,
-                          input: { proactiveAI: { enabled: e.target.checked } }
-                        }
-                      });
-                    }}
-                  />
-                  <span className="toggle-label">
-                    <strong>Enable Proactive AI</strong>
-                    <span className="toggle-hint">Master toggle for all AI features</span>
-                  </span>
-                </label>
-
-                {teamSettings.proactiveAI.enabled && (
-                  <>
-                    <label className="toggle-row toggle-indent">
-                      <input
-                        type="checkbox"
-                        checked={teamSettings.proactiveAI.morningFocusEnabled}
-                        onChange={(e) => {
-                          updateTeamSettingsMutation({
-                            variables: {
-                              teamId,
-                              input: { proactiveAI: { morningFocusEnabled: e.target.checked } }
-                            }
-                          });
-                        }}
-                      />
-                      <span className="toggle-label">
-                        <strong>Morning Focus</strong>
-                        <span className="toggle-hint">AI-generated daily plans</span>
-                      </span>
-                    </label>
-
-                    <label className="toggle-row toggle-indent">
-                      <input
-                        type="checkbox"
-                        checked={teamSettings.proactiveAI.smartNudgesEnabled}
-                        onChange={(e) => {
-                          updateTeamSettingsMutation({
-                            variables: {
-                              teamId,
-                              input: { proactiveAI: { smartNudgesEnabled: e.target.checked } }
-                            }
-                          });
-                        }}
-                      />
-                      <span className="toggle-label">
-                        <strong>Smart Nudges</strong>
-                        <span className="toggle-hint">Reminders for overdue/stale tasks</span>
-                      </span>
-                    </label>
-
-                    <label className="toggle-row toggle-indent">
-                      <input
-                        type="checkbox"
-                        checked={teamSettings.proactiveAI.insightsEnabled}
-                        onChange={(e) => {
-                          updateTeamSettingsMutation({
-                            variables: {
-                              teamId,
-                              input: { proactiveAI: { insightsEnabled: e.target.checked } }
-                            }
-                          });
-                        }}
-                      />
-                      <span className="toggle-label">
-                        <strong>AI Insights</strong>
-                        <span className="toggle-hint">Productivity analytics and recommendations</span>
-                      </span>
-                    </label>
-
-                    <label className="toggle-row toggle-indent">
-                      <input
-                        type="checkbox"
-                        checked={teamSettings.proactiveAI.meetingPrepEnabled}
-                        onChange={(e) => {
-                          updateTeamSettingsMutation({
-                            variables: {
-                              teamId,
-                              input: { proactiveAI: { meetingPrepEnabled: e.target.checked } }
-                            }
-                          });
-                        }}
-                      />
-                      <span className="toggle-label">
-                        <strong>Meeting Prep</strong>
-                        <span className="toggle-hint">Auto-generated context before meetings</span>
-                      </span>
-                    </label>
-                  </>
-                )}
-              </div>
-            </div>
-
-            </div>{/* End modal-body */}
-
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowSettingsModal(false)}>
-                Close
+            {/* Settings Tabs */}
+            <div className="settings-tabs">
+              <button
+                className={`settings-tab ${settingsTab === 'personal' ? 'active' : ''}`}
+                onClick={() => setSettingsTab('personal')}
+              >
+                Personal
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* User Settings Modal (workflow persona) */}
-      {showUserSettingsModal && (
-        <div className="modal-overlay" onClick={() => setShowUserSettingsModal(false)}>
-          <div className="modal team-settings-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>👤 My Settings</h3>
-              <button className="modal-close" onClick={() => setShowUserSettingsModal(false)}>×</button>
+              {isAdmin && (
+                <button
+                  className={`settings-tab ${settingsTab === 'team' ? 'active' : ''}`}
+                  onClick={() => setSettingsTab('team')}
+                >
+                  Team
+                </button>
+              )}
             </div>
 
             <div className="modal-body">
-              <PersonaSelector onSelect={() => setShowUserSettingsModal(false)} />
+              {/* Personal Settings Tab */}
+              {settingsTab === 'personal' && (
+                <PersonaSelector />
+              )}
+
+              {/* Team Settings Tab (admin only) */}
+              {settingsTab === 'team' && isAdmin && teamSettings && (
+                <div className="settings-section">
+                  <h4>Proactive AI Features</h4>
+                  <p className="settings-description">
+                    Control AI-powered productivity features for your team.
+                  </p>
+
+                  <div className="settings-toggles">
+                    <label className="toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={teamSettings.proactiveAI.enabled}
+                        onChange={(e) => {
+                          updateTeamSettingsMutation({
+                            variables: {
+                              teamId,
+                              input: { proactiveAI: { enabled: e.target.checked } }
+                            }
+                          });
+                        }}
+                      />
+                      <span className="toggle-label">
+                        <strong>Enable Proactive AI</strong>
+                        <span className="toggle-hint">Master toggle for all AI features</span>
+                      </span>
+                    </label>
+
+                    {teamSettings.proactiveAI.enabled && (
+                      <>
+                        <label className="toggle-row toggle-indent">
+                          <input
+                            type="checkbox"
+                            checked={teamSettings.proactiveAI.morningFocusEnabled}
+                            onChange={(e) => {
+                              updateTeamSettingsMutation({
+                                variables: {
+                                  teamId,
+                                  input: { proactiveAI: { morningFocusEnabled: e.target.checked } }
+                                }
+                              });
+                            }}
+                          />
+                          <span className="toggle-label">
+                            <strong>Morning Focus</strong>
+                            <span className="toggle-hint">AI-generated daily plans</span>
+                          </span>
+                        </label>
+
+                        <label className="toggle-row toggle-indent">
+                          <input
+                            type="checkbox"
+                            checked={teamSettings.proactiveAI.smartNudgesEnabled}
+                            onChange={(e) => {
+                              updateTeamSettingsMutation({
+                                variables: {
+                                  teamId,
+                                  input: { proactiveAI: { smartNudgesEnabled: e.target.checked } }
+                                }
+                              });
+                            }}
+                          />
+                          <span className="toggle-label">
+                            <strong>Smart Nudges</strong>
+                            <span className="toggle-hint">Reminders for overdue/stale tasks</span>
+                          </span>
+                        </label>
+
+                        <label className="toggle-row toggle-indent">
+                          <input
+                            type="checkbox"
+                            checked={teamSettings.proactiveAI.insightsEnabled}
+                            onChange={(e) => {
+                              updateTeamSettingsMutation({
+                                variables: {
+                                  teamId,
+                                  input: { proactiveAI: { insightsEnabled: e.target.checked } }
+                                }
+                              });
+                            }}
+                          />
+                          <span className="toggle-label">
+                            <strong>AI Insights</strong>
+                            <span className="toggle-hint">Productivity analytics and recommendations</span>
+                          </span>
+                        </label>
+
+                        <label className="toggle-row toggle-indent">
+                          <input
+                            type="checkbox"
+                            checked={teamSettings.proactiveAI.meetingPrepEnabled}
+                            onChange={(e) => {
+                              updateTeamSettingsMutation({
+                                variables: {
+                                  teamId,
+                                  input: { proactiveAI: { meetingPrepEnabled: e.target.checked } }
+                                }
+                              });
+                            }}
+                          />
+                          <span className="toggle-label">
+                            <strong>Meeting Prep</strong>
+                            <span className="toggle-hint">Auto-generated context before meetings</span>
+                          </span>
+                        </label>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowUserSettingsModal(false)}>
+              <button className="btn-text" onClick={onSignOut}>
+                Sign Out
+              </button>
+              <button className="btn-secondary" onClick={() => setShowSettingsModal(false)}>
                 Close
               </button>
             </div>
