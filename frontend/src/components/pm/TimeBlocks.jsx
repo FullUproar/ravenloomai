@@ -9,7 +9,7 @@ import { gql, useQuery, useMutation } from '@apollo/client';
 import { useState } from 'react';
 
 const GET_MY_TIME_BLOCKS = gql`
-  query GetMyTimeBlocks($teamId: ID!, $startDate: String!, $endDate: String!) {
+  query GetMyTimeBlocks($teamId: ID!, $startDate: DateTime!, $endDate: DateTime!) {
     getMyTimeBlocks(teamId: $teamId, startDate: $startDate, endDate: $endDate) {
       id
       title
