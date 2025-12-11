@@ -3448,7 +3448,12 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <div className="modal-body">
               {/* Personal Settings Tab */}
               {settingsTab === 'personal' && (
-                <PersonaSelector />
+                <>
+                  <PersonaSelector compact />
+                  <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem' }}>
+                    <ProModeSettings />
+                  </div>
+                </>
               )}
 
               {/* Team Settings Tab (admin only) */}
