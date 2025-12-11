@@ -13,7 +13,8 @@ import {
   TimeBlocks,
   Milestones,
   GanttChart,
-  ProModeSettings
+  ProModeSettings,
+  PersonaSelector
 } from './components/pm';
 import './components/pm/PMStyles.css';
 
@@ -448,6 +449,7 @@ const GET_MY_FEATURE_FLAGS = gql`
       showMilestones
       showTimeBlocking
       showContexts
+      workflowPersona
     }
   }
 `;
@@ -1194,6 +1196,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   // Team Settings state
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // User Settings state (workflow persona)
+  const [showUserSettingsModal, setShowUserSettingsModal] = useState(false);
 
   // Private Raven chat state
   const [ravenChannel, setRavenChannel] = useState(null);
@@ -2774,7 +2779,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         </div>
 
         {/* Tree Navigation */}
-        <nav className="nav-tree">
+        <nav className={`nav-tree persona-${featureFlags.workflowPersona || 'contributor'}`}>
           {/* Private Raven Chat */}
           <div className="nav-section">
             <button
@@ -3192,6 +3197,16 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
           )}
 
+          {/* My Settings - Workflow Persona */}
+          <button
+            className="footer-settings-btn"
+            onClick={() => setShowUserSettingsModal(true)}
+            title="My Settings"
+          >
+            <span className="footer-icon">👤</span>
+            <span className="footer-label">My Settings</span>
+          </button>
+
           {/* User Info & Sign Out */}
           <div className="footer-user">
             <div className="user-info">
@@ -3419,8 +3434,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               <button className="modal-close" onClick={() => setShowSettingsModal(false)}>×</button>
             </div>
 
-            <div className="settings-section">
-              <h4>Proactive AI Features</h4>
+            <div className="modal-body">
+              <div className="settings-section">
+                <h4>Proactive AI Features</h4>
               <p className="settings-description">
                 Control AI-powered productivity features for your team.
               </p>
@@ -3527,17 +3543,32 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             </div>
 
-            {/* Pro Mode Settings - Personal Feature Flags */}
-            <div className="settings-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-              <h4>Pro Mode Features</h4>
-              <p className="settings-description">
-                Enable advanced project management views. These are personal settings for your account.
-              </p>
-              <ProModeSettings />
-            </div>
+            </div>{/* End modal-body */}
 
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowSettingsModal(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Settings Modal (workflow persona) */}
+      {showUserSettingsModal && (
+        <div className="modal-overlay" onClick={() => setShowUserSettingsModal(false)}>
+          <div className="modal team-settings-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>👤 My Settings</h3>
+              <button className="modal-close" onClick={() => setShowUserSettingsModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <PersonaSelector onSelect={() => setShowUserSettingsModal(false)} />
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowUserSettingsModal(false)}>
                 Close
               </button>
             </div>

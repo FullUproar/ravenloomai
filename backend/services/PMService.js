@@ -744,26 +744,27 @@ export async function updateMyFeatureFlags(userId, input) {
         show_time_blocking = COALESCE($10, show_time_blocking),
         show_contexts = COALESCE($11, show_contexts),
         preferred_productivity_method = COALESCE($12, preferred_productivity_method),
+        workflow_persona = COALESCE($13, workflow_persona),
         updated_at = NOW()
        WHERE user_id = $1
        RETURNING *`,
       [userId, input.showGanttChart, input.showTimeTracking, input.showDependenciesGraph,
        input.showResourceAllocation, input.showCriticalPath, input.showEisenhowerMatrix,
        input.showWorkloadHistogram, input.showMilestones, input.showTimeBlocking,
-       input.showContexts, input.preferredProductivityMethod]
+       input.showContexts, input.preferredProductivityMethod, input.workflowPersona]
     );
     return mapFeatureFlags(result.rows[0]);
   } else {
     const result = await db.query(
-      `INSERT INTO user_feature_flags (user_id, show_gantt_chart, show_time_tracking, show_dependencies_graph, show_resource_allocation, show_critical_path, show_eisenhower_matrix, show_workload_histogram, show_milestones, show_time_blocking, show_contexts, preferred_productivity_method)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO user_feature_flags (user_id, show_gantt_chart, show_time_tracking, show_dependencies_graph, show_resource_allocation, show_critical_path, show_eisenhower_matrix, show_workload_histogram, show_milestones, show_time_blocking, show_contexts, preferred_productivity_method, workflow_persona)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [userId, input.showGanttChart || false, input.showTimeTracking || false,
        input.showDependenciesGraph || false, input.showResourceAllocation || false,
        input.showCriticalPath || false, input.showEisenhowerMatrix || false,
        input.showWorkloadHistogram || false, input.showMilestones || false,
        input.showTimeBlocking || false, input.showContexts || false,
-       input.preferredProductivityMethod || 'gtd']
+       input.preferredProductivityMethod || 'gtd', input.workflowPersona || 'contributor']
     );
     return mapFeatureFlags(result.rows[0]);
   }
@@ -813,7 +814,8 @@ function mapFeatureFlags(row) {
     showMilestones: row.show_milestones,
     showTimeBlocking: row.show_time_blocking,
     showContexts: row.show_contexts,
-    preferredProductivityMethod: row.preferred_productivity_method
+    preferredProductivityMethod: row.preferred_productivity_method,
+    workflowPersona: row.workflow_persona || 'contributor'
   };
 }
 
@@ -831,8 +833,111 @@ function getDefaultFeatureFlags(userId) {
     showMilestones: false,
     showTimeBlocking: false,
     showContexts: false,
-    preferredProductivityMethod: 'gtd'
+    preferredProductivityMethod: 'gtd',
+    workflowPersona: 'contributor'
   };
+}
+
+// Persona-specific feature defaults
+const PERSONA_DEFAULTS = {
+  contributor: {
+    // Individual contributor - focus on personal productivity
+    showEisenhowerMatrix: true,
+    showTimeBlocking: true,
+    showContexts: true,
+    showWorkloadHistogram: false,
+    showGanttChart: false,
+    showMilestones: false,
+    showDependenciesGraph: false,
+    showResourceAllocation: false,
+    showCriticalPath: false,
+    preferredProductivityMethod: 'gtd'
+  },
+  team_lead: {
+    // Team lead - personal productivity + team coordination
+    showEisenhowerMatrix: true,
+    showTimeBlocking: true,
+    showContexts: true,
+    showWorkloadHistogram: true,
+    showGanttChart: false,
+    showMilestones: true,
+    showDependenciesGraph: false,
+    showResourceAllocation: true,
+    showCriticalPath: false,
+    preferredProductivityMethod: 'gtd'
+  },
+  project_manager: {
+    // Project manager - full PM toolkit
+    showEisenhowerMatrix: false,
+    showTimeBlocking: false,
+    showContexts: false,
+    showWorkloadHistogram: true,
+    showGanttChart: true,
+    showMilestones: true,
+    showDependenciesGraph: true,
+    showResourceAllocation: true,
+    showCriticalPath: true,
+    preferredProductivityMethod: 'time_blocking'
+  },
+  executive: {
+    // Executive - high-level oversight
+    showEisenhowerMatrix: false,
+    showTimeBlocking: false,
+    showContexts: false,
+    showWorkloadHistogram: true,
+    showGanttChart: false,
+    showMilestones: true,
+    showDependenciesGraph: false,
+    showResourceAllocation: false,
+    showCriticalPath: false,
+    preferredProductivityMethod: 'eisenhower'
+  }
+};
+
+export async function setWorkflowPersona(userId, persona) {
+  const validPersonas = ['contributor', 'team_lead', 'project_manager', 'executive'];
+  if (!validPersonas.includes(persona)) {
+    throw new Error(`Invalid persona: ${persona}. Must be one of: ${validPersonas.join(', ')}`);
+  }
+
+  const defaults = PERSONA_DEFAULTS[persona];
+  const existing = await db.query(`SELECT id FROM user_feature_flags WHERE user_id = $1`, [userId]);
+
+  if (existing.rows[0]) {
+    const result = await db.query(
+      `UPDATE user_feature_flags SET
+        workflow_persona = $2,
+        show_gantt_chart = $3,
+        show_eisenhower_matrix = $4,
+        show_workload_histogram = $5,
+        show_milestones = $6,
+        show_time_blocking = $7,
+        show_contexts = $8,
+        show_dependencies_graph = $9,
+        show_resource_allocation = $10,
+        show_critical_path = $11,
+        preferred_productivity_method = $12,
+        updated_at = NOW()
+       WHERE user_id = $1
+       RETURNING *`,
+      [userId, persona, defaults.showGanttChart, defaults.showEisenhowerMatrix,
+       defaults.showWorkloadHistogram, defaults.showMilestones, defaults.showTimeBlocking,
+       defaults.showContexts, defaults.showDependenciesGraph, defaults.showResourceAllocation,
+       defaults.showCriticalPath, defaults.preferredProductivityMethod]
+    );
+    return mapFeatureFlags(result.rows[0]);
+  } else {
+    const result = await db.query(
+      `INSERT INTO user_feature_flags (user_id, workflow_persona, show_gantt_chart, show_eisenhower_matrix, show_workload_histogram, show_milestones, show_time_blocking, show_contexts, show_dependencies_graph, show_resource_allocation, show_critical_path, preferred_productivity_method)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING *`,
+      [userId, persona, defaults.showGanttChart, defaults.showEisenhowerMatrix,
+       defaults.showWorkloadHistogram, defaults.showMilestones, defaults.showTimeBlocking,
+       defaults.showContexts, defaults.showDependenciesGraph, defaults.showResourceAllocation,
+       defaults.showCriticalPath, defaults.preferredProductivityMethod]
+    );
+    return mapFeatureFlags(result.rows[0]);
+  }
 }
 
 // ============================================================================

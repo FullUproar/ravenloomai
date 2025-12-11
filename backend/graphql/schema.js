@@ -1365,6 +1365,7 @@ export default gql`
     showTimeBlocking: Boolean!
     showContexts: Boolean!
     preferredProductivityMethod: String!
+    workflowPersona: String!
   }
 
   input UserFeatureFlagsInput {
@@ -1379,6 +1380,7 @@ export default gql`
     showTimeBlocking: Boolean
     showContexts: Boolean
     preferredProductivityMethod: String
+    workflowPersona: String
   }
 
   # Eisenhower Matrix
@@ -1832,6 +1834,7 @@ export default gql`
     updateMyFeatureFlags(input: UserFeatureFlagsInput!): UserFeatureFlags!
     enableProMode: UserFeatureFlags!
     disableProMode: UserFeatureFlags!
+    setWorkflowPersona(persona: String!): UserFeatureFlags!
 
     # Task Eisenhower Fields
     setTaskUrgency(taskId: ID!, isUrgent: Boolean!): Task!

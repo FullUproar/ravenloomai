@@ -241,6 +241,10 @@ export const pmMutationResolvers = {
     if (!userId) throw new Error('Not authenticated');
     return PMService.disableProMode(userId);
   },
+  setWorkflowPersona: async (_, { persona }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.setWorkflowPersona(userId, persona);
+  },
 
   // Task Eisenhower Fields
   setTaskUrgency: async (_, { taskId, isUrgent }, { userId }) => {

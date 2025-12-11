@@ -9,3 +9,4 @@ export { default as TimeBlocks } from './TimeBlocks.jsx';
 export { default as Milestones } from './Milestones.jsx';
 export { default as GanttChart } from './GanttChart.jsx';
 export { default as ProModeSettings } from './ProModeSettings.jsx';
+export { default as PersonaSelector } from './PersonaSelector.jsx';
