@@ -30,6 +30,7 @@ import * as CeremonyService from '../../services/CeremonyService.js';
 import * as ProactiveService from '../../services/ProactiveService.js';
 import * as MeetingPrepService from '../../services/MeetingPrepService.js';
 import * as RateLimiterService from '../../services/RateLimiterService.js';
+import { pmQueryResolvers, pmMutationResolvers, pmTypeResolvers } from './pmResolvers.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -40,6 +41,7 @@ const resolvers = {
   // ============================================================================
 
   Query: {
+    ...pmQueryResolvers,
     // User
     me: async (_, __, { userId }) => {
       if (!userId) return null;
@@ -571,6 +573,7 @@ const resolvers = {
   // ============================================================================
 
   Mutation: {
+    ...pmMutationResolvers,
     // User
     createOrUpdateUser: async (_, { email, displayName, avatarUrl }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
@@ -1375,7 +1378,8 @@ const resolvers = {
       if (!event.projectId) return null;
       return ProjectService.getProjectById(event.projectId);
     }
-  }
+  },
+  ...pmTypeResolvers
 };
 
 export default resolvers;

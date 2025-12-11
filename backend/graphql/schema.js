@@ -469,6 +469,7 @@ export default gql`
     name: String!
     description: String
     status: String!  # active, completed, archived
+    stage: String             # PM: concept, design, development, testing, launch, maintenance
     color: String
     dueDate: DateTime
     owner: User
@@ -512,6 +513,11 @@ export default gql`
     comments: [TaskComment!]!
     commentCount: Int!
     activity: [TaskActivity!]!
+    # PM Enhancement fields (modular)
+    context: String           # GTD context
+    isUrgent: Boolean         # Eisenhower matrix
+    importance: String        # low, normal, high, critical
+    isQuickTask: Boolean      # 2-minute rule flag
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -1102,8 +1108,332 @@ export default gql`
   }
 
   # ============================================================================
+# ============================================================================  # PROJECT MANAGEMENT ENHANCEMENTS (Modular - can be removed)  # ============================================================================
   # QUERIES
   # ============================================================================
+# ============================================================================
+  # PROJECT MANAGEMENT ENHANCEMENTS (Modular - can be removed)
+  # ============================================================================
+
+  # User Availability & Work Schedule
+  type UserAvailability {
+    id: ID!
+    userId: String!
+    teamId: ID!
+    timezone: String!
+    workDayStart: String!
+    workDayEnd: String!
+    workDays: [Int!]!
+    weeklyCapacityHours: Float!
+    proModeEnabled: Boolean!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  input UserAvailabilityInput {
+    timezone: String
+    workDayStart: String
+    workDayEnd: String
+    workDays: [Int!]
+    weeklyCapacityHours: Float
+    proModeEnabled: Boolean
+  }
+
+  # Time Off / Vacation
+  type TimeOff {
+    id: ID!
+    userId: String!
+    user: User
+    teamId: ID!
+    startDate: String!
+    endDate: String!
+    type: String!
+    description: String
+    isHalfDay: Boolean!
+    halfDayPeriod: String
+    status: String!
+    approvedBy: String
+    approvedByUser: User
+    createdAt: DateTime!
+  }
+
+  input CreateTimeOffInput {
+    startDate: String!
+    endDate: String!
+    type: String
+    description: String
+    isHalfDay: Boolean
+    halfDayPeriod: String
+  }
+
+  # GTD Contexts
+  type TaskContext {
+    id: ID!
+    teamId: ID!
+    name: String!
+    icon: String
+    color: String
+    sortOrder: Int!
+    isActive: Boolean!
+  }
+
+  input CreateTaskContextInput {
+    name: String!
+    icon: String
+    color: String
+  }
+
+  # Milestones
+  type Milestone {
+    id: ID!
+    teamId: ID!
+    projectId: ID
+    project: Project
+    name: String!
+    description: String
+    targetDate: String
+    completedAt: DateTime
+    status: String!
+    sortOrder: Int!
+    goalId: ID
+    goal: Goal
+    createdBy: String
+    createdByUser: User
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  input CreateMilestoneInput {
+    projectId: ID
+    name: String!
+    description: String
+    targetDate: String
+    goalId: ID
+  }
+
+  input UpdateMilestoneInput {
+    name: String
+    description: String
+    targetDate: String
+    status: String
+    goalId: ID
+  }
+
+  # Project Templates
+  type ProjectTemplate {
+    id: ID!
+    teamId: ID!
+    name: String!
+    description: String
+    templateData: JSON!
+    industryType: String
+    isActive: Boolean!
+    createdBy: String
+    createdByUser: User
+    createdAt: DateTime!
+  }
+
+  input CreateProjectTemplateInput {
+    name: String!
+    description: String
+    templateData: JSON
+    industryType: String
+  }
+
+  # Time Blocks
+  type TimeBlock {
+    id: ID!
+    userId: String!
+    user: User
+    teamId: ID!
+    taskId: ID
+    task: Task
+    title: String
+    startTime: DateTime!
+    endTime: DateTime!
+    status: String!
+    calendarEventId: ID
+    googleEventId: String
+    actualStart: DateTime
+    actualEnd: DateTime
+    focusScore: Int
+    notes: String
+    createdAt: DateTime!
+  }
+
+  input CreateTimeBlockInput {
+    taskId: ID
+    title: String
+    startTime: DateTime!
+    endTime: DateTime!
+  }
+
+  input UpdateTimeBlockInput {
+    title: String
+    startTime: DateTime
+    endTime: DateTime
+    status: String
+    focusScore: Int
+    notes: String
+  }
+
+  # Team Workload
+  type UserWorkload {
+    userId: String!
+    user: User
+    displayName: String
+    teamId: ID
+    openTasks: Int!
+    overdueTasks: Int!
+    dueThisWeek: Int!
+    totalEstimatedHours: Float!
+    weeklyCapacity: Float!
+    utilizationPercent: Float!
+    isOverallocated: Boolean!
+  }
+
+  type TeamWorkloadSummary {
+    teamId: ID!
+    totalOpenTasks: Int!
+    totalOverdueTasks: Int!
+    averageUtilization: Float!
+    overallocatedMembers: [UserWorkload!]!
+    underallocatedMembers: [UserWorkload!]!
+    members: [UserWorkload!]!
+  }
+
+  # Meeting Preferences
+  type MeetingPreferences {
+    id: ID!
+    userId: String!
+    preferredMeetingStart: String!
+    preferredMeetingEnd: String!
+    bufferBefore: Int!
+    bufferAfter: Int!
+    maxMeetingsPerDay: Int!
+    noMeetingDays: [Int!]!
+    protectedFocusStart: String
+    protectedFocusEnd: String
+  }
+
+  input MeetingPreferencesInput {
+    preferredMeetingStart: String
+    preferredMeetingEnd: String
+    bufferBefore: Int
+    bufferAfter: Int
+    maxMeetingsPerDay: Int
+    noMeetingDays: [Int!]
+    protectedFocusStart: String
+    protectedFocusEnd: String
+  }
+
+  # Smart Scheduling
+  type SchedulingSuggestion {
+    startTime: DateTime!
+    endTime: DateTime!
+    score: Float!
+    conflicts: [String!]
+    attendeesAvailable: [String!]!
+  }
+
+  type SchedulingResult {
+    suggestions: [SchedulingSuggestion!]!
+    unavailableUsers: [String!]!
+    message: String
+  }
+
+  input ScheduleMeetingInput {
+    attendeeIds: [String!]!
+    durationMinutes: Int!
+    preferredDateStart: DateTime
+    preferredDateEnd: DateTime
+    title: String
+  }
+
+  # User Feature Flags (Pro Mode)
+  type UserFeatureFlags {
+    id: ID!
+    userId: String!
+    showGanttChart: Boolean!
+    showTimeTracking: Boolean!
+    showDependenciesGraph: Boolean!
+    showResourceAllocation: Boolean!
+    showCriticalPath: Boolean!
+    showEisenhowerMatrix: Boolean!
+    showWorkloadHistogram: Boolean!
+    showMilestones: Boolean!
+    showTimeBlocking: Boolean!
+    showContexts: Boolean!
+    preferredProductivityMethod: String!
+  }
+
+  input UserFeatureFlagsInput {
+    showGanttChart: Boolean
+    showTimeTracking: Boolean
+    showDependenciesGraph: Boolean
+    showResourceAllocation: Boolean
+    showCriticalPath: Boolean
+    showEisenhowerMatrix: Boolean
+    showWorkloadHistogram: Boolean
+    showMilestones: Boolean
+    showTimeBlocking: Boolean
+    showContexts: Boolean
+    preferredProductivityMethod: String
+  }
+
+  # Eisenhower Matrix
+  type EisenhowerMatrix {
+    doNow: [Task!]!
+    schedule: [Task!]!
+    delegate: [Task!]!
+    eliminate: [Task!]!
+  }
+
+  # Gantt Chart Data
+  type GanttTask {
+    id: ID!
+    title: String!
+    startDate: DateTime
+    endDate: DateTime
+    progress: Float!
+    dependencies: [GanttDependency!]!
+    assignee: User
+    isCriticalPath: Boolean!
+    isMilestone: Boolean!
+    color: String
+  }
+
+  type GanttDependency {
+    fromTaskId: ID!
+    toTaskId: ID!
+    type: String!
+  }
+
+  type GanttData {
+    tasks: [GanttTask!]!
+    milestones: [Milestone!]!
+    criticalPath: [ID!]!
+    projectStart: DateTime
+    projectEnd: DateTime
+  }
+
+  # Workload Histogram
+  type WorkloadHistogramEntry {
+    date: String!
+    userId: String!
+    userName: String!
+    scheduledHours: Float!
+    capacityHours: Float!
+    utilizationPercent: Float!
+  }
+
+  type WorkloadHistogram {
+    entries: [WorkloadHistogramEntry!]!
+    startDate: String!
+    endDate: String!
+    teamId: ID!
+  }
+
 
   type Query {
     # User
@@ -1245,6 +1575,54 @@ export default gql`
     # Team Settings (admin only)
     getTeamSettings(teamId: ID!): TeamSettings!
     getAIUsageStats(teamId: ID!, period: String): AIUsageStats
+
+    # ============================================================================
+    # PROJECT MANAGEMENT QUERIES (Modular - can be removed)
+    # ============================================================================
+
+    # User Availability
+    getMyAvailability(teamId: ID!): UserAvailability
+    getTeamAvailability(teamId: ID!): [UserAvailability!]!
+
+    # Time Off
+    getMyTimeOff(teamId: ID!): [TimeOff!]!
+    getTeamTimeOff(teamId: ID!, startDate: String, endDate: String): [TimeOff!]!
+
+    # GTD Contexts
+    getTaskContexts(teamId: ID!): [TaskContext!]!
+
+    # Milestones
+    getMilestones(teamId: ID!, projectId: ID): [Milestone!]!
+    getMilestone(milestoneId: ID!): Milestone
+
+    # Project Templates
+    getProjectTemplates(teamId: ID!): [ProjectTemplate!]!
+    getProjectTemplate(templateId: ID!): ProjectTemplate
+
+    # Time Blocks
+    getMyTimeBlocks(teamId: ID!, startDate: DateTime, endDate: DateTime): [TimeBlock!]!
+
+    # Team Workload & Resource Allocation
+    getTeamWorkload(teamId: ID!): TeamWorkloadSummary!
+    getUserWorkload(teamId: ID!, userId: String!): UserWorkload
+
+    # Meeting Preferences
+    getMyMeetingPreferences: MeetingPreferences
+
+    # Smart Scheduling
+    findMeetingTimes(teamId: ID!, input: ScheduleMeetingInput!): SchedulingResult!
+
+    # Feature Flags (Pro Mode)
+    getMyFeatureFlags: UserFeatureFlags
+
+    # Eisenhower Matrix
+    getEisenhowerMatrix(teamId: ID!): EisenhowerMatrix!
+
+    # Gantt Chart
+    getGanttData(teamId: ID!, projectId: ID): GanttData!
+
+    # Workload Histogram
+    getWorkloadHistogram(teamId: ID!, startDate: String!, endDate: String!): WorkloadHistogram!
   }
 
   # ============================================================================
@@ -1404,5 +1782,62 @@ export default gql`
 
     # Generate Nudges
     generateNudges(teamId: ID!): [ProactiveNudge!]!
+
+    # ============================================================================
+    # PROJECT MANAGEMENT MUTATIONS (Modular - can be removed)
+    # ============================================================================
+
+    # User Availability
+    updateMyAvailability(teamId: ID!, input: UserAvailabilityInput!): UserAvailability!
+
+    # Time Off
+    createTimeOff(teamId: ID!, input: CreateTimeOffInput!): TimeOff!
+    updateTimeOff(timeOffId: ID!, input: CreateTimeOffInput!): TimeOff!
+    deleteTimeOff(timeOffId: ID!): Boolean!
+    approveTimeOff(timeOffId: ID!): TimeOff!
+    rejectTimeOff(timeOffId: ID!, reason: String): TimeOff!
+
+    # GTD Contexts
+    createTaskContext(teamId: ID!, input: CreateTaskContextInput!): TaskContext!
+    updateTaskContext(contextId: ID!, input: CreateTaskContextInput!): TaskContext!
+    deleteTaskContext(contextId: ID!): Boolean!
+    setTaskContext(taskId: ID!, context: String): Task!
+
+    # Milestones
+    createMilestone(teamId: ID!, input: CreateMilestoneInput!): Milestone!
+    updateMilestone(milestoneId: ID!, input: UpdateMilestoneInput!): Milestone!
+    completeMilestone(milestoneId: ID!): Milestone!
+    deleteMilestone(milestoneId: ID!): Boolean!
+
+    # Project Templates
+    createProjectTemplate(teamId: ID!, input: CreateProjectTemplateInput!): ProjectTemplate!
+    updateProjectTemplate(templateId: ID!, input: CreateProjectTemplateInput!): ProjectTemplate!
+    deleteProjectTemplate(templateId: ID!): Boolean!
+    createProjectFromTemplate(teamId: ID!, templateId: ID!, name: String!): Project!
+
+    # Project Stage
+    updateProjectStage(projectId: ID!, stage: String!): Project!
+
+    # Time Blocks
+    createTimeBlock(teamId: ID!, input: CreateTimeBlockInput!): TimeBlock!
+    updateTimeBlock(blockId: ID!, input: UpdateTimeBlockInput!): TimeBlock!
+    deleteTimeBlock(blockId: ID!): Boolean!
+    startTimeBlock(blockId: ID!): TimeBlock!
+    completeTimeBlock(blockId: ID!, focusScore: Int, notes: String): TimeBlock!
+
+    # Meeting Preferences
+    updateMyMeetingPreferences(input: MeetingPreferencesInput!): MeetingPreferences!
+
+    # Feature Flags (Pro Mode)
+    updateMyFeatureFlags(input: UserFeatureFlagsInput!): UserFeatureFlags!
+    enableProMode: UserFeatureFlags!
+    disableProMode: UserFeatureFlags!
+
+    # Task Eisenhower Fields
+    setTaskUrgency(taskId: ID!, isUrgent: Boolean!): Task!
+    setTaskImportance(taskId: ID!, importance: String!): Task!
+
+    # Quick Task (2-minute rule)
+    markAsQuickTask(taskId: ID!, isQuick: Boolean!): Task!
   }
 `;
