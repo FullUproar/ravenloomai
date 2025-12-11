@@ -14,7 +14,6 @@ const GET_TEAM_WORKLOAD = gql`
       totalOpenTasks
       totalOverdueTasks
       averageUtilization
-      overallocatedMembers
       members {
         userId
         displayName
@@ -122,8 +121,8 @@ function TeamWorkload({ teamId, onClose }) {
           <div className="summary-label">Avg Utilization</div>
         </div>
         <div className="summary-card">
-          <div className={`summary-value ${workload?.overallocatedMembers > 0 ? 'warning' : 'success'}`}>
-            {workload?.overallocatedMembers || 0}
+          <div className={`summary-value ${(workload?.members?.filter(m => m.isOverallocated).length || 0) > 0 ? 'warning' : 'success'}`}>
+            {workload?.members?.filter(m => m.isOverallocated).length || 0}
           </div>
           <div className="summary-label">Overallocated</div>
         </div>
