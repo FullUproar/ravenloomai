@@ -6,6 +6,17 @@ import CalendarView from './CalendarView';
 import { useToast } from './Toast.jsx';
 import AdminDashboard from './pages/AdminDashboard';
 
+// PM Components (modular - can be removed by deleting this import and the components folder)
+import {
+  TeamWorkload,
+  EisenhowerMatrix,
+  TimeBlocks,
+  Milestones,
+  GanttChart,
+  ProModeSettings
+} from './components/pm';
+import './components/pm/PMStyles.css';
+
 // API base URL - uses /api prefix in production, localhost in development
 const API_BASE_URL = import.meta.env.PROD
   ? '/api'
@@ -424,6 +435,20 @@ const REJECT_QUESTION = gql`
 const AM_I_SITE_ADMIN = gql`
   query AmISiteAdmin {
     amISiteAdmin
+  }
+`;
+
+// PM Feature Flags (Pro Mode)
+const GET_MY_FEATURE_FLAGS = gql`
+  query GetMyFeatureFlags {
+    getMyFeatureFlags {
+      showGanttChart
+      showEisenhowerMatrix
+      showWorkloadHistogram
+      showMilestones
+      showTimeBlocking
+      showContexts
+    }
   }
 `;
 
@@ -999,7 +1024,12 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
   // Determine initial view from URL or default to 'chat'
   const getInitialView = () => {
+    // Standard views
     if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects' || initialView === 'knowledge' || initialView === 'calendar' || initialView === 'raven') {
+      return initialView;
+    }
+    // PM views (Pro Mode)
+    if (initialView === 'workload' || initialView === 'eisenhower' || initialView === 'timeblocks' || initialView === 'milestones' || initialView === 'gantt') {
       return initialView;
     }
     if (initialView === 'channel' || initialView === 'chat') {
@@ -1335,6 +1365,12 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [createSiteInvite] = useMutation(CREATE_SITE_INVITE);
   const [revokeSiteInvite] = useMutation(REVOKE_SITE_INVITE);
   const siteInvites = siteInvitesData?.getSiteInvites || [];
+
+  // PM Feature Flags (Pro Mode) hooks
+  const { data: featureFlagsData } = useQuery(GET_MY_FEATURE_FLAGS);
+  const featureFlags = featureFlagsData?.getMyFeatureFlags || {};
+  const isProModeEnabled = featureFlags.showGanttChart || featureFlags.showEisenhowerMatrix ||
+    featureFlags.showWorkloadHistogram || featureFlags.showMilestones || featureFlags.showTimeBlocking;
 
   // Google Drive hooks
   const { data: integrationsData, refetch: refetchIntegrations } = useQuery(GET_MY_INTEGRATIONS);
@@ -3039,6 +3075,58 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             )}
           </div>
 
+          {/* PM Features (Pro Mode) - Only show if any PM feature is enabled */}
+          {isProModeEnabled && (
+            <div className="nav-section nav-pm-section">
+              <div className="nav-pm-label">Pro Mode</div>
+              {featureFlags.showWorkloadHistogram && (
+                <button
+                  className={`nav-item ${activeView === 'workload' ? 'active' : ''}`}
+                  onClick={() => setActiveView('workload')}
+                >
+                  <span className="nav-item-icon">👥</span>
+                  <span className="nav-item-label">Team Workload</span>
+                </button>
+              )}
+              {featureFlags.showEisenhowerMatrix && (
+                <button
+                  className={`nav-item ${activeView === 'eisenhower' ? 'active' : ''}`}
+                  onClick={() => setActiveView('eisenhower')}
+                >
+                  <span className="nav-item-icon">⚡</span>
+                  <span className="nav-item-label">Eisenhower Matrix</span>
+                </button>
+              )}
+              {featureFlags.showGanttChart && (
+                <button
+                  className={`nav-item ${activeView === 'gantt' ? 'active' : ''}`}
+                  onClick={() => setActiveView('gantt')}
+                >
+                  <span className="nav-item-icon">📊</span>
+                  <span className="nav-item-label">Gantt Chart</span>
+                </button>
+              )}
+              {featureFlags.showTimeBlocking && (
+                <button
+                  className={`nav-item ${activeView === 'timeblocks' ? 'active' : ''}`}
+                  onClick={() => setActiveView('timeblocks')}
+                >
+                  <span className="nav-item-icon">📅</span>
+                  <span className="nav-item-label">Time Blocks</span>
+                </button>
+              )}
+              {featureFlags.showMilestones && (
+                <button
+                  className={`nav-item ${activeView === 'milestones' ? 'active' : ''}`}
+                  onClick={() => setActiveView('milestones')}
+                >
+                  <span className="nav-item-icon">🏁</span>
+                  <span className="nav-item-label">Milestones</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Alerts indicator */}
           {pendingAlerts.length > 0 && (
             <div className="nav-alerts">
@@ -3425,6 +3513,15 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   </>
                 )}
               </div>
+            </div>
+
+            {/* Pro Mode Settings - Personal Feature Flags */}
+            <div className="settings-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+              <h4>Pro Mode Features</h4>
+              <p className="settings-description">
+                Enable advanced project management views. These are personal settings for your account.
+              </p>
+              <ProModeSettings />
             </div>
 
             <div className="modal-footer">
@@ -5896,6 +5993,33 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </div>
         </main>
+      ) : activeView === 'workload' ? (
+        <TeamWorkload
+          teamId={teamId}
+          onClose={() => setSidebarOpen(true)}
+        />
+      ) : activeView === 'eisenhower' ? (
+        <EisenhowerMatrix
+          teamId={teamId}
+          onClose={() => setSidebarOpen(true)}
+          onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+        />
+      ) : activeView === 'gantt' ? (
+        <GanttChart
+          teamId={teamId}
+          onClose={() => setSidebarOpen(true)}
+          onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+        />
+      ) : activeView === 'timeblocks' ? (
+        <TimeBlocks
+          teamId={teamId}
+          onClose={() => setSidebarOpen(true)}
+        />
+      ) : activeView === 'milestones' ? (
+        <Milestones
+          teamId={teamId}
+          onClose={() => setSidebarOpen(true)}
+        />
       ) : null}
 
       {/* Task Detail Panel (Slide-over) */}
