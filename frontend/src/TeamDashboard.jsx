@@ -689,7 +689,10 @@ const GET_MY_NUDGES = gql`
       priority
       relatedTaskId
       relatedEventId
-      suggestedActions
+      suggestedActions {
+        action
+        label
+      }
       createdAt
     }
   }
@@ -700,7 +703,19 @@ const GET_MORNING_FOCUS = gql`
     getMorningFocus(teamId: $teamId) {
       id
       status
-      aiPlan
+      aiPlan {
+        greeting
+        topPriority
+        scheduledBlocks {
+          time
+          activity
+          duration
+          type
+        }
+        tasksToComplete
+        warnings
+        tip
+      }
       aiSummary
       createdAt
     }
@@ -712,7 +727,20 @@ const GENERATE_MORNING_FOCUS = gql`
     generateMorningFocus(teamId: $teamId) {
       id
       status
-      aiPlan
+      aiPlan {
+        greeting
+        topPriority
+        scheduledBlocks {
+          time
+          activity
+          duration
+          type
+        }
+        tasksToComplete
+        warnings
+        tip
+      }
+      aiSummary
       tasks {
         id
         title
