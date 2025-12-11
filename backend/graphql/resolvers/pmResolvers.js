@@ -107,6 +107,12 @@ export const pmQueryResolvers = {
     if (!userId) throw new Error('Not authenticated');
     return PMService.getWorkloadHistogram(teamId, startDate, endDate);
   },
+
+  // Work Breakdown Structure
+  getWBSData: async (_, { projectId }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.getWBSData(projectId);
+  },
 };
 
 export const pmMutationResolvers = {
@@ -260,6 +266,16 @@ export const pmMutationResolvers = {
   markAsQuickTask: async (_, { taskId, isQuick }, { userId }) => {
     if (!userId) throw new Error('Not authenticated');
     return PMService.markAsQuickTask(taskId, isQuick);
+  },
+
+  // Work Breakdown Structure
+  createWBSTask: async (_, { projectId, teamId, input }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.createWBSTask(projectId, input.parentTaskId, input, userId, teamId);
+  },
+  updateWBSTask: async (_, { taskId, input }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.updateWBSTask(taskId, input);
   },
 };
 

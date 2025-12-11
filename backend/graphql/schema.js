@@ -1365,6 +1365,7 @@ export default gql`
     showMilestones: Boolean!
     showTimeBlocking: Boolean!
     showContexts: Boolean!
+    showWBS: Boolean!
     preferredProductivityMethod: String!
     workflowPersona: String!
   }
@@ -1381,6 +1382,7 @@ export default gql`
     showMilestones: Boolean
     showTimeBlocking: Boolean
     showContexts: Boolean
+    showWBS: Boolean
     preferredProductivityMethod: String
     workflowPersona: String
   }
@@ -1438,6 +1440,30 @@ export default gql`
     teamId: ID!
   }
 
+  # Work Breakdown Structure (WBS)
+  type WBSNode {
+    id: ID!
+    title: String
+    name: String
+    description: String
+    type: String!
+    status: String
+    estimatedHours: Float!
+    actualHours: Float!
+    rollupEstimatedHours: Float!
+    rollupActualHours: Float!
+    completionPercent: Int!
+    assignedTo: String
+    parentId: ID
+    children: [WBSNode!]!
+  }
+
+  input WBSTaskInput {
+    title: String!
+    description: String
+    estimatedHours: Float
+    parentTaskId: ID
+  }
 
   type Query {
     # User
@@ -1627,6 +1653,9 @@ export default gql`
 
     # Workload Histogram
     getWorkloadHistogram(teamId: ID!, startDate: String!, endDate: String!): WorkloadHistogram!
+
+    # Work Breakdown Structure
+    getWBSData(projectId: ID!): WBSNode!
   }
 
   # ============================================================================
@@ -1844,5 +1873,9 @@ export default gql`
 
     # Quick Task (2-minute rule)
     markAsQuickTask(taskId: ID!, isQuick: Boolean!): Task!
+
+    # Work Breakdown Structure
+    createWBSTask(projectId: ID!, teamId: ID!, input: WBSTaskInput!): Task!
+    updateWBSTask(taskId: ID!, input: WBSTaskInput!): Task!
   }
 `;

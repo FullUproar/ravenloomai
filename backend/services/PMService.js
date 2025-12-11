@@ -809,6 +809,7 @@ function mapFeatureFlags(row) {
     showMilestones: row.show_milestones,
     showTimeBlocking: row.show_time_blocking,
     showContexts: row.show_contexts,
+    showWBS: row.show_wbs || false,
     preferredProductivityMethod: row.preferred_productivity_method,
     workflowPersona: row.workflow_persona || 'contributor'
   };
@@ -829,6 +830,7 @@ function getDefaultFeatureFlags(userId) {
     showMilestones: false,
     showTimeBlocking: false,
     showContexts: false,
+    showWBS: false,
     preferredProductivityMethod: 'gtd',
     workflowPersona: 'contributor'
   };
@@ -847,6 +849,7 @@ const PERSONA_DEFAULTS = {
     showDependenciesGraph: false,
     showResourceAllocation: false,
     showCriticalPath: false,
+    showWBS: false,
     preferredProductivityMethod: 'gtd'
   },
   team_lead: {
@@ -860,6 +863,7 @@ const PERSONA_DEFAULTS = {
     showDependenciesGraph: false,
     showResourceAllocation: true,
     showCriticalPath: false,
+    showWBS: false,
     preferredProductivityMethod: 'gtd'
   },
   project_manager: {
@@ -873,6 +877,7 @@ const PERSONA_DEFAULTS = {
     showDependenciesGraph: true,
     showResourceAllocation: true,
     showCriticalPath: true,
+    showWBS: true,
     preferredProductivityMethod: 'time_blocking'
   },
   executive: {
@@ -886,6 +891,7 @@ const PERSONA_DEFAULTS = {
     showDependenciesGraph: false,
     showResourceAllocation: false,
     showCriticalPath: false,
+    showWBS: false,
     preferredProductivityMethod: 'eisenhower'
   }
 };
@@ -912,25 +918,26 @@ export async function setWorkflowPersona(userId, persona) {
         show_dependencies_graph = $9,
         show_resource_allocation = $10,
         show_critical_path = $11,
-        preferred_productivity_method = $12,
+        show_wbs = $12,
+        preferred_productivity_method = $13,
         updated_at = NOW()
        WHERE user_id = $1
        RETURNING *`,
       [userId, persona, defaults.showGanttChart, defaults.showEisenhowerMatrix,
        defaults.showWorkloadHistogram, defaults.showMilestones, defaults.showTimeBlocking,
        defaults.showContexts, defaults.showDependenciesGraph, defaults.showResourceAllocation,
-       defaults.showCriticalPath, defaults.preferredProductivityMethod]
+       defaults.showCriticalPath, defaults.showWBS, defaults.preferredProductivityMethod]
     );
     return mapFeatureFlags(result.rows[0]);
   } else {
     const result = await db.query(
-      `INSERT INTO user_feature_flags (user_id, workflow_persona, show_gantt_chart, show_eisenhower_matrix, show_workload_histogram, show_milestones, show_time_blocking, show_contexts, show_dependencies_graph, show_resource_allocation, show_critical_path, preferred_productivity_method)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO user_feature_flags (user_id, workflow_persona, show_gantt_chart, show_eisenhower_matrix, show_workload_histogram, show_milestones, show_time_blocking, show_contexts, show_dependencies_graph, show_resource_allocation, show_critical_path, show_wbs, preferred_productivity_method)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [userId, persona, defaults.showGanttChart, defaults.showEisenhowerMatrix,
        defaults.showWorkloadHistogram, defaults.showMilestones, defaults.showTimeBlocking,
        defaults.showContexts, defaults.showDependenciesGraph, defaults.showResourceAllocation,
-       defaults.showCriticalPath, defaults.preferredProductivityMethod]
+       defaults.showCriticalPath, defaults.showWBS, defaults.preferredProductivityMethod]
     );
     return mapFeatureFlags(result.rows[0]);
   }
@@ -1161,5 +1168,186 @@ export async function updateProjectStage(projectId, stage) {
     `UPDATE projects SET stage = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
     [projectId, stage]
   );
+  return result.rows[0];
+}
+
+// ============================================================================
+// WORK BREAKDOWN STRUCTURE (WBS)
+// ============================================================================
+
+export async function getWBSData(projectId) {
+  // Get project info
+  const projectResult = await db.query(
+    `SELECT id, name, description FROM projects WHERE id = $1`,
+    [projectId]
+  );
+
+  if (!projectResult.rows[0]) {
+    throw new Error('Project not found');
+  }
+
+  const project = projectResult.rows[0];
+
+  // Get all tasks for this project with parent relationship
+  const tasksResult = await db.query(
+    `SELECT id, title, description, status, estimated_hours, actual_hours,
+            parent_task_id, assigned_to, sort_order
+     FROM tasks
+     WHERE project_id = $1
+     ORDER BY sort_order, created_at`,
+    [projectId]
+  );
+
+  const tasks = tasksResult.rows;
+
+  // Build the tree structure with effort rollup
+  const wbsTree = buildWBSTree(project, tasks);
+
+  return wbsTree;
+}
+
+function buildWBSTree(project, tasks) {
+  // Create a map of task ID to task node
+  const taskMap = new Map();
+  tasks.forEach(task => {
+    taskMap.set(task.id, {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      estimatedHours: task.estimated_hours ? parseFloat(task.estimated_hours) : 0,
+      actualHours: task.actual_hours ? parseFloat(task.actual_hours) : 0,
+      assignedTo: task.assigned_to,
+      parentId: task.parent_task_id,
+      children: [],
+      // Will be calculated
+      rollupEstimatedHours: 0,
+      rollupActualHours: 0,
+      completionPercent: 0
+    });
+  });
+
+  // Build parent-child relationships
+  const rootTasks = [];
+  taskMap.forEach(task => {
+    if (task.parentId && taskMap.has(task.parentId)) {
+      taskMap.get(task.parentId).children.push(task);
+    } else {
+      rootTasks.push(task);
+    }
+  });
+
+  // Calculate rollup values (bottom-up)
+  function calculateRollup(node) {
+    if (node.children.length === 0) {
+      // Leaf node - use its own values
+      node.rollupEstimatedHours = node.estimatedHours;
+      node.rollupActualHours = node.actualHours;
+      node.completionPercent = node.status === 'done' ? 100 : 0;
+      return;
+    }
+
+    // Has children - sum up from children
+    let totalEstimated = 0;
+    let totalActual = 0;
+    let completedCount = 0;
+
+    node.children.forEach(child => {
+      calculateRollup(child);
+      totalEstimated += child.rollupEstimatedHours;
+      totalActual += child.rollupActualHours;
+      if (child.status === 'done' || child.completionPercent === 100) {
+        completedCount++;
+      }
+    });
+
+    node.rollupEstimatedHours = totalEstimated;
+    node.rollupActualHours = totalActual;
+    node.completionPercent = node.children.length > 0
+      ? Math.round((completedCount / node.children.length) * 100)
+      : 0;
+  }
+
+  // Calculate rollup for all root tasks
+  rootTasks.forEach(task => calculateRollup(task));
+
+  // Calculate project totals
+  let projectEstimatedHours = 0;
+  let projectActualHours = 0;
+  let projectCompletedTasks = 0;
+
+  rootTasks.forEach(task => {
+    projectEstimatedHours += task.rollupEstimatedHours;
+    projectActualHours += task.rollupActualHours;
+    if (task.completionPercent === 100) {
+      projectCompletedTasks++;
+    }
+  });
+
+  return {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    type: 'project',
+    rollupEstimatedHours: projectEstimatedHours,
+    rollupActualHours: projectActualHours,
+    completionPercent: rootTasks.length > 0
+      ? Math.round((projectCompletedTasks / rootTasks.length) * 100)
+      : 0,
+    children: rootTasks
+  };
+}
+
+export async function createWBSTask(projectId, parentTaskId, input, userId, teamId) {
+  const result = await db.query(
+    `INSERT INTO tasks (
+      team_id, project_id, parent_task_id, title, description,
+      estimated_hours, status, created_by, sort_order
+    ) VALUES ($1, $2, $3, $4, $5, $6, 'todo', $7,
+      (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE project_id = $2 AND parent_task_id IS NOT DISTINCT FROM $3)
+    )
+    RETURNING *`,
+    [teamId, projectId, parentTaskId, input.title, input.description,
+     input.estimatedHours, userId]
+  );
+
+  return result.rows[0];
+}
+
+export async function updateWBSTask(taskId, input) {
+  const updates = [];
+  const values = [taskId];
+  let paramCount = 1;
+
+  if (input.title !== undefined) {
+    paramCount++;
+    updates.push(`title = $${paramCount}`);
+    values.push(input.title);
+  }
+  if (input.description !== undefined) {
+    paramCount++;
+    updates.push(`description = $${paramCount}`);
+    values.push(input.description);
+  }
+  if (input.estimatedHours !== undefined) {
+    paramCount++;
+    updates.push(`estimated_hours = $${paramCount}`);
+    values.push(input.estimatedHours);
+  }
+  if (input.parentTaskId !== undefined) {
+    paramCount++;
+    updates.push(`parent_task_id = $${paramCount}`);
+    values.push(input.parentTaskId);
+  }
+
+  if (updates.length === 0) return null;
+
+  updates.push('updated_at = NOW()');
+
+  const result = await db.query(
+    `UPDATE tasks SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
+    values
+  );
+
   return result.rows[0];
 }

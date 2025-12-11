@@ -14,7 +14,8 @@ import {
   Milestones,
   GanttChart,
   ProModeSettings,
-  PersonaSelector
+  PersonaSelector,
+  WorkBreakdownStructure
 } from './components/pm';
 import './components/pm/PMStyles.css';
 
@@ -450,6 +451,7 @@ const GET_MY_FEATURE_FLAGS = gql`
       showMilestones
       showTimeBlocking
       showContexts
+      showWBS
       workflowPersona
     }
   }
@@ -1185,7 +1187,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [addingComment, setAddingComment] = useState(false);
   // Projects state
   const [showCreateProject, setShowCreateProject] = useState(false);
-  const [projectsViewMode, setProjectsViewMode] = useState('list'); // 'list', 'board', or 'gantt'
+  const [projectsViewMode, setProjectsViewMode] = useState('list'); // 'list', 'board', 'gantt', or 'wbs'
+  const [wbsProjectId, setWbsProjectId] = useState(null); // Selected project for WBS view
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectGoalId, setNewProjectGoalId] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState('');
@@ -5795,8 +5798,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <button className="btn-primary btn-small" onClick={() => setShowCreateProject(true)}>
               + New Project
             </button>
-            {/* View Mode Toggle - List/Board/Gantt (Pro Mode) */}
-            {isProModeEnabled && featureFlags.showGanttChart && (
+            {/* View Mode Toggle - List/Board/Gantt/WBS (Pro Mode) */}
+            {isProModeEnabled && (featureFlags.showGanttChart || featureFlags.showWBS) && (
               <div className="view-mode-toggle">
                 <button
                   className={`view-mode-btn ${projectsViewMode === 'list' ? 'active' : ''}`}
@@ -5812,13 +5815,24 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 >
                   ⊞
                 </button>
-                <button
-                  className={`view-mode-btn ${projectsViewMode === 'gantt' ? 'active' : ''}`}
-                  onClick={() => setProjectsViewMode('gantt')}
-                  title="Timeline/Gantt"
-                >
-                  ▤
-                </button>
+                {featureFlags.showGanttChart && (
+                  <button
+                    className={`view-mode-btn ${projectsViewMode === 'gantt' ? 'active' : ''}`}
+                    onClick={() => setProjectsViewMode('gantt')}
+                    title="Timeline/Gantt"
+                  >
+                    ▤
+                  </button>
+                )}
+                {featureFlags.showWBS && (
+                  <button
+                    className={`view-mode-btn ${projectsViewMode === 'wbs' ? 'active' : ''}`}
+                    onClick={() => setProjectsViewMode('wbs')}
+                    title="Work Breakdown Structure"
+                  >
+                    🌳
+                  </button>
+                )}
               </div>
             )}
             <div className="header-spacer"></div>
@@ -5844,13 +5858,46 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </header>
 
-          {/* Projects Content - List, Board, or Gantt View */}
+          {/* Projects Content - List, Board, Gantt, or WBS View */}
           {projectsViewMode === 'gantt' && isProModeEnabled && featureFlags.showGanttChart ? (
             <GanttChart
               teamId={teamId}
               onClose={() => setProjectsViewMode('list')}
               onTaskClick={(taskId) => setSelectedTaskId(taskId)}
             />
+          ) : projectsViewMode === 'wbs' && isProModeEnabled && featureFlags.showWBS ? (
+            <div className="wbs-view-container">
+              {/* Project selector for WBS */}
+              <div className="wbs-project-selector">
+                <label>Select Project:</label>
+                <select
+                  className="input-field"
+                  value={wbsProjectId || ''}
+                  onChange={(e) => setWbsProjectId(e.target.value || null)}
+                >
+                  <option value="">-- Select a project --</option>
+                  {projects.map(project => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {wbsProjectId ? (
+                <WorkBreakdownStructure
+                  projectId={wbsProjectId}
+                  teamId={teamId}
+                  onClose={() => setProjectsViewMode('list')}
+                  onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+                />
+              ) : (
+                <div className="wbs-empty-state">
+                  <div className="wbs-empty-icon">🌳</div>
+                  <h4>Work Breakdown Structure</h4>
+                  <p>Select a project above to view its hierarchical breakdown</p>
+                </div>
+              )}
+            </div>
           ) : (
           <div className="projects-content">
             {/* Create Project Modal */}

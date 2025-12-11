@@ -12,6 +12,7 @@ const GET_MY_FEATURE_FLAGS = gql`
     getMyFeatureFlags {
       proModeEnabled
       showGanttChart
+      showWBS
       showTimeTracking
       showDependenciesGraph
       showResourceAllocation
@@ -31,6 +32,7 @@ const UPDATE_MY_FEATURE_FLAGS = gql`
     updateMyFeatureFlags(input: $input) {
       proModeEnabled
       showGanttChart
+      showWBS
       showTimeTracking
       showDependenciesGraph
       showResourceAllocation
@@ -73,6 +75,7 @@ const DISABLE_PRO_MODE = gql`
 
 const featureDefinitions = [
   { key: 'showGanttChart', label: 'Gantt Chart', icon: '📊' },
+  { key: 'showWBS', label: 'Work Breakdown Structure', icon: '🌳' },
   { key: 'showEisenhowerMatrix', label: 'Eisenhower Matrix', icon: '⚡' },
   { key: 'showWorkloadHistogram', label: 'Workload Dashboard', icon: '👥' },
   { key: 'showMilestones', label: 'Milestones', icon: '🏁' },
