@@ -5560,7 +5560,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                           teamId,
                           input: {
                             title: newGoalTitle.trim(),
-                            targetDate: newGoalTargetDate || null
+                            targetDate: newGoalTargetDate ? new Date(newGoalTargetDate + 'T00:00:00').toISOString() : null
                           }
                         }
                       });
