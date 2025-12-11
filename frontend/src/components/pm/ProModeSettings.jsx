@@ -10,6 +10,7 @@ import { gql, useQuery, useMutation } from '@apollo/client';
 const GET_MY_FEATURE_FLAGS = gql`
   query GetMyFeatureFlags {
     getMyFeatureFlags {
+      proModeEnabled
       showGanttChart
       showTimeTracking
       showDependenciesGraph
@@ -26,8 +27,9 @@ const GET_MY_FEATURE_FLAGS = gql`
 `;
 
 const UPDATE_MY_FEATURE_FLAGS = gql`
-  mutation UpdateMyFeatureFlags($input: FeatureFlagsInput!) {
+  mutation UpdateMyFeatureFlags($input: UserFeatureFlagsInput!) {
     updateMyFeatureFlags(input: $input) {
+      proModeEnabled
       showGanttChart
       showTimeTracking
       showDependenciesGraph
@@ -46,6 +48,7 @@ const UPDATE_MY_FEATURE_FLAGS = gql`
 const ENABLE_PRO_MODE = gql`
   mutation EnableProMode {
     enableProMode {
+      proModeEnabled
       showGanttChart
       showEisenhowerMatrix
       showWorkloadHistogram
@@ -58,6 +61,7 @@ const ENABLE_PRO_MODE = gql`
 const DISABLE_PRO_MODE = gql`
   mutation DisableProMode {
     disableProMode {
+      proModeEnabled
       showGanttChart
       showEisenhowerMatrix
       showWorkloadHistogram
@@ -88,14 +92,8 @@ function ProModeSettings({ onClose }) {
 
   const flags = data?.getMyFeatureFlags;
 
-  // Check if any pro features are enabled
-  const isProModeEnabled = flags && (
-    flags.showGanttChart ||
-    flags.showEisenhowerMatrix ||
-    flags.showWorkloadHistogram ||
-    flags.showMilestones ||
-    flags.showTimeBlocking
-  );
+  // Use sticky proModeEnabled flag from backend
+  const isProModeEnabled = flags?.proModeEnabled || false;
 
   const handleToggleProMode = async () => {
     try {

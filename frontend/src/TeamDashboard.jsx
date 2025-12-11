@@ -443,6 +443,7 @@ const AM_I_SITE_ADMIN = gql`
 const GET_MY_FEATURE_FLAGS = gql`
   query GetMyFeatureFlags {
     getMyFeatureFlags {
+      proModeEnabled
       showGanttChart
       showEisenhowerMatrix
       showWorkloadHistogram
@@ -1403,8 +1404,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // PM Feature Flags (Pro Mode) hooks
   const { data: featureFlagsData } = useQuery(GET_MY_FEATURE_FLAGS);
   const featureFlags = featureFlagsData?.getMyFeatureFlags || {};
-  const isProModeEnabled = featureFlags.showGanttChart || featureFlags.showEisenhowerMatrix ||
-    featureFlags.showWorkloadHistogram || featureFlags.showMilestones || featureFlags.showTimeBlocking;
+  // Use sticky proModeEnabled flag - individual flags only apply when Pro Mode is enabled
+  const isProModeEnabled = featureFlags.proModeEnabled || false;
 
   // Google Drive hooks
   const { data: integrationsData, refetch: refetchIntegrations } = useQuery(GET_MY_INTEGRATIONS);
@@ -3072,8 +3073,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <span className="nav-item-icon">🔍</span>
                   <span className="nav-item-label">Ask the Team</span>
                 </button>
-                {/* Team Workload */}
-                {featureFlags.showWorkloadHistogram && (
+                {/* Team Workload - Pro Mode */}
+                {isProModeEnabled && featureFlags.showWorkloadHistogram && (
                   <button
                     className={`nav-item ${activeView === 'workload' ? 'active' : ''}`}
                     onClick={() => setActiveView('workload')}
@@ -3082,8 +3083,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <span className="nav-item-label">Workload</span>
                   </button>
                 )}
-                {/* Time Blocks */}
-                {featureFlags.showTimeBlocking && (
+                {/* Time Blocks - Pro Mode */}
+                {isProModeEnabled && featureFlags.showTimeBlocking && (
                   <button
                     className={`nav-item ${activeView === 'timeblocks' ? 'active' : ''}`}
                     onClick={() => setActiveView('timeblocks')}
@@ -3092,8 +3093,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <span className="nav-item-label">Time Blocks</span>
                   </button>
                 )}
-                {/* Milestones */}
-                {featureFlags.showMilestones && (
+                {/* Milestones - Pro Mode */}
+                {isProModeEnabled && featureFlags.showMilestones && (
                   <button
                     className={`nav-item ${activeView === 'milestones' ? 'active' : ''}`}
                     onClick={() => setActiveView('milestones')}
@@ -4006,7 +4007,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </button>
             </div>
             {/* View Mode Toggle - List vs Matrix (Pro Mode) */}
-            {featureFlags.showEisenhowerMatrix && (
+            {isProModeEnabled && featureFlags.showEisenhowerMatrix && (
               <div className="view-mode-toggle">
                 <button
                   className={`view-mode-btn ${tasksViewMode === 'list' ? 'active' : ''}`}
@@ -4047,7 +4048,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
           </header>
 
           {/* Tasks Content - List or Matrix View */}
-          {tasksViewMode === 'matrix' && featureFlags.showEisenhowerMatrix ? (
+          {tasksViewMode === 'matrix' && isProModeEnabled && featureFlags.showEisenhowerMatrix ? (
             <EisenhowerMatrix
               teamId={teamId}
               onClose={() => setTasksViewMode('list')}
@@ -5795,7 +5796,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               + New Project
             </button>
             {/* View Mode Toggle - List/Board/Gantt (Pro Mode) */}
-            {featureFlags.showGanttChart && (
+            {isProModeEnabled && featureFlags.showGanttChart && (
               <div className="view-mode-toggle">
                 <button
                   className={`view-mode-btn ${projectsViewMode === 'list' ? 'active' : ''}`}
@@ -5844,7 +5845,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
           </header>
 
           {/* Projects Content - List, Board, or Gantt View */}
-          {projectsViewMode === 'gantt' && featureFlags.showGanttChart ? (
+          {projectsViewMode === 'gantt' && isProModeEnabled && featureFlags.showGanttChart ? (
             <GanttChart
               teamId={teamId}
               onClose={() => setProjectsViewMode('list')}

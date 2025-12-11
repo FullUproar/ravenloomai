@@ -1354,6 +1354,7 @@ export default gql`
   type UserFeatureFlags {
     id: ID!
     userId: String!
+    proModeEnabled: Boolean!
     showGanttChart: Boolean!
     showTimeTracking: Boolean!
     showDependenciesGraph: Boolean!
@@ -1369,6 +1370,7 @@ export default gql`
   }
 
   input UserFeatureFlagsInput {
+    proModeEnabled: Boolean
     showGanttChart: Boolean
     showTimeTracking: Boolean
     showDependenciesGraph: Boolean

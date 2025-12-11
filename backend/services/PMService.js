@@ -733,22 +733,23 @@ export async function updateMyFeatureFlags(userId, input) {
   if (existing.rows[0]) {
     const result = await db.query(
       `UPDATE user_feature_flags SET
-        show_gantt_chart = COALESCE($2, show_gantt_chart),
-        show_time_tracking = COALESCE($3, show_time_tracking),
-        show_dependencies_graph = COALESCE($4, show_dependencies_graph),
-        show_resource_allocation = COALESCE($5, show_resource_allocation),
-        show_critical_path = COALESCE($6, show_critical_path),
-        show_eisenhower_matrix = COALESCE($7, show_eisenhower_matrix),
-        show_workload_histogram = COALESCE($8, show_workload_histogram),
-        show_milestones = COALESCE($9, show_milestones),
-        show_time_blocking = COALESCE($10, show_time_blocking),
-        show_contexts = COALESCE($11, show_contexts),
-        preferred_productivity_method = COALESCE($12, preferred_productivity_method),
-        workflow_persona = COALESCE($13, workflow_persona),
+        pro_mode_enabled = COALESCE($2, pro_mode_enabled),
+        show_gantt_chart = COALESCE($3, show_gantt_chart),
+        show_time_tracking = COALESCE($4, show_time_tracking),
+        show_dependencies_graph = COALESCE($5, show_dependencies_graph),
+        show_resource_allocation = COALESCE($6, show_resource_allocation),
+        show_critical_path = COALESCE($7, show_critical_path),
+        show_eisenhower_matrix = COALESCE($8, show_eisenhower_matrix),
+        show_workload_histogram = COALESCE($9, show_workload_histogram),
+        show_milestones = COALESCE($10, show_milestones),
+        show_time_blocking = COALESCE($11, show_time_blocking),
+        show_contexts = COALESCE($12, show_contexts),
+        preferred_productivity_method = COALESCE($13, preferred_productivity_method),
+        workflow_persona = COALESCE($14, workflow_persona),
         updated_at = NOW()
        WHERE user_id = $1
        RETURNING *`,
-      [userId, input.showGanttChart, input.showTimeTracking, input.showDependenciesGraph,
+      [userId, input.proModeEnabled, input.showGanttChart, input.showTimeTracking, input.showDependenciesGraph,
        input.showResourceAllocation, input.showCriticalPath, input.showEisenhowerMatrix,
        input.showWorkloadHistogram, input.showMilestones, input.showTimeBlocking,
        input.showContexts, input.preferredProductivityMethod, input.workflowPersona]
@@ -756,10 +757,10 @@ export async function updateMyFeatureFlags(userId, input) {
     return mapFeatureFlags(result.rows[0]);
   } else {
     const result = await db.query(
-      `INSERT INTO user_feature_flags (user_id, show_gantt_chart, show_time_tracking, show_dependencies_graph, show_resource_allocation, show_critical_path, show_eisenhower_matrix, show_workload_histogram, show_milestones, show_time_blocking, show_contexts, preferred_productivity_method, workflow_persona)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO user_feature_flags (user_id, pro_mode_enabled, show_gantt_chart, show_time_tracking, show_dependencies_graph, show_resource_allocation, show_critical_path, show_eisenhower_matrix, show_workload_histogram, show_milestones, show_time_blocking, show_contexts, preferred_productivity_method, workflow_persona)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
-      [userId, input.showGanttChart || false, input.showTimeTracking || false,
+      [userId, input.proModeEnabled || false, input.showGanttChart || false, input.showTimeTracking || false,
        input.showDependenciesGraph || false, input.showResourceAllocation || false,
        input.showCriticalPath || false, input.showEisenhowerMatrix || false,
        input.showWorkloadHistogram || false, input.showMilestones || false,
@@ -772,6 +773,7 @@ export async function updateMyFeatureFlags(userId, input) {
 
 export async function enableProMode(userId) {
   return updateMyFeatureFlags(userId, {
+    proModeEnabled: true,
     showGanttChart: true,
     showTimeTracking: true,
     showDependenciesGraph: true,
@@ -786,17 +788,9 @@ export async function enableProMode(userId) {
 }
 
 export async function disableProMode(userId) {
+  // Only set proModeEnabled to false, keep individual flags for when user re-enables
   return updateMyFeatureFlags(userId, {
-    showGanttChart: false,
-    showTimeTracking: false,
-    showDependenciesGraph: false,
-    showResourceAllocation: false,
-    showCriticalPath: false,
-    showEisenhowerMatrix: false,
-    showWorkloadHistogram: false,
-    showMilestones: false,
-    showTimeBlocking: false,
-    showContexts: false
+    proModeEnabled: false
   });
 }
 
@@ -804,6 +798,7 @@ function mapFeatureFlags(row) {
   return {
     id: row.id,
     userId: row.user_id,
+    proModeEnabled: row.pro_mode_enabled || false,
     showGanttChart: row.show_gantt_chart,
     showTimeTracking: row.show_time_tracking,
     showDependenciesGraph: row.show_dependencies_graph,
@@ -823,6 +818,7 @@ function getDefaultFeatureFlags(userId) {
   return {
     id: null,
     userId,
+    proModeEnabled: false,
     showGanttChart: false,
     showTimeTracking: false,
     showDependenciesGraph: false,
