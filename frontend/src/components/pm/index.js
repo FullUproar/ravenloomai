@@ -11,3 +11,4 @@ export { default as GanttChart } from './GanttChart.jsx';
 export { default as ProModeSettings } from './ProModeSettings.jsx';
 export { default as PersonaSelector } from './PersonaSelector.jsx';
 export { default as WorkBreakdownStructure } from './WorkBreakdownStructure.jsx';
+export { default as WBSDraftEditor } from './WBSDraftEditor.jsx';

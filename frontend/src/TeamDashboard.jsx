@@ -15,7 +15,8 @@ import {
   GanttChart,
   ProModeSettings,
   PersonaSelector,
-  WorkBreakdownStructure
+  WorkBreakdownStructure,
+  WBSDraftEditor
 } from './components/pm';
 import './components/pm/PMStyles.css';
 
@@ -1189,6 +1190,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [projectsViewMode, setProjectsViewMode] = useState('list'); // 'list', 'board', 'gantt', or 'wbs'
   const [wbsProjectId, setWbsProjectId] = useState(null); // Selected project for WBS view
+  const [wbsMode, setWbsMode] = useState('draft'); // 'draft' for generic WBS editor, 'project' for project-based WBS
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectGoalId, setNewProjectGoalId] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState('');
@@ -5867,35 +5869,64 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             />
           ) : projectsViewMode === 'wbs' && isProModeEnabled && featureFlags.showWBS ? (
             <div className="wbs-view-container">
-              {/* Project selector for WBS */}
-              <div className="wbs-project-selector">
-                <label>Select Project:</label>
-                <select
-                  className="input-field"
-                  value={wbsProjectId || ''}
-                  onChange={(e) => setWbsProjectId(e.target.value || null)}
+              {/* WBS Mode Toggle - Draft Editor vs Project View */}
+              <div className="wbs-mode-toggle">
+                <button
+                  className={`wbs-mode-btn ${wbsMode === 'draft' ? 'active' : ''}`}
+                  onClick={() => setWbsMode('draft')}
                 >
-                  <option value="">-- Select a project --</option>
-                  {projects.map(project => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
+                  🤖 Draft Editor
+                </button>
+                <button
+                  className={`wbs-mode-btn ${wbsMode === 'project' ? 'active' : ''}`}
+                  onClick={() => setWbsMode('project')}
+                >
+                  📋 Project View
+                </button>
               </div>
-              {wbsProjectId ? (
-                <WorkBreakdownStructure
-                  projectId={wbsProjectId}
+
+              {wbsMode === 'draft' ? (
+                <WBSDraftEditor
                   teamId={teamId}
                   onClose={() => setProjectsViewMode('list')}
-                  onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+                  onMaterialized={(result) => {
+                    toast.success(`Created project "${result.project.name}" with ${result.tasksCreated} tasks`);
+                    refetchProjects();
+                  }}
                 />
               ) : (
-                <div className="wbs-empty-state">
-                  <div className="wbs-empty-icon">🌳</div>
-                  <h4>Work Breakdown Structure</h4>
-                  <p>Select a project above to view its hierarchical breakdown</p>
-                </div>
+                <>
+                  {/* Project selector for Project WBS View */}
+                  <div className="wbs-project-selector">
+                    <label>Select Project:</label>
+                    <select
+                      className="input-field"
+                      value={wbsProjectId || ''}
+                      onChange={(e) => setWbsProjectId(e.target.value || null)}
+                    >
+                      <option value="">-- Select a project --</option>
+                      {projects.map(project => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {wbsProjectId ? (
+                    <WorkBreakdownStructure
+                      projectId={wbsProjectId}
+                      teamId={teamId}
+                      onClose={() => setProjectsViewMode('list')}
+                      onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+                    />
+                  ) : (
+                    <div className="wbs-empty-state">
+                      <div className="wbs-empty-icon">🌳</div>
+                      <h4>Work Breakdown Structure</h4>
+                      <p>Select a project above to view its hierarchical breakdown</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (

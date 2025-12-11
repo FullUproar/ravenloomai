@@ -1351,3 +1351,270 @@ export async function updateWBSTask(taskId, input) {
 
   return result.rows[0];
 }
+
+// ============================================================================
+// WBS DRAFTS (Generic Ephemeral Trees)
+// ============================================================================
+
+export async function getWBSDrafts(teamId) {
+  const result = await db.query(
+    `SELECT * FROM wbs_drafts WHERE team_id = $1 ORDER BY updated_at DESC`,
+    [teamId]
+  );
+  return result.rows.map(mapWBSDraft);
+}
+
+export async function getWBSDraft(draftId) {
+  const result = await db.query(
+    `SELECT * FROM wbs_drafts WHERE id = $1`,
+    [draftId]
+  );
+  return result.rows[0] ? mapWBSDraft(result.rows[0]) : null;
+}
+
+export async function createWBSDraft(teamId, userId, input) {
+  const result = await db.query(
+    `INSERT INTO wbs_drafts (team_id, created_by, name, description, tree_data)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [teamId, userId, input.name, input.description, JSON.stringify(input.treeData)]
+  );
+  return mapWBSDraft(result.rows[0]);
+}
+
+export async function updateWBSDraft(draftId, input) {
+  const result = await db.query(
+    `UPDATE wbs_drafts SET
+      name = COALESCE($2, name),
+      description = COALESCE($3, description),
+      tree_data = COALESCE($4, tree_data),
+      updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [draftId, input.name, input.description, input.treeData ? JSON.stringify(input.treeData) : null]
+  );
+  return result.rows[0] ? mapWBSDraft(result.rows[0]) : null;
+}
+
+export async function deleteWBSDraft(draftId) {
+  await db.query(`DELETE FROM wbs_drafts WHERE id = $1`, [draftId]);
+  return true;
+}
+
+function mapWBSDraft(row) {
+  return {
+    id: row.id,
+    teamId: row.team_id,
+    createdBy: row.created_by,
+    name: row.name,
+    description: row.description,
+    treeData: typeof row.tree_data === 'string' ? JSON.parse(row.tree_data) : row.tree_data,
+    materializedProjectId: row.materialized_project_id,
+    materializedAt: row.materialized_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+// ============================================================================
+// WBS AI MATERIALIZATION
+// ============================================================================
+
+/**
+ * Materializes a WBS draft into a real project and tasks
+ * Uses AI to analyze the tree structure and create appropriate hierarchy
+ */
+export async function materializeWBSDraft(draftId, teamId, userId, projectName, aiService) {
+  // Get the draft
+  const draft = await getWBSDraft(draftId);
+  if (!draft) {
+    throw new Error('WBS draft not found');
+  }
+
+  const treeData = draft.treeData;
+  const nodes = treeData.nodes || [];
+
+  if (nodes.length === 0) {
+    throw new Error('WBS draft has no nodes to materialize');
+  }
+
+  // Use AI to analyze and structure the tree
+  const aiAnalysis = await analyzeWBSTreeWithAI(nodes, projectName || draft.name, aiService);
+
+  // Create the project
+  const projectResult = await db.query(
+    `INSERT INTO projects (team_id, name, description, status, created_by)
+     VALUES ($1, $2, $3, 'active', $4)
+     RETURNING *`,
+    [teamId, aiAnalysis.projectName, aiAnalysis.projectDescription, userId]
+  );
+  const project = projectResult.rows[0];
+
+  // Create tasks from the analyzed structure
+  let tasksCreated = 0;
+  let totalEstimatedHours = 0;
+
+  async function createTasksRecursively(nodes, parentTaskId = null, depth = 0) {
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const taskResult = await db.query(
+        `INSERT INTO tasks (
+          team_id, project_id, parent_task_id, title, description,
+          estimated_hours, status, created_by, sort_order
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'todo', $7, $8)
+        RETURNING *`,
+        [
+          teamId,
+          project.id,
+          parentTaskId,
+          node.title || node.label,
+          node.description || null,
+          node.estimatedHours || null,
+          userId,
+          i
+        ]
+      );
+
+      tasksCreated++;
+      if (node.estimatedHours) {
+        totalEstimatedHours += node.estimatedHours;
+      }
+
+      // Recursively create child tasks
+      if (node.children && node.children.length > 0) {
+        await createTasksRecursively(node.children, taskResult.rows[0].id, depth + 1);
+      }
+    }
+  }
+
+  await createTasksRecursively(aiAnalysis.structuredTasks);
+
+  // Mark the draft as materialized
+  await db.query(
+    `UPDATE wbs_drafts SET
+      materialized_project_id = $2,
+      materialized_at = NOW()
+     WHERE id = $1`,
+    [draftId, project.id]
+  );
+
+  return {
+    project: {
+      id: project.id,
+      teamId: project.team_id,
+      name: project.name,
+      description: project.description,
+      status: project.status,
+      createdAt: project.created_at
+    },
+    tasksCreated,
+    totalEstimatedHours,
+    aiSummary: aiAnalysis.summary
+  };
+}
+
+/**
+ * Uses AI to analyze a WBS tree and prepare it for materialization
+ */
+async function analyzeWBSTreeWithAI(nodes, projectName, aiService) {
+  // Build a text representation of the tree
+  function treeToText(nodes, indent = 0) {
+    let text = '';
+    for (const node of nodes) {
+      const hours = node.estimatedHours ? ` (${node.estimatedHours}h)` : '';
+      text += '  '.repeat(indent) + `- ${node.label || node.title}${hours}\n`;
+      if (node.children && node.children.length > 0) {
+        text += treeToText(node.children, indent + 1);
+      }
+    }
+    return text;
+  }
+
+  const treeText = treeToText(nodes);
+
+  // If no AI service, return a basic structure
+  if (!aiService) {
+    return {
+      projectName: projectName,
+      projectDescription: `Project created from WBS: ${projectName}`,
+      structuredTasks: nodes.map(n => ({
+        title: n.label || n.title,
+        description: null,
+        estimatedHours: n.estimatedHours || null,
+        children: n.children || []
+      })),
+      summary: `Created ${countNodes(nodes)} tasks from WBS draft.`
+    };
+  }
+
+  // Use AI to analyze and enhance the structure
+  const prompt = `You are analyzing a Work Breakdown Structure (WBS) to convert it into a project management structure.
+
+WBS Tree:
+${treeText}
+
+Project Name: ${projectName}
+
+Analyze this WBS and provide:
+1. A refined project description (1-2 sentences)
+2. For each node, suggest if it should be:
+   - A major deliverable/section (top level tasks)
+   - A task (actionable work item)
+   - A subtask (detailed work under a task)
+3. Add descriptions where helpful for clarity
+4. Estimate hours for items without estimates based on similar items
+
+Return a JSON response with:
+{
+  "projectDescription": "...",
+  "structuredTasks": [
+    {
+      "title": "...",
+      "description": "...",
+      "estimatedHours": number or null,
+      "children": [...recursive...]
+    }
+  ],
+  "summary": "Brief summary of the project structure"
+}`;
+
+  try {
+    const response = await aiService.chat({
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      response_format: { type: 'json_object' }
+    });
+
+    const analysis = JSON.parse(response.content);
+    return {
+      projectName,
+      projectDescription: analysis.projectDescription || `Project: ${projectName}`,
+      structuredTasks: analysis.structuredTasks || nodes,
+      summary: analysis.summary || `Created project structure from WBS.`
+    };
+  } catch (error) {
+    console.error('AI analysis failed, using basic structure:', error);
+    return {
+      projectName,
+      projectDescription: `Project created from WBS: ${projectName}`,
+      structuredTasks: nodes.map(n => ({
+        title: n.label || n.title,
+        description: null,
+        estimatedHours: n.estimatedHours || null,
+        children: n.children || []
+      })),
+      summary: `Created ${countNodes(nodes)} tasks from WBS draft.`
+    };
+  }
+}
+
+function countNodes(nodes) {
+  let count = 0;
+  for (const node of nodes) {
+    count++;
+    if (node.children && node.children.length > 0) {
+      count += countNodes(node.children);
+    }
+  }
+  return count;
+}

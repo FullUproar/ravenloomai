@@ -654,6 +654,17 @@ const resolvers = {
       return ChannelService.deleteChannel(channelId);
     },
 
+    // AI Focus
+    setChannelAIFocus: async (_, { channelId, goalId, projectId, taskId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ChannelService.setChannelAIFocus(channelId, { goalId, projectId, taskId });
+    },
+
+    clearChannelAIFocus: async (_, { channelId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ChannelService.clearChannelAIFocus(channelId);
+    },
+
     // Threads
     createThread: async (_, { channelId, input }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
@@ -1145,6 +1156,22 @@ const resolvers = {
 
     threads: async (channel, { limit }) => {
       return ThreadService.getThreads(channel.id, { limit: limit || 50 });
+    },
+
+    // AI Focus resolvers
+    focusGoal: async (channel) => {
+      if (!channel.focusGoalId) return null;
+      return GoalService.getGoalById(channel.focusGoalId);
+    },
+
+    focusProject: async (channel) => {
+      if (!channel.focusProjectId) return null;
+      return ProjectService.getProjectById(channel.focusProjectId);
+    },
+
+    focusTask: async (channel) => {
+      if (!channel.focusTaskId) return null;
+      return TaskService.getTaskById(channel.focusTaskId);
     }
   },
 

@@ -301,6 +301,13 @@ export default gql`
     createdBy: String
     threads(limit: Int): [Thread!]!
     messages(limit: Int, before: ID): [Message!]!
+    # AI Focus - items kept in AI context for this channel
+    focusGoalId: ID
+    focusGoal: Goal
+    focusProjectId: ID
+    focusProject: Project
+    focusTaskId: ID
+    focusTask: Task
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -1465,6 +1472,50 @@ export default gql`
     parentTaskId: ID
   }
 
+  # Generic WBS Draft (Ephemeral Tree)
+  type WBSDraft {
+    id: ID!
+    teamId: ID!
+    createdBy: String!
+    createdByUser: User
+    name: String!
+    description: String
+    treeData: JSON!
+    materializedProjectId: ID
+    materializedProject: Project
+    materializedAt: DateTime
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  type WBSDraftNode {
+    id: String!
+    label: String!
+    estimatedHours: Float
+    children: [WBSDraftNode!]!
+  }
+
+  input WBSDraftInput {
+    name: String!
+    description: String
+    treeData: JSON!
+  }
+
+  input WBSDraftNodeInput {
+    id: String!
+    label: String!
+    estimatedHours: Float
+    children: [WBSDraftNodeInput!]
+  }
+
+  # AI Materialization result
+  type WBSMaterializationResult {
+    project: Project!
+    tasksCreated: Int!
+    totalEstimatedHours: Float!
+    aiSummary: String
+  }
+
   type Query {
     # User
     me: User
@@ -1656,6 +1707,10 @@ export default gql`
 
     # Work Breakdown Structure
     getWBSData(projectId: ID!): WBSNode!
+
+    # WBS Drafts (Generic Ephemeral Trees)
+    getWBSDrafts(teamId: ID!): [WBSDraft!]!
+    getWBSDraft(draftId: ID!): WBSDraft
   }
 
   # ============================================================================
@@ -1682,6 +1737,10 @@ export default gql`
     createChannel(teamId: ID!, input: CreateChannelInput!): Channel!
     updateChannel(channelId: ID!, input: UpdateChannelInput!): Channel!
     deleteChannel(channelId: ID!): Boolean!
+
+    # AI Focus - Set context for AI in a channel
+    setChannelAIFocus(channelId: ID!, goalId: ID, projectId: ID, taskId: ID): Channel!
+    clearChannelAIFocus(channelId: ID!): Channel!
 
     # Threads
     createThread(channelId: ID!, input: CreateThreadInput!): Thread!
@@ -1877,5 +1936,13 @@ export default gql`
     # Work Breakdown Structure
     createWBSTask(projectId: ID!, teamId: ID!, input: WBSTaskInput!): Task!
     updateWBSTask(taskId: ID!, input: WBSTaskInput!): Task!
+
+    # WBS Drafts (Generic Ephemeral Trees)
+    createWBSDraft(teamId: ID!, input: WBSDraftInput!): WBSDraft!
+    updateWBSDraft(draftId: ID!, input: WBSDraftInput!): WBSDraft!
+    deleteWBSDraft(draftId: ID!): Boolean!
+
+    # AI Materialization - Convert WBS draft to real project/tasks
+    materializeWBSDraft(draftId: ID!, teamId: ID!, projectName: String): WBSMaterializationResult!
   }
 `;

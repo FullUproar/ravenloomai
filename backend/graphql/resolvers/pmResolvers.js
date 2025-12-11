@@ -113,6 +113,16 @@ export const pmQueryResolvers = {
     if (!userId) throw new Error('Not authenticated');
     return PMService.getWBSData(projectId);
   },
+
+  // WBS Drafts (Generic Ephemeral Trees)
+  getWBSDrafts: async (_, { teamId }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.getWBSDrafts(teamId);
+  },
+  getWBSDraft: async (_, { draftId }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.getWBSDraft(draftId);
+  },
 };
 
 export const pmMutationResolvers = {
@@ -277,6 +287,26 @@ export const pmMutationResolvers = {
     if (!userId) throw new Error('Not authenticated');
     return PMService.updateWBSTask(taskId, input);
   },
+
+  // WBS Drafts (Generic Ephemeral Trees)
+  createWBSDraft: async (_, { teamId, input }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.createWBSDraft(teamId, userId, input);
+  },
+  updateWBSDraft: async (_, { draftId, input }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.updateWBSDraft(draftId, input);
+  },
+  deleteWBSDraft: async (_, { draftId }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.deleteWBSDraft(draftId);
+  },
+
+  // AI Materialization - Convert WBS draft to real project/tasks
+  materializeWBSDraft: async (_, { draftId, teamId, projectName }, { userId, aiService }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return PMService.materializeWBSDraft(draftId, teamId, userId, projectName, aiService);
+  },
 };
 
 // Type resolvers for PM types
@@ -338,6 +368,18 @@ export const pmTypeResolvers = {
       if (!task.assignedTo) return null;
       const { default: UserService } = await import('../../services/UserService.js');
       return UserService.getUserById(task.assignedTo);
+    }
+  },
+  WBSDraft: {
+    createdByUser: async (draft) => {
+      if (!draft.createdBy) return null;
+      const { default: UserService } = await import('../../services/UserService.js');
+      return UserService.getUserById(draft.createdBy);
+    },
+    materializedProject: async (draft) => {
+      if (!draft.materializedProjectId) return null;
+      const { default: ProjectService } = await import('../../services/ProjectService.js');
+      return ProjectService.getProjectById(draft.materializedProjectId);
     }
   }
 };
