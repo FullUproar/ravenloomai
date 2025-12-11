@@ -174,8 +174,8 @@ CREATE TABLE IF NOT EXISTS time_blocks (
   -- Status
   status VARCHAR(20) DEFAULT 'scheduled', -- scheduled, in_progress, completed, skipped
 
-  -- Calendar sync
-  calendar_event_id UUID REFERENCES calendar_events(id) ON DELETE SET NULL,
+  -- Calendar sync (no FK - calendar_events may not exist)
+  calendar_event_id UUID,
   google_event_id VARCHAR(255),
 
   -- Productivity tracking
