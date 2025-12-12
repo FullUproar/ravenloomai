@@ -19,6 +19,7 @@ import {
   WBSDraftEditor
 } from './components/pm';
 import './components/pm/PMStyles.css';
+import DigestPage from './components/DigestPage';
 
 // API base URL - uses /api prefix in production, localhost in development
 const API_BASE_URL = import.meta.env.PROD
@@ -144,6 +145,12 @@ const CREATE_CHANNEL = gql`
       name
       description
     }
+  }
+`;
+
+const MARK_CHANNEL_SEEN = gql`
+  mutation MarkChannelSeen($channelId: ID!) {
+    markChannelSeen(channelId: $channelId)
   }
 `;
 
@@ -1056,8 +1063,12 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState(null);
 
-  // Determine initial view from URL or default to 'chat'
+  // Determine initial view from URL or default to 'digest'
   const getInitialView = () => {
+    // Digest view (default landing page)
+    if (initialView === 'digest') {
+      return 'digest';
+    }
     // Standard views
     if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects' || initialView === 'knowledge' || initialView === 'calendar' || initialView === 'raven') {
       return initialView;
@@ -1069,7 +1080,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     if (initialView === 'channel' || initialView === 'chat') {
       return 'chat';
     }
-    return 'chat';
+    return 'digest';  // Default to digest
   };
 
   // UI state
@@ -1345,6 +1356,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Mutations
   const [sendMessage] = useMutation(SEND_MESSAGE);
   const [createChannel] = useMutation(CREATE_CHANNEL);
+  const [markChannelSeen] = useMutation(MARK_CHANNEL_SEEN);
   const [inviteTeamMember] = useMutation(INVITE_TEAM_MEMBER);
   const [createTaskDirect] = useMutation(CREATE_TASK_DIRECT);
   const [updateTask] = useMutation(UPDATE_TASK);
@@ -1655,6 +1667,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     setActiveChannelIdState(id);
     setActiveView('chat', id);
     setSidebarOpen(false); // Close sidebar on mobile after selection
+    // Mark channel as seen for digest tracking
+    markChannelSeen({ variables: { channelId: id } }).catch(console.error);
   };
 
   const handleBackToTeams = () => {
@@ -2785,6 +2799,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
         {/* Tree Navigation */}
         <nav className={`nav-tree persona-${featureFlags.workflowPersona || 'contributor'}`}>
+          {/* Your Digest (Default Landing) */}
+          <div className="nav-section">
+            <button
+              className={`nav-section-header nav-single ${activeView === 'digest' ? 'active' : ''}`}
+              onClick={() => setActiveView('digest')}
+            >
+              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+              <span className="nav-icon">📋</span>
+              <span className="nav-label">Your Digest</span>
+            </button>
+          </div>
+
           {/* Private Raven Chat */}
           <div className="nav-section">
             <button
@@ -3745,7 +3771,30 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       )}
 
       {/* Main Content Area */}
-      {activeView === 'chat' ? (
+      {activeView === 'digest' ? (
+        <main className="content-area">
+          <DigestPage
+            teamId={teamId}
+            onNavigateToChannel={(channelId) => {
+              handleSelectChannel(channelId);
+              setActiveView('chat');
+            }}
+            onNavigateToTask={(taskId) => {
+              setSelectedTaskId(taskId);
+              setActiveView('tasks');
+            }}
+            onNavigateToGoal={(goalId) => {
+              setActiveView('goals');
+            }}
+            onNavigateToProject={(projectId) => {
+              setActiveView('projects');
+            }}
+            onNavigateToCalendar={(eventId) => {
+              setActiveView('calendar');
+            }}
+          />
+        </main>
+      ) : activeView === 'chat' ? (
         <main className="chat-area">
           {/* Channel Header */}
           <header className="chat-header">

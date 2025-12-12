@@ -1,0 +1,352 @@
+/**
+ * DigestPage - Priority-ordered user digest styling
+ */
+
+.digest-page {
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+  min-height: 100%;
+}
+
+/* Header */
+.digest-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.digest-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.refresh-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.refresh-btn:hover {
+  background-color: var(--bg-hover, #f0f0f0);
+}
+
+/* Loading State */
+.digest-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-secondary, #666);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color, #e0e0e0);
+  border-top-color: var(--primary-color, #5865f2);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.digest-loading p {
+  margin-top: 16px;
+}
+
+/* Error State */
+.digest-error {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary, #666);
+}
+
+.digest-error button {
+  margin-top: 16px;
+  padding: 8px 20px;
+  background: var(--primary-color, #5865f2);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.digest-error button:hover {
+  background: var(--primary-hover, #4752c4);
+}
+
+/* Empty State */
+.digest-empty {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--text-secondary, #666);
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.digest-empty h3 {
+  margin: 0 0 8px;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.digest-empty p {
+  margin: 0;
+}
+
+/* Top 3 Section */
+.digest-top3 {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+/* Large Card Styling */
+.digest-card-large {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  background: var(--card-bg, #ffffff);
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.digest-card-large:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.card-rank {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 24px;
+  height: 24px;
+  background: var(--primary-color, #5865f2);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.card-icon {
+  font-size: 2rem;
+  margin-left: 24px;
+  flex-shrink: 0;
+}
+
+.card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-title {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-subtitle {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #666);
+}
+
+.card-detail {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-tertiary, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.card-type-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-tertiary, #888);
+  background: var(--bg-secondary, #f5f5f5);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Priority Colors */
+.priority-urgent {
+  border-left: 4px solid #dc3545;
+}
+
+.priority-high {
+  border-left: 4px solid #fd7e14;
+}
+
+.priority-medium {
+  border-left: 4px solid #ffc107;
+}
+
+.priority-low {
+  border-left: 4px solid #6c757d;
+}
+
+/* More Items Section */
+.digest-more {
+  background: var(--card-bg, #ffffff);
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  overflow: hidden;
+}
+
+.more-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-secondary, #f9f9f9);
+}
+
+.more-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-secondary, #666);
+  font-weight: 500;
+}
+
+.show-all-btn {
+  background: transparent;
+  border: none;
+  color: var(--primary-color, #5865f2);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.show-all-btn:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+/* Compact List Items */
+.more-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.digest-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  border-bottom: 1px solid var(--border-light, #f0f0f0);
+}
+
+.digest-item:last-child {
+  border-bottom: none;
+}
+
+.digest-item:hover {
+  background: var(--bg-hover, #f5f5f5);
+}
+
+.item-rank {
+  font-size: 0.8rem;
+  color: var(--text-tertiary, #888);
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.item-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.item-title {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text-primary, #1a1a1a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.item-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #666);
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Priority indicator for list items */
+.digest-item.priority-urgent {
+  border-left: 3px solid #dc3545;
+}
+
+.digest-item.priority-high {
+  border-left: 3px solid #fd7e14;
+}
+
+.digest-item.priority-medium {
+  border-left: 3px solid #ffc107;
+}
+
+.digest-item.priority-low {
+  border-left: 3px solid #6c757d;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .digest-page {
+    padding: 16px;
+  }
+
+  .digest-card-large {
+    padding: 16px;
+  }
+
+  .card-icon {
+    font-size: 1.5rem;
+    margin-left: 20px;
+  }
+
+  .card-title {
+    font-size: 1rem;
+  }
+
+  .item-subtitle {
+    display: none;
+  }
+}

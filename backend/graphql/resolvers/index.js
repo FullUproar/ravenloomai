@@ -30,6 +30,7 @@ import * as CeremonyService from '../../services/CeremonyService.js';
 import * as ProactiveService from '../../services/ProactiveService.js';
 import * as MeetingPrepService from '../../services/MeetingPrepService.js';
 import * as RateLimiterService from '../../services/RateLimiterService.js';
+import * as UserDigestService from '../../services/UserDigestService.js';
 import { pmQueryResolvers, pmMutationResolvers, pmTypeResolvers } from './pmResolvers.js';
 
 const resolvers = {
@@ -452,6 +453,15 @@ const resolvers = {
     },
 
     // ============================================================================
+    // USER DIGEST (Priority-ordered landing page)
+    // ============================================================================
+
+    getUserDigest: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return UserDigestService.getUserDigest(teamId, userId);
+    },
+
+    // ============================================================================
     // PRODUCTIVITY & AI INSIGHTS
     // ============================================================================
 
@@ -696,6 +706,22 @@ const resolvers = {
       return MessageService.sendThreadMessage(threadId, userId, input.content, {
         replyToMessageId: input.replyToMessageId
       });
+    },
+
+    // User Digest Tracking
+    markDigestViewed: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return UserDigestService.markDigestViewed(teamId, userId);
+    },
+
+    markChannelSeen: async (_, { channelId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return UserDigestService.markChannelSeen(channelId, userId);
+    },
+
+    markDigestItemViewed: async (_, { itemType, itemId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return UserDigestService.markItemViewed(itemType, itemId, userId);
     },
 
     // Knowledge - Manual

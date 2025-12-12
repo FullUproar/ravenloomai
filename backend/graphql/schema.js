@@ -1516,6 +1516,36 @@ export default gql`
     aiSummary: String
   }
 
+  # ============================================================================
+  # USER DIGEST (Priority-ordered notifications)
+  # ============================================================================
+
+  type DigestItem {
+    priority: Int!
+    type: String!  # unread_channel, event_today, task_today, updated_goal, updated_project, updated_task, event_tomorrow, task_week
+    sortKey: DateTime
+    # Polymorphic data - only one will be populated based on type
+    channel: Channel
+    event: Event
+    task: Task
+    goal: Goal
+    project: Project
+    unreadCount: Int  # For unread_channel type
+    latestMessage: DigestMessage  # For unread_channel type
+  }
+
+  type DigestMessage {
+    content: String
+    userId: String
+  }
+
+  type UserDigest {
+    items: [DigestItem!]!
+    top3: [DigestItem!]!
+    totalCount: Int!
+    hasMore: Boolean!
+  }
+
   type Query {
     # User
     me: User
@@ -1618,6 +1648,11 @@ export default gql`
     getCalendarMonth(teamId: ID!, year: Int!, month: Int!): [Event!]!
     getCalendarItems(teamId: ID!, startDate: DateTime!, endDate: DateTime!): CalendarItemsResult!
     exportCalendarICS(teamId: ID!, startDate: DateTime, endDate: DateTime): String!
+
+    # ============================================================================
+    # USER DIGEST (Priority-ordered landing page)
+    # ============================================================================
+    getUserDigest(teamId: ID!): UserDigest!
 
     # ============================================================================
     # AI PRODUCTIVITY FEATURES
@@ -1749,6 +1784,11 @@ export default gql`
     # Messages & AI
     sendMessage(channelId: ID!, input: SendMessageInput!): AIResponse!
     sendThreadMessage(threadId: ID!, input: SendMessageInput!): AIResponse!
+
+    # User Digest Tracking
+    markDigestViewed(teamId: ID!): Boolean!
+    markChannelSeen(channelId: ID!): Boolean!
+    markDigestItemViewed(itemType: String!, itemId: ID!): Boolean!
 
     # Knowledge - Manual
     createFact(teamId: ID!, input: CreateFactInput!): Fact!
