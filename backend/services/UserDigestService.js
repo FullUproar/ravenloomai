@@ -117,6 +117,7 @@ export async function getUserDigest(teamId, userId) {
   });
 
   return {
+    teamId,  // Include for type resolvers
     items: queue,
     top3: queue.slice(0, 3),
     totalCount: queue.length,

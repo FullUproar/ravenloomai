@@ -1,5 +1,6 @@
 /**
  * DigestPage - Priority-ordered user digest styling
+ * Uses design system variables from styles.css (dark theme)
  */
 
 .digest-page {
@@ -7,6 +8,7 @@
   max-width: 900px;
   margin: 0 auto;
   min-height: 100%;
+  background: var(--bg);
 }
 
 /* Header */
@@ -20,7 +22,7 @@
 .digest-header h2 {
   margin: 0;
   font-size: 1.5rem;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--text);
 }
 
 .refresh-btn {
@@ -31,27 +33,130 @@
   padding: 8px;
   border-radius: 6px;
   transition: background-color 0.2s;
+  color: var(--text-muted);
 }
 
 .refresh-btn:hover {
-  background-color: var(--bg-hover, #f0f0f0);
+  background-color: var(--bg-tertiary);
 }
 
-/* Loading State */
+/* ============================================================================
+   AI BRIEFING SECTION
+   ============================================================================ */
+
+.digest-briefing {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+
+.briefing-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.briefing-icon {
+  font-size: 1.5rem;
+}
+
+.briefing-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text);
+  flex: 1;
+}
+
+.briefing-refresh-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.briefing-refresh-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+.briefing-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.briefing-content {
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 0.95rem;
+}
+
+.briefing-content p {
+  margin: 0 0 12px;
+}
+
+.briefing-content p:last-child {
+  margin-bottom: 0;
+}
+
+.briefing-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.briefing-cached {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.briefing-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 20px 0;
+}
+
+.briefing-loading .loading-spinner {
+  width: 20px;
+  height: 20px;
+}
+
+.briefing-error {
+  color: var(--pop);
+  font-size: 0.9rem;
+  padding: 12px 0;
+}
+
+/* ============================================================================
+   LOADING STATE
+   ============================================================================ */
+
 .digest-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
-  color: var(--text-secondary, #666);
+  padding: 80px 20px;
+  color: var(--text-muted);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid var(--border-color, #e0e0e0);
-  border-top-color: var(--primary-color, #5865f2);
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -64,74 +169,90 @@
   margin-top: 16px;
 }
 
-/* Error State */
+/* ============================================================================
+   ERROR STATE
+   ============================================================================ */
+
 .digest-error {
   text-align: center;
-  padding: 60px 20px;
-  color: var(--text-secondary, #666);
+  padding: 80px 20px;
+  color: var(--text-muted);
 }
 
 .digest-error button {
   margin-top: 16px;
-  padding: 8px 20px;
-  background: var(--primary-color, #5865f2);
+  padding: 10px 24px;
+  background: var(--primary);
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.9rem;
+  transition: background-color 0.2s;
 }
 
 .digest-error button:hover {
-  background: var(--primary-hover, #4752c4);
+  background: var(--primary-hover);
 }
 
-/* Empty State */
+/* ============================================================================
+   EMPTY STATE
+   ============================================================================ */
+
 .digest-empty {
   text-align: center;
-  padding: 80px 20px;
-  color: var(--text-secondary, #666);
+  padding: 100px 20px;
+  color: var(--text-muted);
 }
 
 .empty-icon {
-  font-size: 3rem;
-  margin-bottom: 16px;
+  font-size: 4rem;
+  margin-bottom: 20px;
+  opacity: 0.8;
 }
 
 .digest-empty h3 {
-  margin: 0 0 8px;
-  color: var(--text-primary, #1a1a1a);
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 1.25rem;
 }
 
 .digest-empty p {
   margin: 0;
+  font-size: 0.95rem;
+  max-width: 300px;
+  margin: 0 auto;
+  line-height: 1.5;
 }
 
-/* Top 3 Section */
+/* ============================================================================
+   TOP 3 PRIORITY CARDS
+   ============================================================================ */
+
 .digest-top3 {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 32px;
+  gap: 12px;
+  margin-bottom: 24px;
 }
 
-/* Large Card Styling */
 .digest-card-large {
   display: flex;
   align-items: flex-start;
   gap: 16px;
   padding: 20px;
-  background: var(--card-bg, #ffffff);
+  background: var(--bg-secondary);
   border-radius: 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border);
   cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.15s, border-color 0.15s, background-color 0.15s;
   position: relative;
 }
 
 .digest-card-large:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: var(--bg-tertiary);
+  border-color: var(--primary);
 }
 
 .card-rank {
@@ -140,7 +261,7 @@
   left: 12px;
   width: 24px;
   height: 24px;
-  background: var(--primary-color, #5865f2);
+  background: var(--primary);
   color: white;
   border-radius: 50%;
   display: flex;
@@ -162,10 +283,10 @@
 }
 
 .card-title {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   font-size: 1.1rem;
   font-weight: 600;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -174,13 +295,14 @@
 .card-subtitle {
   margin: 0 0 8px;
   font-size: 0.9rem;
-  color: var(--text-secondary, #666);
+  color: var(--text-muted);
 }
 
 .card-detail {
   margin: 0;
   font-size: 0.85rem;
-  color: var(--text-tertiary, #888);
+  color: var(--text-muted);
+  opacity: 0.8;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -191,36 +313,43 @@
   position: absolute;
   top: 12px;
   right: 12px;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   text-transform: uppercase;
-  color: var(--text-tertiary, #888);
-  background: var(--bg-secondary, #f5f5f5);
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
   padding: 4px 8px;
   border-radius: 4px;
 }
 
-/* Priority Colors */
+/* ============================================================================
+   PRIORITY INDICATORS
+   ============================================================================ */
+
 .priority-urgent {
-  border-left: 4px solid #dc3545;
+  border-left: 4px solid var(--pop);
 }
 
 .priority-high {
-  border-left: 4px solid #fd7e14;
+  border-left: 4px solid #FF9947;
 }
 
 .priority-medium {
-  border-left: 4px solid #ffc107;
+  border-left: 4px solid #FFD700;
 }
 
 .priority-low {
-  border-left: 4px solid #6c757d;
+  border-left: 4px solid var(--text-muted);
 }
 
-/* More Items Section */
+/* ============================================================================
+   MORE ITEMS SECTION
+   ============================================================================ */
+
 .digest-more {
-  background: var(--card-bg, #ffffff);
+  background: var(--bg-secondary);
   border-radius: 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -228,33 +357,37 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--bg-secondary, #f9f9f9);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
 }
 
 .more-header h3 {
   margin: 0;
-  font-size: 0.95rem;
-  color: var(--text-secondary, #666);
+  font-size: 0.9rem;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 .show-all-btn {
   background: transparent;
   border: none;
-  color: var(--primary-color, #5865f2);
+  color: var(--cta);
   font-size: 0.85rem;
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
+  transition: background-color 0.2s;
 }
 
 .show-all-btn:hover {
-  background: var(--bg-hover, #f0f0f0);
+  background: var(--bg-secondary);
 }
 
-/* Compact List Items */
+/* ============================================================================
+   COMPACT LIST ITEMS
+   ============================================================================ */
+
 .more-list {
   display: flex;
   flex-direction: column;
@@ -267,7 +400,7 @@
   padding: 12px 20px;
   cursor: pointer;
   transition: background-color 0.15s;
-  border-bottom: 1px solid var(--border-light, #f0f0f0);
+  border-bottom: 1px solid var(--border);
 }
 
 .digest-item:last-child {
@@ -275,12 +408,12 @@
 }
 
 .digest-item:hover {
-  background: var(--bg-hover, #f5f5f5);
+  background: var(--bg-tertiary);
 }
 
 .item-rank {
   font-size: 0.8rem;
-  color: var(--text-tertiary, #888);
+  color: var(--text-muted);
   width: 24px;
   flex-shrink: 0;
 }
@@ -293,7 +426,7 @@
 .item-title {
   flex: 1;
   font-size: 0.9rem;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -302,7 +435,7 @@
 
 .item-subtitle {
   font-size: 0.8rem;
-  color: var(--text-secondary, #666);
+  color: var(--text-muted);
   flex-shrink: 0;
   max-width: 200px;
   overflow: hidden;
@@ -312,24 +445,31 @@
 
 /* Priority indicator for list items */
 .digest-item.priority-urgent {
-  border-left: 3px solid #dc3545;
+  border-left: 3px solid var(--pop);
 }
 
 .digest-item.priority-high {
-  border-left: 3px solid #fd7e14;
+  border-left: 3px solid #FF9947;
 }
 
 .digest-item.priority-medium {
-  border-left: 3px solid #ffc107;
+  border-left: 3px solid #FFD700;
 }
 
 .digest-item.priority-low {
-  border-left: 3px solid #6c757d;
+  border-left: 3px solid var(--text-muted);
 }
 
-/* Responsive adjustments */
+/* ============================================================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================================================ */
+
 @media (max-width: 600px) {
   .digest-page {
+    padding: 16px;
+  }
+
+  .digest-briefing {
     padding: 16px;
   }
 
@@ -348,5 +488,13 @@
 
   .item-subtitle {
     display: none;
+  }
+
+  .digest-empty {
+    padding: 60px 20px;
+  }
+
+  .empty-icon {
+    font-size: 3rem;
   }
 }

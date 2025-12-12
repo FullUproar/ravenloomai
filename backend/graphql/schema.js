@@ -1544,6 +1544,13 @@ export default gql`
     top3: [DigestItem!]!
     totalCount: Int!
     hasMore: Boolean!
+    briefing: DigestBriefing
+  }
+
+  type DigestBriefing {
+    briefing: String!
+    cached: Boolean!
+    generatedAt: DateTime
   }
 
   type Query {
@@ -1789,6 +1796,7 @@ export default gql`
     markDigestViewed(teamId: ID!): Boolean!
     markChannelSeen(channelId: ID!): Boolean!
     markDigestItemViewed(itemType: String!, itemId: ID!): Boolean!
+    regenerateDigestBriefing(teamId: ID!): DigestBriefing!
 
     # Knowledge - Manual
     createFact(teamId: ID!, input: CreateFactInput!): Fact!

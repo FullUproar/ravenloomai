@@ -31,6 +31,7 @@ import * as ProactiveService from '../../services/ProactiveService.js';
 import * as MeetingPrepService from '../../services/MeetingPrepService.js';
 import * as RateLimiterService from '../../services/RateLimiterService.js';
 import * as UserDigestService from '../../services/UserDigestService.js';
+import * as DigestBriefingService from '../../services/DigestBriefingService.js';
 import { pmQueryResolvers, pmMutationResolvers, pmTypeResolvers } from './pmResolvers.js';
 
 const resolvers = {
@@ -722,6 +723,11 @@ const resolvers = {
     markDigestItemViewed: async (_, { itemType, itemId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return UserDigestService.markItemViewed(itemType, itemId, userId);
+    },
+
+    regenerateDigestBriefing: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return DigestBriefingService.regenerateBriefing(teamId, userId);
     },
 
     // Knowledge - Manual
@@ -1430,6 +1436,20 @@ const resolvers = {
     project: async (event) => {
       if (!event.projectId) return null;
       return ProjectService.getProjectById(event.projectId);
+    }
+  },
+
+  UserDigest: {
+    briefing: async (digest, _, { userId }) => {
+      // Fetch briefing for this digest
+      // The digest should have teamId from the query context
+      if (!digest.teamId) return null;
+      try {
+        return DigestBriefingService.getDigestBriefing(digest.teamId, userId);
+      } catch (error) {
+        console.error('[UserDigest.briefing] Error fetching briefing:', error);
+        return null;
+      }
     }
   },
   ...pmTypeResolvers

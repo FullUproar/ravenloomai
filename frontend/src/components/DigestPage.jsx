@@ -19,6 +19,11 @@ import './DigestPage.css';
 const GET_USER_DIGEST = gql`
   query GetUserDigest($teamId: ID!) {
     getUserDigest(teamId: $teamId) {
+      briefing {
+        briefing
+        cached
+        generatedAt
+      }
       items {
         priority
         type
@@ -143,8 +148,19 @@ const MARK_ITEM_VIEWED = gql`
   }
 `;
 
+const REGENERATE_BRIEFING = gql`
+  mutation RegenerateDigestBriefing($teamId: ID!) {
+    regenerateDigestBriefing(teamId: $teamId) {
+      briefing
+      cached
+      generatedAt
+    }
+  }
+`;
+
 function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateToGoal, onNavigateToProject, onNavigateToCalendar }) {
   const [showAll, setShowAll] = useState(false);
+  const [briefingLoading, setBriefingLoading] = useState(false);
 
   const { data, loading, error, refetch } = useQuery(GET_USER_DIGEST, {
     variables: { teamId },
@@ -155,6 +171,7 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   const [markDigestViewed] = useMutation(MARK_DIGEST_VIEWED);
   const [markChannelSeen] = useMutation(MARK_CHANNEL_SEEN);
   const [markItemViewed] = useMutation(MARK_ITEM_VIEWED);
+  const [regenerateBriefing] = useMutation(REGENERATE_BRIEFING);
 
   // Mark digest as viewed when component mounts
   useEffect(() => {
@@ -171,9 +188,57 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   }, [refetch]);
 
   const digest = data?.getUserDigest;
+  const briefing = digest?.briefing;
   const top3 = digest?.top3 || [];
   const allItems = digest?.items || [];
   const moreItems = showAll ? allItems.slice(3) : allItems.slice(3, 8);
+
+  const handleRegenerateBriefing = async () => {
+    if (briefingLoading) return;
+    setBriefingLoading(true);
+    try {
+      await regenerateBriefing({
+        variables: { teamId },
+        update: (cache, { data: mutationData }) => {
+          // Update the cache with the new briefing
+          const existingData = cache.readQuery({
+            query: GET_USER_DIGEST,
+            variables: { teamId }
+          });
+          if (existingData && mutationData?.regenerateDigestBriefing) {
+            cache.writeQuery({
+              query: GET_USER_DIGEST,
+              variables: { teamId },
+              data: {
+                getUserDigest: {
+                  ...existingData.getUserDigest,
+                  briefing: mutationData.regenerateDigestBriefing
+                }
+              }
+            });
+          }
+        }
+      });
+    } catch (err) {
+      console.error('Failed to regenerate briefing:', err);
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
+  const formatBriefingTime = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString();
+  };
 
   const handleItemClick = async (item) => {
     // Mark item as viewed and navigate
@@ -311,11 +376,37 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
         </button>
       </header>
 
+      {/* Raven's AI Briefing */}
+      {briefing?.briefing && (
+        <section className="digest-briefing">
+          <div className="briefing-header">
+            <span className="briefing-icon">🪶</span>
+            <span className="briefing-title">Raven's Briefing</span>
+            <button
+              className="briefing-refresh-btn"
+              onClick={handleRegenerateBriefing}
+              disabled={briefingLoading}
+              title="Regenerate briefing"
+            >
+              {briefingLoading ? '...' : '↻'}
+            </button>
+          </div>
+          <div className="briefing-content">
+            {briefing.briefing}
+          </div>
+          {briefing.generatedAt && (
+            <span className="briefing-cached">
+              {briefing.cached ? 'Cached ' : 'Generated '}{formatBriefingTime(briefing.generatedAt)}
+            </span>
+          )}
+        </section>
+      )}
+
       {digest?.totalCount === 0 ? (
         <div className="digest-empty">
-          <div className="empty-icon">✨</div>
-          <h3>All caught up!</h3>
-          <p>You have no pending items right now.</p>
+          <div className="empty-icon">🪶</div>
+          <h3>All clear for now</h3>
+          <p>No urgent items need your attention. Raven will let you know when something comes up.</p>
         </div>
       ) : (
         <>
