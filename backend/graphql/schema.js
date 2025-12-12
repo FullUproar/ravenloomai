@@ -447,6 +447,7 @@ export default gql`
     tasks: [GoalTask!]!  # All tasks linked to this goal (direct + inherited)
     taskCount: Int!
     completedTaskCount: Int!
+    isFocused: Boolean  # Whether current user has this focused
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -488,6 +489,7 @@ export default gql`
     tasks: [Task!]!
     taskCount: Int!
     completedTaskCount: Int!
+    isFocused: Boolean  # Whether current user has this focused
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -525,6 +527,14 @@ export default gql`
     isUrgent: Boolean         # Eisenhower matrix
     importance: String        # low, normal, high, critical
     isQuickTask: Boolean      # 2-minute rule flag
+    # Blocked status (escalation)
+    isBlocked: Boolean
+    blockedReason: String
+    blockedAt: DateTime
+    blockedBy: String
+    blockedByUser: User
+    # Focus status
+    isFocused: Boolean        # Whether current user has this focused
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -1521,8 +1531,8 @@ export default gql`
   # ============================================================================
 
   type DigestItem {
-    priority: Int!
-    type: String!  # unread_channel, event_today, task_today, updated_goal, updated_project, updated_task, event_tomorrow, task_week
+    priority: Float!
+    type: String!  # team_spotlight, blocked_task, unread_channel, focus_item, event_today, task_today, updated_goal, updated_project, updated_task, event_tomorrow, task_week
     sortKey: DateTime
     # Polymorphic data - only one will be populated based on type
     channel: Channel
@@ -1530,8 +1540,10 @@ export default gql`
     task: Task
     goal: Goal
     project: Project
-    unreadCount: Int  # For unread_channel type
-    latestMessage: DigestMessage  # For unread_channel type
+    spotlight: TeamSpotlight     # For team_spotlight type
+    focusItem: FocusItem         # For focus_item type
+    unreadCount: Int             # For unread_channel type
+    latestMessage: DigestMessage # For unread_channel type
   }
 
   type DigestMessage {
@@ -1551,6 +1563,79 @@ export default gql`
     briefing: String!
     cached: Boolean!
     generatedAt: DateTime
+  }
+
+  # ============================================================================
+  # FOCUS, BLOCKED & SPOTLIGHT
+  # ============================================================================
+
+  type FocusItem {
+    id: ID!
+    userId: String!
+    teamId: ID!
+    itemType: String!      # task, goal, project
+    itemId: ID!
+    itemTitle: String
+    itemStatus: String
+    focusOrder: Int!
+    focusedAt: DateTime
+  }
+
+  type BlockedTask {
+    id: ID!
+    teamId: ID!
+    projectId: ID
+    title: String!
+    description: String
+    status: String!
+    priority: String!
+    assignedTo: String
+    assignedToName: String
+    projectName: String
+    dueAt: DateTime
+    isBlocked: Boolean!
+    blockedReason: String
+    blockedAt: DateTime
+    blockedBy: String
+    blockedByName: String
+    blockedDuration: String  # e.g., "2d", "5h"
+  }
+
+  type TeamSpotlight {
+    id: ID!
+    teamId: ID!
+    itemType: String!      # task, goal, project, custom
+    itemId: ID
+    itemTitle: String
+    itemStatus: String
+    customTitle: String
+    customDescription: String
+    setBy: String!
+    setByName: String
+    createdAt: DateTime!
+    expiresAt: DateTime
+    sortOrder: Int
+    isActive: Boolean!
+  }
+
+  input AddSpotlightInput {
+    itemType: String!      # task, goal, project, custom
+    itemId: ID
+    customTitle: String
+    customDescription: String
+    expiresAt: DateTime
+  }
+
+  input UpdateSpotlightInput {
+    customTitle: String
+    customDescription: String
+    expiresAt: DateTime
+    sortOrder: Int
+  }
+
+  type FocusResult {
+    success: Boolean!
+    message: String
   }
 
   type Query {
@@ -1660,6 +1745,15 @@ export default gql`
     # USER DIGEST (Priority-ordered landing page)
     # ============================================================================
     getUserDigest(teamId: ID!): UserDigest!
+
+    # ============================================================================
+    # FOCUS, BLOCKED & SPOTLIGHT
+    # ============================================================================
+    getUserFocusItems(teamId: ID!): [FocusItem!]!
+    getBlockedTasks(teamId: ID!): [BlockedTask!]!
+    getUserBlockedTasks(teamId: ID!): [BlockedTask!]!
+    getTeamSpotlights(teamId: ID!): [TeamSpotlight!]!
+    isItemFocused(teamId: ID!, itemType: String!, itemId: ID!): Boolean!
 
     # ============================================================================
     # AI PRODUCTIVITY FEATURES
@@ -1797,6 +1891,15 @@ export default gql`
     markChannelSeen(channelId: ID!): Boolean!
     markDigestItemViewed(itemType: String!, itemId: ID!): Boolean!
     regenerateDigestBriefing(teamId: ID!): DigestBriefing!
+
+    # Focus, Blocked & Spotlight
+    addFocusItem(teamId: ID!, itemType: String!, itemId: ID!): FocusResult!
+    removeFocusItem(teamId: ID!, itemType: String!, itemId: ID!): FocusResult!
+    markTaskBlocked(taskId: ID!, reason: String): Task!
+    unblockTask(taskId: ID!): Task!
+    addSpotlight(teamId: ID!, input: AddSpotlightInput!): TeamSpotlight!
+    removeSpotlight(spotlightId: ID!): FocusResult!
+    updateSpotlight(spotlightId: ID!, input: UpdateSpotlightInput!): TeamSpotlight!
 
     # Knowledge - Manual
     createFact(teamId: ID!, input: CreateFactInput!): Fact!

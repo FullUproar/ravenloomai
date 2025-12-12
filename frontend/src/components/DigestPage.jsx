@@ -48,6 +48,12 @@ const GET_USER_DIGEST = gql`
           status
           priority
           dueAt
+          isBlocked
+          blockedReason
+          blockedAt
+          blockedByUser {
+            displayName
+          }
           project {
             id
             name
@@ -67,6 +73,22 @@ const GET_USER_DIGEST = gql`
           id
           name
           status
+        }
+        spotlight {
+          id
+          itemType
+          itemTitle
+          customTitle
+          customDescription
+          setByName
+        }
+        focusItem {
+          id
+          itemType
+          itemId
+          itemTitle
+          itemStatus
+          focusOrder
         }
         unreadCount
         latestMessage {
@@ -98,6 +120,12 @@ const GET_USER_DIGEST = gql`
           status
           priority
           dueAt
+          isBlocked
+          blockedReason
+          blockedAt
+          blockedByUser {
+            displayName
+          }
           project {
             id
             name
@@ -117,6 +145,22 @@ const GET_USER_DIGEST = gql`
           id
           name
           status
+        }
+        spotlight {
+          id
+          itemType
+          itemTitle
+          customTitle
+          customDescription
+          setByName
+        }
+        focusItem {
+          id
+          itemType
+          itemId
+          itemTitle
+          itemStatus
+          focusOrder
         }
         unreadCount
         latestMessage {
@@ -247,7 +291,7 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
       onNavigateToChannel?.(item.channel.id);
     } else if (item.type.includes('event') && item.event) {
       onNavigateToCalendar?.(item.event.id);
-    } else if (item.type.includes('task') && item.task) {
+    } else if ((item.type.includes('task') || item.type === 'blocked_task') && item.task) {
       await markItemViewed({ variables: { itemType: 'task', itemId: item.task.id } });
       onNavigateToTask?.(item.task.id);
     } else if (item.type === 'updated_goal' && item.goal) {
@@ -256,12 +300,28 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
     } else if (item.type === 'updated_project' && item.project) {
       await markItemViewed({ variables: { itemType: 'project', itemId: item.project.id } });
       onNavigateToProject?.(item.project.id);
+    } else if (item.type === 'focus_item' && item.focusItem) {
+      // Navigate based on focus item type
+      const { itemType, itemId } = item.focusItem;
+      if (itemType === 'task') onNavigateToTask?.(itemId);
+      else if (itemType === 'goal') onNavigateToGoal?.(itemId);
+      else if (itemType === 'project') onNavigateToProject?.(itemId);
+    } else if (item.type === 'team_spotlight' && item.spotlight) {
+      // Navigate based on spotlight type
+      const { itemType, itemId } = item.spotlight;
+      if (itemType === 'task') onNavigateToTask?.(itemId);
+      else if (itemType === 'goal') onNavigateToGoal?.(itemId);
+      else if (itemType === 'project') onNavigateToProject?.(itemId);
+      // custom spotlights don't navigate anywhere
     }
     refetch();
   };
 
   const getItemIcon = (item) => {
     switch (item.type) {
+      case 'team_spotlight': return '🔦';
+      case 'blocked_task': return '🚫';
+      case 'focus_item': return '📌';
       case 'unread_channel': return '💬';
       case 'event_today': return '📅';
       case 'event_tomorrow': return '📆';
@@ -275,6 +335,8 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   };
 
   const getItemTitle = (item) => {
+    if (item.spotlight) return item.spotlight.itemTitle || item.spotlight.customTitle || 'Spotlight';
+    if (item.focusItem) return item.focusItem.itemTitle || 'Focus Item';
     if (item.channel) return `#${item.channel.name}`;
     if (item.event) return item.event.title;
     if (item.task) return item.task.title;
@@ -284,6 +346,19 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   };
 
   const getItemSubtitle = (item) => {
+    if (item.type === 'team_spotlight' && item.spotlight) {
+      const desc = item.spotlight.customDescription;
+      const setBy = item.spotlight.setByName ? `Set by ${item.spotlight.setByName}` : '';
+      return desc || setBy || 'Team priority';
+    }
+    if (item.type === 'blocked_task' && item.task) {
+      const assignee = item.task.assignedToUser?.displayName || 'Someone';
+      const reason = item.task.blockedReason;
+      return reason ? `${assignee} is blocked: ${reason}` : `${assignee} is blocked`;
+    }
+    if (item.type === 'focus_item' && item.focusItem) {
+      return `Your focus #${item.focusItem.focusOrder} - ${item.focusItem.itemType}`;
+    }
     if (item.type === 'unread_channel') {
       return `${item.unreadCount} unread message${item.unreadCount !== 1 ? 's' : ''}`;
     }
@@ -313,6 +388,12 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
     if (item.event?.description) {
       return item.event.description;
     }
+    if (item.type === 'blocked_task' && item.task?.blockedReason) {
+      return item.task.blockedReason;
+    }
+    if (item.spotlight?.customDescription) {
+      return item.spotlight.customDescription;
+    }
     return null;
   };
 
@@ -339,10 +420,13 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   };
 
   const getPriorityClass = (item) => {
-    if (item.priority === 1) return 'priority-urgent';
-    if (item.priority <= 3) return 'priority-high';
-    if (item.priority <= 4) return 'priority-medium';
-    return 'priority-low';
+    // New priority tiers with float values
+    if (item.priority <= 0.5) return 'priority-critical';  // spotlights and blocked tasks
+    if (item.priority <= 1) return 'priority-urgent';      // unread messages
+    if (item.priority <= 1.5) return 'priority-high';      // focus items
+    if (item.priority <= 3) return 'priority-medium';      // events and tasks today
+    if (item.priority <= 4) return 'priority-normal';      // updated items
+    return 'priority-low';                                 // tomorrow and week items
   };
 
   if (loading && !data) {

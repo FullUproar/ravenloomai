@@ -2,7 +2,10 @@
  * UserDigestService - Generates personalized priority-ordered digest for users
  *
  * Priority Order:
+ * 0.1. Team spotlights (manager-broadcast priorities)
+ * 0.5. Blocked tasks (escalation for stuck team members)
  * 1. Unread messages (channels with messages since user last viewed)
+ * 1.5. User's focus items (personal pins)
  * 2. Events today (or tomorrow if after 4PM)
  * 3. Tasks due today (or tomorrow if after 4PM)
  * 4. Updated items (projects, goals, tasks) - until viewed or 24h timeout
@@ -11,6 +14,7 @@
  */
 
 import db from '../db.js';
+import * as FocusService from './FocusService.js';
 
 // ============================================================================
 // Main Digest Function
@@ -26,6 +30,9 @@ export async function getUserDigest(teamId, userId) {
 
   // Fetch all potential items in parallel
   const [
+    teamSpotlights,
+    blockedTasks,
+    focusItems,
     unreadChannels,
     eventsToday,
     eventsTomorrow,
@@ -35,6 +42,9 @@ export async function getUserDigest(teamId, userId) {
     updatedProjects,
     updatedTasks
   ] = await Promise.all([
+    FocusService.getTeamSpotlights(teamId),
+    FocusService.getUserBlockedTasks(teamId, userId),
+    FocusService.getUserFocusItems(teamId, userId),
     getUnreadChannels(teamId, userId),
     getEventsInRange(teamId, userId, timeWindow.todayStart, timeWindow.todayEnd),
     timeWindow.tomorrowStart ? getEventsInRange(teamId, userId, timeWindow.tomorrowStart, timeWindow.tomorrowEnd) : Promise.resolve([]),
@@ -46,7 +56,26 @@ export async function getUserDigest(teamId, userId) {
   ]);
 
   // Build unified queue with priority tiers
+  // Track IDs to avoid duplicates (focus items may duplicate other items)
+  const focusedItemIds = new Set(focusItems.map(f => `${f.itemType}:${f.itemId}`));
+  const blockedTaskIds = new Set(blockedTasks.map(t => t.id));
+
   const queue = [
+    // Priority 0.1: Team spotlights (manager-broadcast priorities)
+    ...teamSpotlights.map(s => ({
+      priority: 0.1,
+      type: 'team_spotlight',
+      sortKey: s.sortOrder,
+      spotlight: s
+    })),
+    // Priority 0.5: Blocked tasks (escalation for stuck work)
+    ...blockedTasks.map(t => ({
+      priority: 0.5,
+      type: 'blocked_task',
+      sortKey: t.blockedAt,
+      task: t
+    })),
+    // Priority 1: Unread channels
     ...unreadChannels.map(c => ({
       priority: 1,
       type: 'unread_channel',
@@ -55,43 +84,55 @@ export async function getUserDigest(teamId, userId) {
       unreadCount: c.unreadCount,
       latestMessage: c.latestMessage
     })),
+    // Priority 1.5: User's focus items (personal pins)
+    ...focusItems.map(f => ({
+      priority: 1.5,
+      type: 'focus_item',
+      sortKey: f.focusOrder,
+      focusItem: f
+    })),
+    // Priority 2: Events today
     ...eventsToday.map(e => ({
       priority: 2,
       type: 'event_today',
       sortKey: e.startAt,
       event: e
     })),
-    ...tasksDueToday.map(t => ({
+    // Priority 3: Tasks due today (exclude blocked tasks to avoid duplicates)
+    ...tasksDueToday.filter(t => !blockedTaskIds.has(t.id)).map(t => ({
       priority: 3,
       type: 'task_today',
       sortKey: t.dueAt,
       task: t
     })),
-    ...updatedGoals.map(g => ({
+    // Priority 4: Updated items
+    ...updatedGoals.filter(g => !focusedItemIds.has(`goal:${g.id}`)).map(g => ({
       priority: 4,
       type: 'updated_goal',
       sortKey: g.updatedAt,
       goal: g
     })),
-    ...updatedProjects.map(p => ({
+    ...updatedProjects.filter(p => !focusedItemIds.has(`project:${p.id}`)).map(p => ({
       priority: 4,
       type: 'updated_project',
       sortKey: p.updatedAt,
       project: p
     })),
-    ...updatedTasks.map(t => ({
+    ...updatedTasks.filter(t => !blockedTaskIds.has(t.id) && !focusedItemIds.has(`task:${t.id}`)).map(t => ({
       priority: 4,
       type: 'updated_task',
       sortKey: t.updatedAt,
       task: t
     })),
+    // Priority 5: Events tomorrow
     ...eventsTomorrow.map(e => ({
       priority: 5,
       type: 'event_tomorrow',
       sortKey: e.startAt,
       event: e
     })),
-    ...tasksDueWeek.map(t => ({
+    // Priority 6: Tasks due this week (exclude blocked tasks)
+    ...tasksDueWeek.filter(t => !blockedTaskIds.has(t.id)).map(t => ({
       priority: 6,
       type: 'task_week',
       sortKey: t.dueAt,
@@ -129,6 +170,8 @@ export async function getUserDigest(teamId, userId) {
  * Get title from any digest item for sorting
  */
 function getItemTitle(item) {
+  if (item.spotlight) return item.spotlight.itemTitle || item.spotlight.customTitle || '';
+  if (item.focusItem) return item.focusItem.itemTitle || '';
   if (item.channel) return item.channel.name || '';
   if (item.event) return item.event.title || '';
   if (item.task) return item.task.title || '';

@@ -32,6 +32,7 @@ import * as MeetingPrepService from '../../services/MeetingPrepService.js';
 import * as RateLimiterService from '../../services/RateLimiterService.js';
 import * as UserDigestService from '../../services/UserDigestService.js';
 import * as DigestBriefingService from '../../services/DigestBriefingService.js';
+import * as FocusService from '../../services/FocusService.js';
 import { pmQueryResolvers, pmMutationResolvers, pmTypeResolvers } from './pmResolvers.js';
 
 const resolvers = {
@@ -463,6 +464,35 @@ const resolvers = {
     },
 
     // ============================================================================
+    // FOCUS, BLOCKED & SPOTLIGHT
+    // ============================================================================
+
+    getUserFocusItems: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.getUserFocusItems(teamId, userId);
+    },
+
+    getBlockedTasks: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.getBlockedTasks(teamId);
+    },
+
+    getUserBlockedTasks: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.getUserBlockedTasks(teamId, userId);
+    },
+
+    getTeamSpotlights: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.getTeamSpotlights(teamId);
+    },
+
+    isItemFocused: async (_, { teamId, itemType, itemId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.isItemFocused(teamId, userId, itemType, itemId);
+    },
+
+    // ============================================================================
     // PRODUCTIVITY & AI INSIGHTS
     // ============================================================================
 
@@ -728,6 +758,42 @@ const resolvers = {
     regenerateDigestBriefing: async (_, { teamId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return DigestBriefingService.regenerateBriefing(teamId, userId);
+    },
+
+    // Focus, Blocked & Spotlight
+    addFocusItem: async (_, { teamId, itemType, itemId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.addFocusItem(teamId, userId, itemType, itemId);
+    },
+
+    removeFocusItem: async (_, { teamId, itemType, itemId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.removeFocusItem(teamId, userId, itemType, itemId);
+    },
+
+    markTaskBlocked: async (_, { taskId, reason }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.markTaskBlocked(taskId, userId, reason);
+    },
+
+    unblockTask: async (_, { taskId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.unblockTask(taskId, userId);
+    },
+
+    addSpotlight: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.addSpotlight(teamId, userId, input);
+    },
+
+    removeSpotlight: async (_, { spotlightId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.removeSpotlight(spotlightId, userId);
+    },
+
+    updateSpotlight: async (_, { spotlightId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return FocusService.updateSpotlight(spotlightId, input);
     },
 
     // Knowledge - Manual
@@ -1261,6 +1327,11 @@ const resolvers = {
     completedTaskCount: async (goal) => {
       const tasks = await GoalService.getTasksForGoal(goal.id, goal.teamId);
       return tasks.filter(t => t.status === 'done').length;
+    },
+
+    isFocused: async (goal, _, { userId }) => {
+      if (!userId || !goal.teamId) return false;
+      return FocusService.isItemFocused(goal.teamId, userId, 'goal', goal.id);
     }
   },
 
@@ -1286,6 +1357,11 @@ const resolvers = {
     completedTaskCount: async (project) => {
       const tasks = await TaskService.getTasks(project.teamId, { projectId: project.id, status: 'done' });
       return tasks.length;
+    },
+
+    isFocused: async (project, _, { userId }) => {
+      if (!userId || !project.teamId) return false;
+      return FocusService.isItemFocused(project.teamId, userId, 'project', project.id);
     }
   },
 
@@ -1329,6 +1405,16 @@ const resolvers = {
 
     activity: async (task) => {
       return TaskService.getTaskActivity(task.id);
+    },
+
+    blockedByUser: async (task) => {
+      if (!task.blockedBy) return null;
+      return UserService.getUserById(task.blockedBy);
+    },
+
+    isFocused: async (task, _, { userId }) => {
+      if (!userId || !task.teamId) return false;
+      return FocusService.isItemFocused(task.teamId, userId, 'task', task.id);
     }
   },
 

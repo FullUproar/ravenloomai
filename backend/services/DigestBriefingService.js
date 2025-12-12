@@ -10,6 +10,7 @@ import OpenAI from 'openai';
 import db from '../db.js';
 import * as UserDigestService from './UserDigestService.js';
 import * as RateLimiterService from './RateLimiterService.js';
+import * as FocusService from './FocusService.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -25,19 +26,22 @@ Your job is to help the user understand what matters most RIGHT NOW.
 Guidelines:
 - Be conversational and warm, like a trusted advisor
 - Start with a greeting based on time of day (Good morning/afternoon/evening)
-- Prioritize: urgent first, then important
+- Prioritize in this order: (1) BLOCKED TASKS first - these are team members who are stuck and waiting, (2) TEAM SPOTLIGHTS - these are manager-broadcast priorities, (3) then other urgent items
 - Be specific: mention names, channel names, task titles
 - Suggest actions when appropriate (e.g., "Perhaps you'd like to..." or "I'd suggest...")
 - Keep it concise: 3-5 sentences for the main briefing
 - Don't just list items - synthesize and prioritize
 - If there's nothing urgent, say so clearly and suggest what to focus on
 - Use a professional but friendly tone
+- If someone is BLOCKED, this is urgent - they're stuck and waiting for help! Make this a priority.
+- If there are TEAM SPOTLIGHTS, the manager has flagged these as team priorities worth mentioning.
+- If the user has FOCUS ITEMS, acknowledge these are their personal priorities.
 
 Example tone:
-"Good morning. You have a few messages from Sarah in #design that look time-sensitive - she's asking about the logo revisions. I'd tackle that first. After that, your 2pm client call prep is the main event today. The rest can wait."
+"Good morning. Sarah is blocked on the design task - she's been waiting since yesterday for the color palette. I'd unblock her first. After that, you have messages from Ethan in #manufacturing about the quote. Looking at your focus items, getting designs ready is your main priority today."
 
 Another example:
-"Good afternoon. Looks like you have some unread messages from Ethan in #manufacturing. He's looking to understand the quote more deeply. Perhaps you'd like to kick off a Research project for this. Looking at the upcoming tasks, I'd suggest focusing today on getting the designs ready for submission."`;
+"Good afternoon. The team spotlight right now is the factory submission deadline. Looks like you have some unread messages from Ethan in #manufacturing. I'd suggest focusing today on getting the designs ready for submission - you've marked that as one of your focus items."`;
 
 // ============================================================================
 // Main Briefing Functions
@@ -169,6 +173,9 @@ function computeDigestHash(digest) {
  */
 async function gatherBriefingContext(teamId, userId, digest) {
   const [
+    teamSpotlights,
+    blockedTasks,
+    focusItems,
     unreadMessages,
     activeProjects,
     activeGoals,
@@ -177,6 +184,9 @@ async function gatherBriefingContext(teamId, userId, digest) {
     recentFacts,
     userInfo
   ] = await Promise.all([
+    FocusService.getTeamSpotlights(teamId),
+    FocusService.getBlockedTasks(teamId),  // All blocked tasks (for manager awareness)
+    FocusService.getUserFocusItems(teamId, userId),
     getUnreadMessageContent(teamId, userId),
     getActiveProjects(teamId),
     getActiveGoals(teamId),
@@ -188,6 +198,9 @@ async function gatherBriefingContext(teamId, userId, digest) {
 
   return {
     digest,
+    teamSpotlights,
+    blockedTasks,
+    focusItems,
     unreadMessages,
     activeProjects,
     activeGoals,
@@ -461,6 +474,44 @@ Time of day: ${timeOfDay}
 User: ${userName}
 
 `;
+
+  // BLOCKED TASKS - Highest priority!
+  prompt += `BLOCKED TASKS (team members who are stuck):\n`;
+  if (!context.blockedTasks || context.blockedTasks.length === 0) {
+    prompt += `No one is currently blocked.\n`;
+  } else {
+    for (const task of context.blockedTasks) {
+      const assignee = task.assignedToName || 'Unassigned';
+      const reason = task.blockedReason ? ` - "${task.blockedReason}"` : '';
+      const duration = task.blockedDuration ? ` (blocked for ${task.blockedDuration})` : '';
+      prompt += `- ${assignee} is blocked on: "${task.title}"${reason}${duration}\n`;
+    }
+  }
+  prompt += `\n`;
+
+  // TEAM SPOTLIGHTS - Manager-broadcast priorities
+  prompt += `TEAM SPOTLIGHTS (manager priorities):\n`;
+  if (!context.teamSpotlights || context.teamSpotlights.length === 0) {
+    prompt += `No team spotlights set.\n`;
+  } else {
+    for (const spotlight of context.teamSpotlights) {
+      const title = spotlight.itemTitle || spotlight.customTitle || 'Unknown';
+      const desc = spotlight.customDescription ? ` - ${spotlight.customDescription}` : '';
+      prompt += `- ${title}${desc}\n`;
+    }
+  }
+  prompt += `\n`;
+
+  // USER'S FOCUS ITEMS - Personal priorities
+  prompt += `YOUR FOCUS ITEMS (personal priorities):\n`;
+  if (!context.focusItems || context.focusItems.length === 0) {
+    prompt += `No focus items set.\n`;
+  } else {
+    for (const focus of context.focusItems) {
+      prompt += `- ${focus.itemTitle || 'Unknown item'} (${focus.itemType})\n`;
+    }
+  }
+  prompt += `\n`;
 
   // Unread messages
   prompt += `UNREAD MESSAGES:\n`;
