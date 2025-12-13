@@ -272,6 +272,153 @@
 }
 
 /* ============================================================================
+   STAGGERED ANIMATIONS
+   ============================================================================ */
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.digest-card-large.animate-in {
+  animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.digest-card-large.animate-in:nth-child(1) { animation-delay: 0ms; }
+.digest-card-large.animate-in:nth-child(2) { animation-delay: 80ms; }
+.digest-card-large.animate-in:nth-child(3) { animation-delay: 160ms; }
+
+.digest-item.animate-in {
+  animation: fadeInScale 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.digest-item.animate-in:nth-child(1) { animation-delay: 0ms; }
+.digest-item.animate-in:nth-child(2) { animation-delay: 50ms; }
+.digest-item.animate-in:nth-child(3) { animation-delay: 100ms; }
+.digest-item.animate-in:nth-child(4) { animation-delay: 150ms; }
+.digest-item.animate-in:nth-child(5) { animation-delay: 200ms; }
+
+.digest-briefing.animate-in {
+  animation: fadeInScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ============================================================================
+   SWIPE TO DISMISS
+   ============================================================================ */
+
+.digest-card-large.swiping,
+.digest-item.swiping {
+  transition: none !important;
+}
+
+.digest-card-large.swipe-out,
+.digest-item.swipe-out {
+  animation: swipeOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes swipeOut {
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+    height: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
+  }
+}
+
+.swipe-hint {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px;
+  background: linear-gradient(90deg, transparent, rgba(var(--primary-rgb), 0.2));
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  border-radius: 0 12px 12px 0;
+}
+
+.digest-card-large.swiping .swipe-hint,
+.digest-item.swiping .swipe-hint {
+  opacity: 1;
+}
+
+/* ============================================================================
+   MICRO-INTERACTIONS
+   ============================================================================ */
+
+.digest-card-large:active {
+  transform: scale(0.98);
+}
+
+.digest-item:active {
+  transform: scale(0.99);
+}
+
+.refresh-btn:active {
+  transform: scale(0.9);
+}
+
+/* Button ripple effect */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(0);
+  animation: rippleEffect 0.6s linear;
+  pointer-events: none;
+}
+
+@keyframes rippleEffect {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .digest-card-large.animate-in,
+  .digest-item.animate-in,
+  .digest-briefing.animate-in {
+    animation: none;
+    opacity: 1;
+  }
+
+  .digest-card-large.swipe-out,
+  .digest-item.swipe-out {
+    animation: none;
+  }
+}
+
+/* ============================================================================
    PULL-TO-REFRESH
    ============================================================================ */
 

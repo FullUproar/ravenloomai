@@ -13,7 +13,8 @@
  */
 
 import { gql, useQuery, useMutation } from '@apollo/client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { haptic } from '../utils/haptics';
 import './DigestPage.css';
 
 const GET_USER_DIGEST = gql`
@@ -208,6 +209,12 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   const [pullDistance, setPullDistance] = useState(0);
   const [isPulling, setIsPulling] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [dismissedItems, setDismissedItems] = useState(new Set());
+  const [swipingItem, setSwipingItem] = useState(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const swipeStartX = useRef(0);
+  const swipeStartY = useRef(0);
 
   const { data, loading, error, refetch } = useQuery(GET_USER_DIGEST, {
     variables: { teamId },
@@ -234,6 +241,65 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
     return () => window.removeEventListener('focus', handleFocus);
   }, [refetch]);
 
+  // Trigger animation after data loads
+  useEffect(() => {
+    if (data && !loading && !hasAnimated) {
+      setHasAnimated(true);
+    }
+  }, [data, loading, hasAnimated]);
+
+  // Swipe-to-dismiss handlers
+  const SWIPE_THRESHOLD = 100;
+
+  const handleSwipeStart = useCallback((e, itemKey) => {
+    const touch = e.touches?.[0] || e;
+    swipeStartX.current = touch.clientX;
+    swipeStartY.current = touch.clientY;
+    setSwipingItem(itemKey);
+    setSwipeOffset(0);
+  }, []);
+
+  const handleSwipeMove = useCallback((e) => {
+    if (!swipingItem) return;
+    const touch = e.touches?.[0] || e;
+    const deltaX = touch.clientX - swipeStartX.current;
+    const deltaY = Math.abs(touch.clientY - swipeStartY.current);
+
+    // Only swipe if horizontal movement is greater than vertical
+    if (deltaX > 10 && deltaX > deltaY) {
+      e.preventDefault();
+      setSwipeOffset(Math.max(0, deltaX));
+
+      // Haptic feedback at threshold
+      if (deltaX >= SWIPE_THRESHOLD && swipeOffset < SWIPE_THRESHOLD) {
+        haptic('selection');
+      }
+    }
+  }, [swipingItem, swipeOffset]);
+
+  const handleSwipeEnd = useCallback(async () => {
+    if (!swipingItem) return;
+
+    if (swipeOffset >= SWIPE_THRESHOLD) {
+      // Mark as dismissed with animation
+      haptic('success');
+      setDismissedItems(prev => new Set([...prev, swipingItem]));
+
+      // Remove from view after animation
+      setTimeout(() => {
+        setDismissedItems(prev => {
+          const next = new Set(prev);
+          next.delete(swipingItem);
+          return next;
+        });
+        refetch(); // Refresh to get updated list
+      }, 300);
+    }
+
+    setSwipingItem(null);
+    setSwipeOffset(0);
+  }, [swipingItem, swipeOffset, refetch]);
+
   // Pull-to-refresh handlers
   const PULL_THRESHOLD = 80;
   let touchStartY = 0;
@@ -256,9 +322,11 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
     if (!isPulling) return;
     setIsPulling(false);
     if (pullDistance >= PULL_THRESHOLD && !isRefreshing) {
+      haptic('release');
       setIsRefreshing(true);
       setPullDistance(PULL_THRESHOLD);
       await refetch();
+      haptic('success');
       setIsRefreshing(false);
     }
     setPullDistance(0);
@@ -318,6 +386,8 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   };
 
   const handleItemClick = async (item) => {
+    haptic('tap');
+
     // Mark item as viewed and navigate
     if (item.type === 'unread_channel' && item.channel) {
       await markChannelSeen({ variables: { channelId: item.channel.id } });
@@ -545,7 +615,7 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
 
       {/* Raven's AI Briefing */}
       {briefing?.briefing && (
-        <section className="digest-briefing">
+        <section className={`digest-briefing ${hasAnimated ? 'animate-in' : ''}`}>
           <div className="briefing-header">
             <span className="briefing-icon">🪶</span>
             <span className="briefing-title">Raven's Briefing</span>
@@ -585,24 +655,41 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
         <>
           {/* Top 3 Items - Large Cards */}
           <section className="digest-top3">
-            {top3.map((item, index) => (
-              <div
-                key={`${item.type}-${index}`}
-                className={`digest-card digest-card-large ${getPriorityClass(item)}`}
-                onClick={() => handleItemClick(item)}
-              >
-                <div className="card-rank">{index + 1}</div>
-                <div className="card-icon">{getItemIcon(item)}</div>
-                <div className="card-content">
-                  <h3 className="card-title">{getItemTitle(item)}</h3>
-                  <p className="card-subtitle">{getItemSubtitle(item)}</p>
-                  {getItemDetail(item) && (
-                    <p className="card-detail">{getItemDetail(item)}</p>
+            {top3.map((item, index) => {
+              const itemKey = `top3-${item.type}-${index}`;
+              const isDismissed = dismissedItems.has(itemKey);
+              const isSwiping = swipingItem === itemKey;
+
+              if (isDismissed) return null;
+
+              return (
+                <div
+                  key={itemKey}
+                  className={`digest-card digest-card-large ${getPriorityClass(item)} ${hasAnimated ? 'animate-in' : ''} ${isSwiping ? 'swiping' : ''} ${isDismissed ? 'swipe-out' : ''}`}
+                  style={isSwiping ? { transform: `translateX(${swipeOffset}px)` } : undefined}
+                  onClick={() => !isSwiping && handleItemClick(item)}
+                  onTouchStart={(e) => handleSwipeStart(e, itemKey)}
+                  onTouchMove={handleSwipeMove}
+                  onTouchEnd={handleSwipeEnd}
+                >
+                  <div className="card-rank">{index + 1}</div>
+                  <div className="card-icon">{getItemIcon(item)}</div>
+                  <div className="card-content">
+                    <h3 className="card-title">{getItemTitle(item)}</h3>
+                    <p className="card-subtitle">{getItemSubtitle(item)}</p>
+                    {getItemDetail(item) && (
+                      <p className="card-detail">{getItemDetail(item)}</p>
+                    )}
+                  </div>
+                  <div className="card-type-badge">{item.type.replace(/_/g, ' ')}</div>
+                  {isSwiping && swipeOffset > 20 && (
+                    <div className="swipe-hint">
+                      {swipeOffset >= SWIPE_THRESHOLD ? '✓ Release' : 'Dismiss →'}
+                    </div>
                   )}
                 </div>
-                <div className="card-type-badge">{item.type.replace(/_/g, ' ')}</div>
-              </div>
-            ))}
+              );
+            })}
           </section>
 
           {/* More Items */}
@@ -620,18 +707,30 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
                 )}
               </div>
               <div className="more-list">
-                {moreItems.map((item, index) => (
-                  <div
-                    key={`${item.type}-${index + 3}`}
-                    className={`digest-item ${getPriorityClass(item)}`}
-                    onClick={() => handleItemClick(item)}
-                  >
-                    <span className="item-rank">{index + 4}.</span>
-                    <span className="item-icon">{getItemIcon(item)}</span>
-                    <span className="item-title">{getItemTitle(item)}</span>
-                    <span className="item-subtitle">{getItemSubtitle(item)}</span>
-                  </div>
-                ))}
+                {moreItems.map((item, index) => {
+                  const itemKey = `more-${item.type}-${index + 3}`;
+                  const isDismissed = dismissedItems.has(itemKey);
+                  const isSwiping = swipingItem === itemKey;
+
+                  if (isDismissed) return null;
+
+                  return (
+                    <div
+                      key={itemKey}
+                      className={`digest-item ${getPriorityClass(item)} ${hasAnimated ? 'animate-in' : ''} ${isSwiping ? 'swiping' : ''}`}
+                      style={isSwiping ? { transform: `translateX(${swipeOffset}px)` } : undefined}
+                      onClick={() => !isSwiping && handleItemClick(item)}
+                      onTouchStart={(e) => handleSwipeStart(e, itemKey)}
+                      onTouchMove={handleSwipeMove}
+                      onTouchEnd={handleSwipeEnd}
+                    >
+                      <span className="item-rank">{index + 4}.</span>
+                      <span className="item-icon">{getItemIcon(item)}</span>
+                      <span className="item-title">{getItemTitle(item)}</span>
+                      <span className="item-subtitle">{getItemSubtitle(item)}</span>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}
