@@ -403,6 +403,70 @@
   }
 }
 
+/* ============================================================================
+   KEYBOARD NAVIGATION (j/k)
+   ============================================================================ */
+
+.digest-card-large.keyboard-selected,
+.digest-item.keyboard-selected {
+  outline: 2px solid var(--primary, #3366FF);
+  outline-offset: 2px;
+  background: var(--bg-tertiary);
+}
+
+.digest-card-large.keyboard-selected::before {
+  content: '↵';
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  font-size: 0.75rem;
+  color: var(--primary, #3366FF);
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.8;
+}
+
+.digest-item.keyboard-selected::after {
+  content: '↵';
+  font-size: 0.75rem;
+  color: var(--primary, #3366FF);
+  margin-left: auto;
+  padding: 2px 6px;
+  background: var(--bg);
+  border-radius: 4px;
+}
+
+/* Keyboard navigation hint */
+.keyboard-nav-hint {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.keyboard-nav-hint.visible {
+  opacity: 1;
+}
+
+.keyboard-nav-hint kbd {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin: 0 4px;
+  font-family: inherit;
+}
+
 /* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
   .digest-card-large.animate-in,

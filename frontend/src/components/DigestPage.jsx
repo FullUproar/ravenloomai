@@ -213,8 +213,10 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   const [swipingItem, setSwipingItem] = useState(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [hasAnimated, setHasAnimated] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1); // j/k keyboard navigation
   const swipeStartX = useRef(0);
   const swipeStartY = useRef(0);
+  const containerRef = useRef(null);
 
   const { data, loading, error, refetch } = useQuery(GET_USER_DIGEST, {
     variables: { teamId },
@@ -247,6 +249,94 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
       setHasAnimated(true);
     }
   }, [data, loading, hasAnimated]);
+
+  // Get all navigable items for keyboard navigation
+  const getAllItems = useCallback(() => {
+    if (!data?.getUserDigest) return [];
+    const top3 = data.getUserDigest.top3 || [];
+    const items = data.getUserDigest.items || [];
+    return [...top3, ...items.slice(3)];
+  }, [data]);
+
+  // j/k keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't trigger if typing in an input
+      const isTyping = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+      if (isTyping) return;
+
+      const allItems = getAllItems();
+      const maxIndex = allItems.length - 1;
+
+      switch (e.key) {
+        case 'j': // Next item
+          e.preventDefault();
+          setSelectedIndex(prev => {
+            const next = Math.min(prev + 1, maxIndex);
+            haptic('selection');
+            return next;
+          });
+          break;
+
+        case 'k': // Previous item
+          e.preventDefault();
+          setSelectedIndex(prev => {
+            const next = Math.max(prev - 1, 0);
+            haptic('selection');
+            return next;
+          });
+          break;
+
+        case 'Enter': // Open selected item
+          if (selectedIndex >= 0 && selectedIndex < allItems.length) {
+            e.preventDefault();
+            const item = allItems[selectedIndex];
+            haptic('tap');
+            handleItemClick(item);
+          }
+          break;
+
+        case 'Escape': // Clear selection
+          if (selectedIndex >= 0) {
+            e.preventDefault();
+            setSelectedIndex(-1);
+          }
+          break;
+
+        case 'g': // Go to first item
+          if (allItems.length > 0) {
+            e.preventDefault();
+            setSelectedIndex(0);
+            haptic('selection');
+          }
+          break;
+
+        case 'G': // Go to last item (Shift+g)
+          if (allItems.length > 0) {
+            e.preventDefault();
+            setSelectedIndex(maxIndex);
+            haptic('selection');
+          }
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [getAllItems, selectedIndex]);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (selectedIndex >= 0 && containerRef.current) {
+      const selector = selectedIndex < 3
+        ? `.digest-card-large:nth-child(${selectedIndex + 1})`
+        : `.digest-item:nth-child(${selectedIndex - 2})`;
+      const selectedEl = containerRef.current.querySelector(selector);
+      if (selectedEl) {
+        selectedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [selectedIndex]);
 
   // Swipe-to-dismiss handlers
   const SWIPE_THRESHOLD = 100;
@@ -586,6 +676,7 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
 
   return (
     <div
+      ref={containerRef}
       className="digest-page"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -665,7 +756,7 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
               return (
                 <div
                   key={itemKey}
-                  className={`digest-card digest-card-large ${getPriorityClass(item)} ${hasAnimated ? 'animate-in' : ''} ${isSwiping ? 'swiping' : ''} ${isDismissed ? 'swipe-out' : ''}`}
+                  className={`digest-card digest-card-large ${getPriorityClass(item)} ${hasAnimated ? 'animate-in' : ''} ${isSwiping ? 'swiping' : ''} ${isDismissed ? 'swipe-out' : ''} ${selectedIndex === index ? 'keyboard-selected' : ''}`}
                   style={isSwiping ? { transform: `translateX(${swipeOffset}px)` } : undefined}
                   onClick={() => !isSwiping && handleItemClick(item)}
                   onTouchStart={(e) => handleSwipeStart(e, itemKey)}
@@ -717,7 +808,7 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
                   return (
                     <div
                       key={itemKey}
-                      className={`digest-item ${getPriorityClass(item)} ${hasAnimated ? 'animate-in' : ''} ${isSwiping ? 'swiping' : ''}`}
+                      className={`digest-item ${getPriorityClass(item)} ${hasAnimated ? 'animate-in' : ''} ${isSwiping ? 'swiping' : ''} ${selectedIndex === index + 3 ? 'keyboard-selected' : ''}`}
                       style={isSwiping ? { transform: `translateX(${swipeOffset}px)` } : undefined}
                       onClick={() => !isSwiping && handleItemClick(item)}
                       onTouchStart={(e) => handleSwipeStart(e, itemKey)}

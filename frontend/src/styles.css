@@ -3176,6 +3176,160 @@ button:active:not(:disabled),
 }
 
 /* ============================================================================
+   Bulk Selection
+   ============================================================================ */
+
+.bulk-select-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.bulk-select-toggle .toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.bulk-select-toggle .toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.select-all-btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.select-all-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+/* Bulk Actions Bar */
+.bulk-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: var(--primary);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.bulk-count {
+  font-weight: 600;
+  color: white;
+  font-size: 0.9rem;
+}
+
+.bulk-actions {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.bulk-action-btn {
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.bulk-action-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.bulk-priority-select {
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.bulk-priority-select option {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+
+.bulk-clear-btn {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bulk-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Task Checkbox */
+.task-checkbox {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+/* Bulk Selected State */
+.task-item.bulk-selected {
+  background: rgba(93, 75, 140, 0.2);
+  border-left: 3px solid var(--primary);
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .bulk-actions-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .bulk-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .bulk-action-btn {
+    flex: 1;
+    min-width: 80px;
+    text-align: center;
+  }
+}
+
+/* ============================================================================
    Alerts Indicator
    ============================================================================ */
 
@@ -6463,6 +6617,45 @@ input[type="date"].property-value {
 .toast-close:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
+}
+
+/* Toast action button (Undo) */
+.toast-action {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--primary, #3366FF);
+  color: var(--primary, #3366FF);
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s var(--ease-out);
+  margin-left: 8px;
+}
+
+.toast-action:hover {
+  background: var(--primary, #3366FF);
+  color: #fff;
+}
+
+.toast-with-action {
+  padding-right: 12px;
+}
+
+.toast-with-action .toast-close {
+  margin-left: 8px;
+}
+
+/* Undo hint */
+.toast-with-action::after {
+  content: '⌘Z';
+  position: absolute;
+  right: 8px;
+  top: 4px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  opacity: 0.6;
 }
 
 @media (max-width: 768px) {

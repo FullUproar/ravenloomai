@@ -20,6 +20,7 @@ import {
 } from './components/pm';
 import './components/pm/PMStyles.css';
 import DigestPage from './components/DigestPage';
+import { CommandPaletteProvider } from './components/CommandPalette';
 
 // API base URL - uses /api prefix in production, localhost in development
 const API_BASE_URL = import.meta.env.PROD
@@ -1197,6 +1198,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [taskComment, setTaskComment] = useState('');
   const [addingComment, setAddingComment] = useState(false);
+  // Bulk selection state
+  const [bulkSelectedTaskIds, setBulkSelectedTaskIds] = useState(new Set());
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
   // Projects state
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [projectsViewMode, setProjectsViewMode] = useState('list'); // 'list', 'board', 'gantt', or 'wbs'
@@ -2242,6 +2246,115 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     }
   };
 
+  // Bulk selection handlers
+  const toggleBulkSelect = (taskId) => {
+    setBulkSelectedTaskIds(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllTasks = (taskList) => {
+    setBulkSelectedTaskIds(new Set(taskList.map(t => t.id)));
+  };
+
+  const clearBulkSelection = () => {
+    setBulkSelectedTaskIds(new Set());
+    setBulkSelectMode(false);
+  };
+
+  const handleBulkComplete = async () => {
+    const ids = Array.from(bulkSelectedTaskIds);
+    const previousStates = tasks.filter(t => ids.includes(t.id)).map(t => ({ id: t.id, status: t.status }));
+
+    try {
+      // Complete all selected tasks
+      await Promise.all(ids.map(id => completeTask({ variables: { taskId: id } })));
+      await refetchTasks();
+
+      // Show undo toast
+      toast.withUndo(
+        `Completed ${ids.length} task${ids.length === 1 ? '' : 's'}`,
+        async () => {
+          // Undo - restore previous states
+          await Promise.all(previousStates.map(({ id, status }) =>
+            updateTask({ variables: { taskId: id, input: { status } } })
+          ));
+          await refetchTasks();
+          toast.success('Changes undone');
+        }
+      );
+
+      clearBulkSelection();
+    } catch (error) {
+      console.error('Error bulk completing tasks:', error);
+      toast.error('Failed to complete tasks');
+    }
+  };
+
+  const handleBulkStatusChange = async (newStatus) => {
+    const ids = Array.from(bulkSelectedTaskIds);
+    const previousStates = tasks.filter(t => ids.includes(t.id)).map(t => ({ id: t.id, status: t.status }));
+
+    try {
+      await Promise.all(ids.map(id =>
+        newStatus === 'done'
+          ? completeTask({ variables: { taskId: id } })
+          : updateTask({ variables: { taskId: id, input: { status: newStatus } } })
+      ));
+      await refetchTasks();
+
+      toast.withUndo(
+        `Updated ${ids.length} task${ids.length === 1 ? '' : 's'} to ${statusConfig[newStatus]?.label || newStatus}`,
+        async () => {
+          await Promise.all(previousStates.map(({ id, status }) =>
+            updateTask({ variables: { taskId: id, input: { status } } })
+          ));
+          await refetchTasks();
+          toast.success('Changes undone');
+        }
+      );
+
+      clearBulkSelection();
+    } catch (error) {
+      console.error('Error bulk updating tasks:', error);
+      toast.error('Failed to update tasks');
+    }
+  };
+
+  const handleBulkPriorityChange = async (newPriority) => {
+    const ids = Array.from(bulkSelectedTaskIds);
+    const previousPriorities = tasks.filter(t => ids.includes(t.id)).map(t => ({ id: t.id, priority: t.priority }));
+
+    try {
+      await Promise.all(ids.map(id =>
+        updateTask({ variables: { taskId: id, input: { priority: newPriority } } })
+      ));
+      await refetchTasks();
+
+      toast.withUndo(
+        `Set ${ids.length} task${ids.length === 1 ? '' : 's'} to ${newPriority} priority`,
+        async () => {
+          await Promise.all(previousPriorities.map(({ id, priority }) =>
+            updateTask({ variables: { taskId: id, input: { priority } } })
+          ));
+          await refetchTasks();
+          toast.success('Changes undone');
+        }
+      );
+
+      clearBulkSelection();
+    } catch (error) {
+      console.error('Error bulk updating priorities:', error);
+      toast.error('Failed to update priorities');
+    }
+  };
+
   const handleAskCompany = async (e) => {
     e.preventDefault();
     if (!askQuestion.trim() || askLoading) return;
@@ -2783,6 +2896,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   }
 
   return (
+    <CommandPaletteProvider
+      teamId={teamId}
+      tasks={tasks}
+      channels={channels}
+      goals={goals}
+      projects={projects}
+    >
     <div className="team-dashboard">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
@@ -4195,14 +4315,78 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             ) : (
               <div className="tasks-sections">
+                {/* Bulk Actions Bar */}
+                {bulkSelectedTaskIds.size > 0 && (
+                  <div className="bulk-actions-bar">
+                    <span className="bulk-count">{bulkSelectedTaskIds.size} selected</span>
+                    <div className="bulk-actions">
+                      <button className="bulk-action-btn" onClick={handleBulkComplete} title="Complete selected">
+                        ✓ Complete
+                      </button>
+                      <button className="bulk-action-btn" onClick={() => handleBulkStatusChange('in_progress')}>
+                        ▶ In Progress
+                      </button>
+                      <button className="bulk-action-btn" onClick={() => handleBulkStatusChange('todo')}>
+                        ○ To Do
+                      </button>
+                      <select
+                        className="bulk-priority-select"
+                        onChange={(e) => e.target.value && handleBulkPriorityChange(e.target.value)}
+                        defaultValue=""
+                      >
+                        <option value="" disabled>Priority...</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </div>
+                    <button className="bulk-clear-btn" onClick={clearBulkSelection}>
+                      × Clear
+                    </button>
+                  </div>
+                )}
+
+                {/* Bulk Select Toggle */}
+                <div className="bulk-select-toggle">
+                  <label className="toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelectMode}
+                      onChange={(e) => {
+                        setBulkSelectMode(e.target.checked);
+                        if (!e.target.checked) clearBulkSelection();
+                      }}
+                    />
+                    <span>Select multiple</span>
+                  </label>
+                  {bulkSelectMode && tasks.length > 0 && (
+                    <button
+                      className="select-all-btn"
+                      onClick={() => selectAllTasks(tasks)}
+                    >
+                      Select all ({tasks.length})
+                    </button>
+                  )}
+                </div>
+
                 {/* Task Item Renderer */}
                 {(() => {
                   const renderTaskItem = (task) => (
                     <div
                       key={task.id}
-                      className={`task-item ${task.status} priority-${task.priority || 'medium'} ${selectedTaskId === task.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedTaskId(task.id)}
+                      className={`task-item ${task.status} priority-${task.priority || 'medium'} ${selectedTaskId === task.id ? 'selected' : ''} ${bulkSelectedTaskIds.has(task.id) ? 'bulk-selected' : ''}`}
+                      onClick={() => bulkSelectMode ? toggleBulkSelect(task.id) : setSelectedTaskId(task.id)}
                     >
+                      {bulkSelectMode && (
+                        <input
+                          type="checkbox"
+                          className="task-checkbox"
+                          checked={bulkSelectedTaskIds.has(task.id)}
+                          onChange={() => toggleBulkSelect(task.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      )}
                       <div className="task-content">
                         <span className="task-title">{task.title}</span>
                         <div className="task-meta">
@@ -6555,6 +6739,26 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
 
             <div className="shortcuts-section">
+              <div className="shortcuts-section-title">List Navigation (Digest)</div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Next item</span>
+                <span className="shortcut-keys"><kbd className="kbd">j</kbd></span>
+              </div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Previous item</span>
+                <span className="shortcut-keys"><kbd className="kbd">k</kbd></span>
+              </div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Open selected item</span>
+                <span className="shortcut-keys"><kbd className="kbd">Enter</kbd></span>
+              </div>
+              <div className="shortcut-row">
+                <span className="shortcut-description">Jump to first / last</span>
+                <span className="shortcut-keys"><kbd className="kbd">g</kbd> / <kbd className="kbd">G</kbd></span>
+              </div>
+            </div>
+
+            <div className="shortcuts-section">
               <div className="shortcuts-section-title">Chat</div>
               <div className="shortcut-row">
                 <span className="shortcut-description">Focus message input</span>
@@ -6573,6 +6777,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <div className="shortcuts-section">
               <div className="shortcuts-section-title">General</div>
               <div className="shortcut-row">
+                <span className="shortcut-description">Command palette</span>
+                <span className="shortcut-keys"><kbd className="kbd">Cmd/Ctrl</kbd><kbd className="kbd">K</kbd></span>
+              </div>
+              <div className="shortcut-row">
                 <span className="shortcut-description">Close modal/popup</span>
                 <span className="shortcut-keys"><kbd className="kbd">Esc</kbd></span>
               </div>
@@ -6585,6 +6793,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         </div>
       )}
     </div>
+    </CommandPaletteProvider>
   );
 }
 
