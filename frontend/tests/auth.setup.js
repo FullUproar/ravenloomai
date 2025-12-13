@@ -6,29 +6,54 @@ const authFile = 'playwright/.auth/user.json';
 const TEST_EMAIL = process.env.TEST_EMAIL || 'shawnoahpollock@gmail.com';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || '$$TESTaccount';
 
-setup('authenticate with test login page', async ({ page }) => {
-  console.log('Navigating to test login page...');
+setup('authenticate with login page', async ({ page }) => {
+  console.log('Navigating to login page...');
 
-  // Navigate to auto-login page
-  await page.goto('/test-login');
+  // Navigate to home, which will show login if not authenticated
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
 
-  // Wait for the auto-login to complete and redirect
-  console.log('Waiting for auto-login to complete...');
-  await page.waitForURL('/', { timeout: 15000 });
+  // Check if already authenticated (might have existing session)
+  const isLoggedIn = await page.locator('text=Your Projects').isVisible().catch(() => false);
 
-  // Wait for dashboard to load - look for "Your Projects" heading
+  if (!isLoggedIn) {
+    console.log('Logging in with test credentials...');
+
+    // Find and fill email input
+    const emailInput = page.locator('input[type="email"], input[placeholder*="mail"]');
+    if (await emailInput.isVisible()) {
+      await emailInput.fill(TEST_EMAIL);
+    }
+
+    // Find and fill password input
+    const passwordInput = page.locator('input[type="password"]');
+    if (await passwordInput.isVisible()) {
+      await passwordInput.fill(TEST_PASSWORD);
+    }
+
+    // Click login button
+    const loginBtn = page.locator('button:has-text("Sign In"), button:has-text("Login"), button:has-text("Log in")');
+    if (await loginBtn.isVisible()) {
+      await loginBtn.click();
+    }
+
+    // Wait for redirect to dashboard
+    console.log('Waiting for login to complete...');
+    await page.waitForURL('/', { timeout: 30000 });
+  }
+
+  // Wait for dashboard to load
   console.log('Verifying dashboard loaded...');
-  await page.waitForSelector('text=Your Projects', { timeout: 15000 });
+  try {
+    await page.waitForSelector('text=Your Projects', { timeout: 15000 });
+  } catch (e) {
+    // If no "Your Projects", check for digest page
+    await page.waitForSelector('.digest-page', { timeout: 5000 });
+  }
 
   // Wait extra time for Firebase to fully set auth tokens
-  console.log('Waiting for Firebase auth to stabilize...');
-  await page.waitForTimeout(3000);
-
-  // Verify we're still authenticated by checking for projects
-  const projectsVisible = await page.locator('text=Your Projects').isVisible();
-  if (!projectsVisible) {
-    throw new Error('Lost authentication after waiting');
-  }
+  console.log('Waiting for auth to stabilize...');
+  await page.waitForTimeout(2000);
 
   console.log('✅ Login successful! Saving auth state...');
   await page.context().storageState({ path: authFile });

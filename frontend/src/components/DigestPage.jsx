@@ -202,9 +202,12 @@ const REGENERATE_BRIEFING = gql`
   }
 `;
 
-function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateToGoal, onNavigateToProject, onNavigateToCalendar }) {
+function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateToGoal, onNavigateToProject, onNavigateToCalendar, onNavigateToTasks }) {
   const [showAll, setShowAll] = useState(false);
   const [briefingLoading, setBriefingLoading] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPulling, setIsPulling] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { data, loading, error, refetch } = useQuery(GET_USER_DIGEST, {
     variables: { teamId },
@@ -230,6 +233,36 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [refetch]);
+
+  // Pull-to-refresh handlers
+  const PULL_THRESHOLD = 80;
+  let touchStartY = 0;
+
+  const handleTouchStart = (e) => {
+    if (window.scrollY === 0) {
+      touchStartY = e.touches[0].clientY;
+      setIsPulling(true);
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isPulling || isRefreshing) return;
+    const touchY = e.touches[0].clientY;
+    const distance = Math.max(0, Math.min(touchY - touchStartY, 120));
+    setPullDistance(distance);
+  };
+
+  const handleTouchEnd = async () => {
+    if (!isPulling) return;
+    setIsPulling(false);
+    if (pullDistance >= PULL_THRESHOLD && !isRefreshing) {
+      setIsRefreshing(true);
+      setPullDistance(PULL_THRESHOLD);
+      await refetch();
+      setIsRefreshing(false);
+    }
+    setPullDistance(0);
+  };
 
   const digest = data?.getUserDigest;
   const briefing = digest?.briefing;
@@ -429,13 +462,43 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
     return 'priority-low';                                 // tomorrow and week items
   };
 
+  // Skeleton loader component
+  const SkeletonCard = ({ large }) => (
+    <div className={`skeleton-card ${large ? 'skeleton-large' : ''}`}>
+      <div className="skeleton-rank"></div>
+      <div className="skeleton-icon"></div>
+      <div className="skeleton-content">
+        <div className="skeleton-title"></div>
+        <div className="skeleton-subtitle"></div>
+        {large && <div className="skeleton-detail"></div>}
+      </div>
+    </div>
+  );
+
   if (loading && !data) {
     return (
       <div className="digest-page">
-        <div className="digest-loading">
-          <div className="loading-spinner"></div>
-          <p>Loading your digest...</p>
+        <header className="digest-header">
+          <h2>Your Digest</h2>
+        </header>
+        {/* Skeleton briefing */}
+        <div className="digest-briefing skeleton-briefing">
+          <div className="briefing-header">
+            <span className="briefing-icon">🪶</span>
+            <span className="briefing-title">Raven's Briefing</span>
+          </div>
+          <div className="skeleton-briefing-content">
+            <div className="skeleton-line"></div>
+            <div className="skeleton-line"></div>
+            <div className="skeleton-line short"></div>
+          </div>
         </div>
+        {/* Skeleton cards */}
+        <section className="digest-top3">
+          <SkeletonCard large />
+          <SkeletonCard large />
+          <SkeletonCard large />
+        </section>
       </div>
     );
   }
@@ -452,7 +515,27 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
   }
 
   return (
-    <div className="digest-page">
+    <div
+      className="digest-page"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Pull-to-refresh indicator */}
+      {(pullDistance > 0 || isRefreshing) && (
+        <div
+          className={`pull-indicator ${isRefreshing ? 'refreshing' : ''}`}
+          style={{ height: pullDistance }}
+        >
+          <div className={`pull-icon ${pullDistance >= PULL_THRESHOLD ? 'ready' : ''}`}>
+            {isRefreshing ? '↻' : pullDistance >= PULL_THRESHOLD ? '↓' : '↓'}
+          </div>
+          <span className="pull-text">
+            {isRefreshing ? 'Refreshing...' : pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull to refresh'}
+          </span>
+        </div>
+      )}
+
       <header className="digest-header">
         <h2>Your Digest</h2>
         <button className="refresh-btn" onClick={() => refetch()} title="Refresh">
@@ -491,6 +574,12 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
           <div className="empty-icon">🪶</div>
           <h3>All clear for now</h3>
           <p>No urgent items need your attention. Raven will let you know when something comes up.</p>
+          <button
+            className="empty-cta-btn"
+            onClick={() => onNavigateToTasks?.()}
+          >
+            View All Tasks
+          </button>
         </div>
       ) : (
         <>

@@ -19,13 +19,26 @@ export default defineConfig({
   },
 
   projects: [
+    // Setup project to authenticate
+    {
+      name: 'setup',
+      testMatch: /auth\.setup\.js/,
+    },
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'playwright/.auth/user.json',
+      },
+      dependencies: ['setup'],
     },
     {
       name: 'mobile',
-      use: { ...devices['iPhone 13'] },
+      use: {
+        ...devices['Pixel 5'],  // Use Chromium-based mobile device
+        storageState: 'playwright/.auth/user.json',
+      },
+      dependencies: ['setup'],
     },
   ],
 
