@@ -210,6 +210,57 @@ export function parseRavenCommand(content) {
     return { type: 'deep_research', content: researchContent };
   }
 
+  // ============================================================================
+  // WORK CONTEXT COMMANDS (AI-first productivity)
+  // ============================================================================
+
+  // Status command - show goal/project/team status with health
+  if (lowerAfterRaven.startsWith('status ') || lowerAfterRaven === 'status') {
+    const target = afterRaven.replace(/^status\s*/i, '').trim() || null;
+    return { type: 'work_status', content: target };
+  }
+
+  // Prioritize command - suggest task ordering based on goals
+  if (lowerAfterRaven === 'prioritize' || lowerAfterRaven.startsWith('prioritize ') ||
+      lowerAfterRaven === 'what should i work on' || lowerAfterRaven.startsWith('what should i do')) {
+    return { type: 'prioritize' };
+  }
+
+  // Priority queue command
+  if (lowerAfterRaven === 'priority queue' || lowerAfterRaven === 'queue' ||
+      lowerAfterRaven.startsWith('what\'s next') || lowerAfterRaven.startsWith('whats next')) {
+    return { type: 'priority_queue' };
+  }
+
+  // What's blocking command - show blockers for a goal/project
+  if (lowerAfterRaven.startsWith('what\'s blocking') || lowerAfterRaven.startsWith('whats blocking') ||
+      lowerAfterRaven.startsWith('blockers for') || lowerAfterRaven.startsWith('show blockers')) {
+    const target = afterRaven.replace(/^(what's blocking|whats blocking|blockers for|show blockers)\s*/i, '').trim();
+    return { type: 'show_blockers', content: target };
+  }
+
+  // Link knowledge to work
+  if (lowerAfterRaven.startsWith('link ') && (lowerAfterRaven.includes(' to task') || lowerAfterRaven.includes(' to goal'))) {
+    return { type: 'link_knowledge', content: afterRaven.substring(5).trim() };
+  }
+
+  // Research for a specific task/goal
+  if (lowerAfterRaven.startsWith('research for ')) {
+    const target = afterRaven.substring(13).trim();
+    return { type: 'research_for', content: target };
+  }
+
+  // Goal health
+  if (lowerAfterRaven.startsWith('health of ') || lowerAfterRaven.startsWith('goal health')) {
+    const target = afterRaven.replace(/^(health of|goal health)\s*/i, '').trim();
+    return { type: 'goal_health', content: target };
+  }
+
+  // Priority conflicts
+  if (lowerAfterRaven.startsWith('priority conflicts') || lowerAfterRaven === 'conflicts') {
+    return { type: 'priority_conflicts' };
+  }
+
   // Default: treat as a query
   return {
     type: 'query',

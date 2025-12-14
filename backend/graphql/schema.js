@@ -436,6 +436,12 @@ export default gql`
     startDate: DateTime
     status: String!  # active, achieved, abandoned, paused
     progress: Int!   # 0-100 (computed from linked tasks)
+    # Priority (cascades to linked tasks)
+    priority: String!  # low, medium, high, critical
+    priorityScore: Float!  # 0.0-1.0 numeric score
+    # Health computed from task status
+    health: GoalHealth
+    weightedProgress: Float  # Priority-weighted progress
     owner: User
     ownerId: String
     createdBy: String
@@ -448,8 +454,25 @@ export default gql`
     taskCount: Int!
     completedTaskCount: Int!
     isFocused: Boolean  # Whether current user has this focused
+    # Knowledge links
+    requiredKnowledge: [KnowledgeLink!]
+    relatedKnowledge: [KnowledgeLink!]
+    supportingKnowledge: [KnowledgeLink!]
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  # Goal health computed from task completion and blockers
+  type GoalHealth {
+    score: Int!              # 0-100 health score
+    status: String!          # on_track, at_risk, blocked, behind
+    progress: Int!           # 0-100 completion
+    taskCount: Int!
+    completedCount: Int!
+    blockedCount: Int!
+    overdueCount: Int!
+    inProgressCount: Int!
+    riskFactors: [String!]!  # Human-readable risk descriptions
   }
 
   # Task with goal link type info
@@ -468,7 +491,33 @@ export default gql`
     id: ID!
     title: String!
     status: String!
+    priority: String
+    priorityScore: Float
     linkType: String!  # 'direct' or 'inherited'
+  }
+
+  # Knowledge linked to tasks/goals
+  type KnowledgeLink {
+    id: ID!
+    knowledgeType: String!   # fact, decision, question
+    knowledgeId: ID!
+    linkType: String!        # required, related, produced, supports
+    content: String          # The actual fact/decision/question text
+    category: String         # For facts
+    status: String           # For questions (open/answered)
+    notes: String
+    createdAt: DateTime
+  }
+
+  # Knowledge item union-like type
+  type KnowledgeItem {
+    id: ID!
+    type: String!            # fact, decision, question
+    content: String!
+    category: String
+    status: String           # For questions
+    answer: String           # For answered questions
+    createdAt: DateTime
   }
 
   type Project {
@@ -504,6 +553,11 @@ export default gql`
     description: String
     status: String!  # todo, in_progress, done
     priority: String!  # low, medium, high, urgent
+    # Effective priority (inherited from goals)
+    effectivePriority: Float           # 0.0-1.0 computed score
+    effectivePriorityLabel: String     # low, medium, high, critical
+    prioritySource: String             # manual, goal, project
+    hasPriorityConflict: Boolean       # True if task priority < goal priority
     assignedTo: String
     assignedToUser: User
     dueAt: DateTime
@@ -522,6 +576,12 @@ export default gql`
     comments: [TaskComment!]!
     commentCount: Int!
     activity: [TaskActivity!]!
+    # Knowledge links
+    requiredKnowledge: [KnowledgeLink!]   # Knowledge needed to proceed
+    relatedKnowledge: [KnowledgeLink!]    # Related context
+    producedKnowledge: [KnowledgeLink!]   # Knowledge discovered during task
+    knowledgeGaps: [KnowledgeLink!]       # Required but unanswered
+    linkedLearningObjective: LearningObjective  # Research driving this task
     # PM Enhancement fields (modular)
     context: String           # GTD context
     isUrgent: Boolean         # Eisenhower matrix
@@ -720,6 +780,7 @@ export default gql`
     status: String
     progress: Int
     ownerId: String
+    priority: String      # low, medium, high, critical
   }
 
   input CreateProjectInput {
@@ -1055,6 +1116,9 @@ export default gql`
     learningObjectiveId: ID
     learningObjective: LearningObjective
     attachments: [Attachment!]
+    # Task created from this question
+    producedTaskId: ID
+    producedTask: Task
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -1105,6 +1169,11 @@ export default gql`
     questionCount: Int!
     answeredCount: Int!
     questions: [TeamQuestion!]!
+    # Work links - what task/goal is this research supporting?
+    linkedTaskId: ID
+    linkedTask: Task
+    linkedGoalId: ID
+    linkedGoal: Goal
     createdAt: DateTime!
     updatedAt: DateTime!
     completedAt: DateTime
@@ -1638,6 +1707,127 @@ export default gql`
     message: String
   }
 
+  # ============================================================================
+  # WORK DASHBOARD (Unified goal→project→task hierarchy view)
+  # ============================================================================
+
+  type WorkDashboard {
+    # Hierarchy view
+    goals: [GoalWithProjects!]!
+    # Cross-cutting views
+    blockedItems: [BlockedTask!]!
+    priorityQueue: [PriorityQueueItem!]!  # Tasks sorted by effective priority
+    knowledgeGaps: [KnowledgeGap!]!       # Required knowledge not yet answered
+    # AI insights
+    aiSummary: String                      # Raven's analysis of current state
+    suggestedActions: [SuggestedAction!]
+  }
+
+  type GoalWithProjects {
+    goal: Goal!
+    projects: [ProjectWithTasks!]!
+    orphanTasks: [Task!]!              # Direct goal tasks not in projects
+    relatedKnowledge: [KnowledgeLink!]
+  }
+
+  type ProjectWithTasks {
+    project: Project!
+    tasks: [Task!]!
+    blockedCount: Int!
+    progress: Int!
+  }
+
+  type KnowledgeGap {
+    taskId: ID
+    task: Task
+    goalId: ID
+    goal: Goal
+    requiredKnowledge: String!         # What's needed
+    knowledgeType: String!             # fact, decision, question
+    suggestedQuestion: String          # Question to ask
+  }
+
+  type SuggestedAction {
+    type: String!                      # unblock, prioritize, research, complete, link
+    title: String!
+    description: String!
+    entityType: String!                # task, goal, project, question
+    entityId: ID!
+    priority: String!                  # low, medium, high
+  }
+
+  # Priority queue item
+  type PriorityQueueItem {
+    rank: Int!
+    taskId: ID!
+    task: Task
+    title: String!
+    priority: String!                  # Task's own priority
+    effectivePriority: Float!          # Computed from goals
+    effectivePriorityLabel: String!    # low, medium, high, critical
+    status: String!
+    dueAt: DateTime
+    projectName: String
+    goalNames: String
+    isBlocked: Boolean!
+    hasPriorityConflict: Boolean!
+  }
+
+  # Priority conflict detection
+  type PriorityConflict {
+    taskId: ID!
+    taskTitle: String!
+    taskPriority: String!
+    goalId: ID
+    goalTitle: String
+    goalPriority: String
+    suggestion: String!
+  }
+
+  type PriorityConflictSummary {
+    hasConflicts: Boolean!
+    conflictCount: Int!
+    criticalConflictCount: Int!
+    summary: String!
+    conflicts: [PriorityConflict!]!
+  }
+
+  # Work context for AI
+  type WorkContext {
+    goals: [Goal!]!
+    blockers: [BlockedTask!]!
+    knowledge: WorkKnowledge!
+    priorities: [PriorityQueueItem!]!
+    summary: String!
+  }
+
+  type WorkKnowledge {
+    facts: [Fact!]!
+    decisions: [Decision!]!
+    openQuestions: [TeamQuestion!]!
+  }
+
+  # ============================================================================
+  # KNOWLEDGE LINK INPUTS
+  # ============================================================================
+
+  input LinkKnowledgeInput {
+    knowledgeType: String!    # fact, decision, question
+    knowledgeId: ID!
+    linkType: String          # required, related, produced (default: related)
+    notes: String
+  }
+
+  input ConvertQuestionToTaskInput {
+    title: String!
+    description: String
+    projectId: ID
+    priority: String
+    assignedTo: String
+    dueAt: DateTime
+    goalIds: [ID!]
+  }
+
   type Query {
     # User
     me: User
@@ -1685,6 +1875,17 @@ export default gql`
     getTask(taskId: ID!): Task
     getTaskComments(taskId: ID!): [TaskComment!]!
     getTaskActivity(taskId: ID!): [TaskActivity!]!
+
+    # ============================================================================
+    # WORK DASHBOARD & PRIORITY (AI-first productivity)
+    # ============================================================================
+    getWorkDashboard(teamId: ID!, goalId: ID): WorkDashboard!
+    getWorkContext(teamId: ID!): WorkContext!
+    getPriorityQueue(teamId: ID!, limit: Int, excludeBlocked: Boolean): [PriorityQueueItem!]!
+    getPriorityConflicts(teamId: ID!): PriorityConflictSummary!
+    getGoalHealth(goalId: ID!): GoalHealth!
+    getTaskKnowledge(taskId: ID!): [KnowledgeLink!]!
+    getGoalKnowledge(goalId: ID!): [KnowledgeLink!]!
 
     # Team Invites
     getTeamInvites(teamId: ID!): [TeamInvite!]!
@@ -1942,6 +2143,29 @@ export default gql`
     linkGoalToTask(goalId: ID!, taskId: ID!): Boolean!
     unlinkGoalFromTask(goalId: ID!, taskId: ID!): Boolean!
     setTaskGoals(taskId: ID!, goalIds: [ID!]!): [Goal!]!
+
+    # ============================================================================
+    # PRIORITY & KNOWLEDGE LINKS (AI-first productivity)
+    # ============================================================================
+
+    # Priority management
+    setGoalPriority(goalId: ID!, priority: String!): Goal!
+    setTaskPriority(taskId: ID!, priority: String!): Task!
+    recomputeTeamPriorities(teamId: ID!): Boolean!
+
+    # Knowledge-work linking
+    linkKnowledgeToTask(taskId: ID!, input: LinkKnowledgeInput!): KnowledgeLink!
+    unlinkKnowledgeFromTask(taskId: ID!, knowledgeType: String!, knowledgeId: ID!): Boolean!
+    linkKnowledgeToGoal(goalId: ID!, input: LinkKnowledgeInput!): KnowledgeLink!
+    unlinkKnowledgeFromGoal(goalId: ID!, knowledgeType: String!, knowledgeId: ID!): Boolean!
+
+    # Convert question to task
+    convertQuestionToTask(questionId: ID!, input: ConvertQuestionToTaskInput!): Task!
+
+    # Link learning objective to work
+    linkLearningObjectiveToTask(objectiveId: ID!, taskId: ID!): LearningObjective!
+    linkLearningObjectiveToGoal(objectiveId: ID!, goalId: ID!): LearningObjective!
+    unlinkLearningObjectiveFromWork(objectiveId: ID!): LearningObjective!
 
     # Team Questions
     createTeamQuestion(teamId: ID!, input: CreateTeamQuestionInput!): TeamQuestion!

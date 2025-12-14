@@ -5,6 +5,7 @@
 import { GraphQLJSON } from 'graphql-type-json';
 import { GraphQLDateTime } from 'graphql-scalars';
 
+import pool from '../../db.js';
 import UserService from '../../services/UserService.js';
 import TeamService from '../../services/TeamService.js';
 import ChannelService from '../../services/ChannelService.js';
@@ -33,6 +34,8 @@ import * as RateLimiterService from '../../services/RateLimiterService.js';
 import * as UserDigestService from '../../services/UserDigestService.js';
 import * as DigestBriefingService from '../../services/DigestBriefingService.js';
 import * as FocusService from '../../services/FocusService.js';
+import * as WorkContextService from '../../services/WorkContextService.js';
+import * as PriorityService from '../../services/PriorityService.js';
 import { pmQueryResolvers, pmMutationResolvers, pmTypeResolvers } from './pmResolvers.js';
 
 const resolvers = {
@@ -230,6 +233,115 @@ const resolvers = {
 
     getTaskActivity: async (_, { taskId }) => {
       return TaskService.getTaskActivity(taskId);
+    },
+
+    // ============================================================================
+    // WORK DASHBOARD & PRIORITY (AI-first productivity)
+    // ============================================================================
+
+    getWorkDashboard: async (_, { teamId, goalId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const context = await WorkContextService.getWorkContext(teamId, userId);
+      const priorityQueue = await PriorityService.getPriorityQueue(teamId, userId, { limit: 10 });
+      const conflicts = await PriorityService.getPriorityConflictSummary(teamId);
+
+      // Build knowledge gaps from context
+      const knowledgeGaps = [];
+      for (const goal of context.goals || []) {
+        if (goal.health?.blockedCount > 0) {
+          knowledgeGaps.push({
+            goalId: goal.id,
+            requiredKnowledge: `${goal.health.blockedCount} blocked tasks`,
+            knowledgeType: 'blocker',
+            suggestedQuestion: `What's blocking progress on "${goal.title}"?`
+          });
+        }
+      }
+
+      return {
+        goals: (context.goals || []).map(g => ({
+          goal: g,
+          projects: g.projects || [],
+          orphanTasks: g.orphanTasks || [],
+          relatedKnowledge: []
+        })),
+        blockedItems: context.blockers || [],
+        priorityQueue: priorityQueue.map(p => ({
+          ...p,
+          effectivePriorityLabel: PriorityService.scoreToPriority(p.effectiveScore),
+          isBlocked: p.isBlocked || false,
+          hasPriorityConflict: p.hasPriorityConflict || false
+        })),
+        knowledgeGaps,
+        aiSummary: context.summary,
+        suggestedActions: conflicts.conflicts.slice(0, 5).map(c => ({
+          type: 'prioritize',
+          title: `Raise priority: ${c.taskTitle}`,
+          description: c.suggestion,
+          entityType: 'task',
+          entityId: c.taskId,
+          priority: 'medium'
+        }))
+      };
+    },
+
+    getWorkContext: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const context = await WorkContextService.getWorkContext(teamId, userId);
+      const priorityQueue = await PriorityService.getPriorityQueue(teamId, userId, { limit: 20 });
+
+      return {
+        goals: context.goals || [],
+        blockers: context.blockers || [],
+        knowledge: context.knowledge || { facts: [], decisions: [], openQuestions: [] },
+        priorities: priorityQueue.map(p => ({
+          ...p,
+          effectivePriorityLabel: PriorityService.scoreToPriority(p.effectiveScore),
+          isBlocked: p.isBlocked || false,
+          hasPriorityConflict: p.hasPriorityConflict || false
+        })),
+        summary: context.summary || ''
+      };
+    },
+
+    getPriorityQueue: async (_, { teamId, limit, excludeBlocked }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const queue = await PriorityService.getPriorityQueue(teamId, userId, {
+        limit: limit || 10,
+        excludeBlocked: excludeBlocked !== false
+      });
+      return queue.map(p => ({
+        ...p,
+        effectivePriorityLabel: PriorityService.scoreToPriority(p.effectiveScore),
+        isBlocked: p.isBlocked || false,
+        hasPriorityConflict: p.hasPriorityConflict || false
+      }));
+    },
+
+    getPriorityConflicts: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return PriorityService.getPriorityConflictSummary(teamId);
+    },
+
+    getGoalHealth: async (_, { goalId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return WorkContextService.computeGoalHealth(goalId);
+    },
+
+    getTaskKnowledge: async (_, { taskId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const knowledge = await WorkContextService.getTaskContext(taskId);
+      if (!knowledge) return [];
+      const { required, related, produced } = knowledge.knowledge || {};
+      return [...(required || []), ...(related || []), ...(produced || [])];
+    },
+
+    getGoalKnowledge: async (_, { goalId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const context = await WorkContextService.getGoalContext(goalId);
+      if (!context) return [];
+      const { required, related, supports } = context.knowledge || {};
+      return [...(required || []), ...(related || []), ...(supports || [])];
     },
 
     // Team Invites
@@ -924,6 +1036,143 @@ const resolvers = {
       return GoalService.setTaskGoals(taskId, goalIds);
     },
 
+    // ============================================================================
+    // PRIORITY & KNOWLEDGE LINKS (AI-first productivity)
+    // ============================================================================
+
+    setGoalPriority: async (_, { goalId, priority }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await PriorityService.setGoalPriority(goalId, priority, userId);
+      return GoalService.getGoal(goalId);
+    },
+
+    setTaskPriority: async (_, { taskId, priority }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await PriorityService.setTaskPriority(taskId, priority, userId);
+      return TaskService.getTaskById(taskId);
+    },
+
+    recomputeTeamPriorities: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const result = await PriorityService.recomputeTeamPriorities(teamId);
+      return result.updatedCount > 0;
+    },
+
+    linkKnowledgeToTask: async (_, { taskId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const { knowledgeType, knowledgeId, linkType, notes } = input;
+      const result = await pool.query(
+        `INSERT INTO task_knowledge (task_id, knowledge_type, knowledge_id, link_type, notes, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (task_id, knowledge_type, knowledge_id) DO UPDATE SET link_type = $4, notes = $5
+         RETURNING *`,
+        [taskId, knowledgeType, knowledgeId, linkType || 'related', notes, userId]
+      );
+      const row = result.rows[0];
+      return {
+        id: row.id,
+        knowledgeType: row.knowledge_type,
+        knowledgeId: row.knowledge_id,
+        linkType: row.link_type,
+        notes: row.notes,
+        createdAt: row.created_at
+      };
+    },
+
+    unlinkKnowledgeFromTask: async (_, { taskId, knowledgeType, knowledgeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const result = await pool.query(
+        `DELETE FROM task_knowledge WHERE task_id = $1 AND knowledge_type = $2 AND knowledge_id = $3`,
+        [taskId, knowledgeType, knowledgeId]
+      );
+      return result.rowCount > 0;
+    },
+
+    linkKnowledgeToGoal: async (_, { goalId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const { knowledgeType, knowledgeId, linkType, notes } = input;
+      const result = await pool.query(
+        `INSERT INTO goal_knowledge (goal_id, knowledge_type, knowledge_id, link_type, notes, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (goal_id, knowledge_type, knowledge_id) DO UPDATE SET link_type = $4, notes = $5
+         RETURNING *`,
+        [goalId, knowledgeType, knowledgeId, linkType || 'related', notes, userId]
+      );
+      const row = result.rows[0];
+      return {
+        id: row.id,
+        knowledgeType: row.knowledge_type,
+        knowledgeId: row.knowledge_id,
+        linkType: row.link_type,
+        notes: row.notes,
+        createdAt: row.created_at
+      };
+    },
+
+    unlinkKnowledgeFromGoal: async (_, { goalId, knowledgeType, knowledgeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const result = await pool.query(
+        `DELETE FROM goal_knowledge WHERE goal_id = $1 AND knowledge_type = $2 AND knowledge_id = $3`,
+        [goalId, knowledgeType, knowledgeId]
+      );
+      return result.rowCount > 0;
+    },
+
+    convertQuestionToTask: async (_, { questionId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const question = await QuestionService.getQuestionById(questionId);
+      if (!question) throw new Error('Question not found');
+
+      // Create the task
+      const task = await TaskService.createTask(question.teamId, {
+        ...input,
+        description: input.description || `Research: ${question.question}`,
+        createdBy: userId
+      });
+
+      // Link the question to the produced task
+      await pool.query(
+        `UPDATE team_questions SET produced_task_id = $1 WHERE id = $2`,
+        [task.id, questionId]
+      );
+
+      // Link the task to any provided goals
+      if (input.goalIds?.length) {
+        for (const goalId of input.goalIds) {
+          await GoalService.linkGoalToTask(goalId, task.id);
+        }
+      }
+
+      return task;
+    },
+
+    linkLearningObjectiveToTask: async (_, { objectiveId, taskId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await pool.query(
+        `UPDATE learning_objectives SET linked_task_id = $1, linked_goal_id = NULL WHERE id = $2`,
+        [taskId, objectiveId]
+      );
+      return LearningObjectiveService.getObjective(objectiveId);
+    },
+
+    linkLearningObjectiveToGoal: async (_, { objectiveId, goalId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await pool.query(
+        `UPDATE learning_objectives SET linked_goal_id = $1, linked_task_id = NULL WHERE id = $2`,
+        [goalId, objectiveId]
+      );
+      return LearningObjectiveService.getObjective(objectiveId);
+    },
+
+    unlinkLearningObjectiveFromWork: async (_, { objectiveId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await pool.query(
+        `UPDATE learning_objectives SET linked_task_id = NULL, linked_goal_id = NULL WHERE id = $1`,
+        [objectiveId]
+      );
+      return LearningObjectiveService.getObjective(objectiveId);
+    },
+
     // Team Questions
     createTeamQuestion: async (_, { teamId, input }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
@@ -1332,6 +1581,91 @@ const resolvers = {
     isFocused: async (goal, _, { userId }) => {
       if (!userId || !goal.teamId) return false;
       return FocusService.isItemFocused(goal.teamId, userId, 'goal', goal.id);
+    },
+
+    // Priority fields (from migration 134)
+    priority: (goal) => goal.priority || 'medium',
+    priorityScore: (goal) => parseFloat(goal.priorityScore) || 0.50,
+
+    // Health computed from tasks
+    health: async (goal) => {
+      return WorkContextService.computeGoalHealth(goal.id);
+    },
+
+    // Weighted progress (priority-weighted task completion)
+    weightedProgress: async (goal) => {
+      const health = await WorkContextService.computeGoalHealth(goal.id);
+      return health?.progress || 0;
+    },
+
+    // Knowledge links
+    requiredKnowledge: async (goal) => {
+      const result = await pool.query(
+        `SELECT gk.*,
+          CASE gk.knowledge_type
+            WHEN 'fact' THEN (SELECT f.content FROM facts f WHERE f.id = gk.knowledge_id)
+            WHEN 'decision' THEN (SELECT d.what FROM decisions d WHERE d.id = gk.knowledge_id)
+            WHEN 'question' THEN (SELECT tq.question FROM team_questions tq WHERE tq.id = gk.knowledge_id)
+          END as content
+         FROM goal_knowledge gk
+         WHERE gk.goal_id = $1 AND gk.link_type = 'required'`,
+        [goal.id]
+      );
+      return result.rows.map(r => ({
+        id: r.id,
+        knowledgeType: r.knowledge_type,
+        knowledgeId: r.knowledge_id,
+        linkType: r.link_type,
+        content: r.content,
+        notes: r.notes,
+        createdAt: r.created_at
+      }));
+    },
+
+    relatedKnowledge: async (goal) => {
+      const result = await pool.query(
+        `SELECT gk.*,
+          CASE gk.knowledge_type
+            WHEN 'fact' THEN (SELECT f.content FROM facts f WHERE f.id = gk.knowledge_id)
+            WHEN 'decision' THEN (SELECT d.what FROM decisions d WHERE d.id = gk.knowledge_id)
+            WHEN 'question' THEN (SELECT tq.question FROM team_questions tq WHERE tq.id = gk.knowledge_id)
+          END as content
+         FROM goal_knowledge gk
+         WHERE gk.goal_id = $1 AND gk.link_type = 'related'`,
+        [goal.id]
+      );
+      return result.rows.map(r => ({
+        id: r.id,
+        knowledgeType: r.knowledge_type,
+        knowledgeId: r.knowledge_id,
+        linkType: r.link_type,
+        content: r.content,
+        notes: r.notes,
+        createdAt: r.created_at
+      }));
+    },
+
+    supportingKnowledge: async (goal) => {
+      const result = await pool.query(
+        `SELECT gk.*,
+          CASE gk.knowledge_type
+            WHEN 'fact' THEN (SELECT f.content FROM facts f WHERE f.id = gk.knowledge_id)
+            WHEN 'decision' THEN (SELECT d.what FROM decisions d WHERE d.id = gk.knowledge_id)
+            WHEN 'question' THEN (SELECT tq.question FROM team_questions tq WHERE tq.id = gk.knowledge_id)
+          END as content
+         FROM goal_knowledge gk
+         WHERE gk.goal_id = $1 AND gk.link_type = 'supports'`,
+        [goal.id]
+      );
+      return result.rows.map(r => ({
+        id: r.id,
+        knowledgeType: r.knowledge_type,
+        knowledgeId: r.knowledge_id,
+        linkType: r.link_type,
+        content: r.content,
+        notes: r.notes,
+        createdAt: r.created_at
+      }));
     }
   },
 
@@ -1415,6 +1749,135 @@ const resolvers = {
     isFocused: async (task, _, { userId }) => {
       if (!userId || !task.teamId) return false;
       return FocusService.isItemFocused(task.teamId, userId, 'task', task.id);
+    },
+
+    // Priority inheritance fields (from migration 134)
+    effectivePriority: async (task) => {
+      const priority = await PriorityService.computeTaskPriority(task.id);
+      return priority?.effectiveScore || PriorityService.priorityToScore(task.priority);
+    },
+
+    effectivePriorityLabel: async (task) => {
+      const priority = await PriorityService.computeTaskPriority(task.id);
+      return PriorityService.scoreToPriority(priority?.effectiveScore || 0.5);
+    },
+
+    prioritySource: async (task) => {
+      const priority = await PriorityService.computeTaskPriority(task.id);
+      return priority?.source || 'manual';
+    },
+
+    hasPriorityConflict: async (task) => {
+      const priority = await PriorityService.computeTaskPriority(task.id);
+      return priority?.hasPriorityConflict || false;
+    },
+
+    // Knowledge links (from migration 135)
+    requiredKnowledge: async (task) => {
+      const result = await pool.query(
+        `SELECT tk.*,
+          CASE tk.knowledge_type
+            WHEN 'fact' THEN (SELECT f.content FROM facts f WHERE f.id = tk.knowledge_id)
+            WHEN 'decision' THEN (SELECT d.what FROM decisions d WHERE d.id = tk.knowledge_id)
+            WHEN 'question' THEN (SELECT tq.question FROM team_questions tq WHERE tq.id = tk.knowledge_id)
+          END as content,
+          CASE tk.knowledge_type
+            WHEN 'question' THEN (SELECT tq.status FROM team_questions tq WHERE tq.id = tk.knowledge_id)
+          END as status
+         FROM task_knowledge tk
+         WHERE tk.task_id = $1 AND tk.link_type = 'required'`,
+        [task.id]
+      );
+      return result.rows.map(r => ({
+        id: r.id,
+        knowledgeType: r.knowledge_type,
+        knowledgeId: r.knowledge_id,
+        linkType: r.link_type,
+        content: r.content,
+        status: r.status,
+        notes: r.notes,
+        createdAt: r.created_at
+      }));
+    },
+
+    relatedKnowledge: async (task) => {
+      const result = await pool.query(
+        `SELECT tk.*,
+          CASE tk.knowledge_type
+            WHEN 'fact' THEN (SELECT f.content FROM facts f WHERE f.id = tk.knowledge_id)
+            WHEN 'decision' THEN (SELECT d.what FROM decisions d WHERE d.id = tk.knowledge_id)
+            WHEN 'question' THEN (SELECT tq.question FROM team_questions tq WHERE tq.id = tk.knowledge_id)
+          END as content
+         FROM task_knowledge tk
+         WHERE tk.task_id = $1 AND tk.link_type = 'related'`,
+        [task.id]
+      );
+      return result.rows.map(r => ({
+        id: r.id,
+        knowledgeType: r.knowledge_type,
+        knowledgeId: r.knowledge_id,
+        linkType: r.link_type,
+        content: r.content,
+        notes: r.notes,
+        createdAt: r.created_at
+      }));
+    },
+
+    producedKnowledge: async (task) => {
+      const result = await pool.query(
+        `SELECT tk.*,
+          CASE tk.knowledge_type
+            WHEN 'fact' THEN (SELECT f.content FROM facts f WHERE f.id = tk.knowledge_id)
+            WHEN 'decision' THEN (SELECT d.what FROM decisions d WHERE d.id = tk.knowledge_id)
+            WHEN 'question' THEN (SELECT tq.question FROM team_questions tq WHERE tq.id = tk.knowledge_id)
+          END as content
+         FROM task_knowledge tk
+         WHERE tk.task_id = $1 AND tk.link_type = 'produced'`,
+        [task.id]
+      );
+      return result.rows.map(r => ({
+        id: r.id,
+        knowledgeType: r.knowledge_type,
+        knowledgeId: r.knowledge_id,
+        linkType: r.link_type,
+        content: r.content,
+        notes: r.notes,
+        createdAt: r.created_at
+      }));
+    },
+
+    knowledgeGaps: async (task) => {
+      // Required knowledge that is not yet answered (for questions)
+      const result = await pool.query(
+        `SELECT tk.*,
+          tq.question as content,
+          tq.status
+         FROM task_knowledge tk
+         JOIN team_questions tq ON tq.id = tk.knowledge_id AND tk.knowledge_type = 'question'
+         WHERE tk.task_id = $1
+           AND tk.link_type = 'required'
+           AND tq.status != 'answered'`,
+        [task.id]
+      );
+      return result.rows.map(r => ({
+        id: r.id,
+        knowledgeType: r.knowledge_type,
+        knowledgeId: r.knowledge_id,
+        linkType: r.link_type,
+        content: r.content,
+        status: r.status,
+        notes: r.notes,
+        createdAt: r.created_at
+      }));
+    },
+
+    linkedLearningObjective: async (task) => {
+      const result = await pool.query(
+        `SELECT * FROM learning_objectives WHERE linked_task_id = $1 LIMIT 1`,
+        [task.id]
+      );
+      if (result.rows.length === 0) return null;
+      return LearningObjectiveService.mapObjective(result.rows[0]);
     }
   },
 
@@ -1489,6 +1952,12 @@ const resolvers = {
 
     attachments: async (question) => {
       return UploadService.getQuestionAttachments(question.id);
+    },
+
+    // Task created from this question (from migration 135)
+    producedTask: async (question) => {
+      if (!question.producedTaskId) return null;
+      return TaskService.getTaskById(question.producedTaskId);
     }
   },
 
@@ -1505,6 +1974,17 @@ const resolvers = {
 
     questions: async (objective) => {
       return LearningObjectiveService.getObjectiveQuestions(objective.id);
+    },
+
+    // Work links (from migration 135)
+    linkedTask: async (objective) => {
+      if (!objective.linkedTaskId) return null;
+      return TaskService.getTaskById(objective.linkedTaskId);
+    },
+
+    linkedGoal: async (objective) => {
+      if (!objective.linkedGoalId) return null;
+      return GoalService.getGoal(objective.linkedGoalId);
     }
   },
 

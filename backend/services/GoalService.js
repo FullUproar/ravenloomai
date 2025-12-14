@@ -2,13 +2,18 @@ import pool from '../db.js';
 
 // Create a new goal
 export async function createGoal(teamId, input, userId) {
-  const { title, description, targetDate, startDate, ownerId, parentGoalId } = input;
+  const { title, description, targetDate, startDate, ownerId, parentGoalId, priority } = input;
+
+  // Priority with score (from migration 134)
+  const validPriorities = ['low', 'medium', 'high', 'critical'];
+  const goalPriority = validPriorities.includes(priority) ? priority : 'medium';
+  const priorityScore = { critical: 1.0, high: 0.75, medium: 0.5, low: 0.25 }[goalPriority];
 
   const result = await pool.query(
-    `INSERT INTO goals (team_id, title, description, target_date, start_date, owner_id, parent_goal_id, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO goals (team_id, title, description, target_date, start_date, owner_id, parent_goal_id, created_by, priority, priority_score)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
-    [teamId, title, description, targetDate, startDate || new Date(), ownerId || userId, parentGoalId, userId]
+    [teamId, title, description, targetDate, startDate || new Date(), ownerId || userId, parentGoalId, userId, goalPriority, priorityScore]
   );
 
   return mapGoal(result.rows[0]);
@@ -250,6 +255,16 @@ export async function updateGoal(goalId, input, userId) {
     updates.push(`owner_id = $${paramIndex++}`);
     values.push(input.ownerId);
   }
+  // Priority field (from migration 134)
+  if (input.priority !== undefined) {
+    const validPriorities = ['low', 'medium', 'high', 'critical'];
+    const priority = validPriorities.includes(input.priority) ? input.priority : 'medium';
+    const priorityScore = { critical: 1.0, high: 0.75, medium: 0.5, low: 0.25 }[priority];
+    updates.push(`priority = $${paramIndex++}`);
+    values.push(priority);
+    updates.push(`priority_score = $${paramIndex++}`);
+    values.push(priorityScore);
+  }
 
   updates.push(`updated_at = NOW()`);
   values.push(goalId);
@@ -302,6 +317,9 @@ function mapGoal(row) {
     startDate: row.start_date,
     status: row.status,
     progress: row.progress,
+    // Priority fields (from migration 134)
+    priority: row.priority || 'medium',
+    priorityScore: parseFloat(row.priority_score) || 0.5,
     ownerId: row.owner_id,
     createdBy: row.created_by,
     parentGoalId: row.parent_goal_id,

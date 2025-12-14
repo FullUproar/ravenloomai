@@ -11,6 +11,9 @@ import DiscussionService from './DiscussionService.js';
 import * as CalendarService from './CalendarService.js';
 import * as KnowledgeGraphService from './KnowledgeGraphService.js';
 import * as DeepResearchService from './DeepResearchService.js';
+import * as WorkContextService from './WorkContextService.js';
+import * as PriorityService from './PriorityService.js';
+import * as GoalService from './GoalService.js';
 
 /**
  * Get a message by ID
@@ -237,6 +240,34 @@ Just type naturally and I'll help manage your schedule!`
 
     case 'deep_research':
       return handleDeepResearch(command.content, teamId, userId);
+
+    // ============================================================================
+    // WORK CONTEXT COMMANDS (AI-first productivity)
+    // ============================================================================
+
+    case 'work_status':
+      return handleWorkStatus(command.content, teamId, userId);
+
+    case 'prioritize':
+      return handlePrioritize(teamId, userId);
+
+    case 'priority_queue':
+      return handlePriorityQueue(teamId, userId);
+
+    case 'show_blockers':
+      return handleShowBlockers(command.content, teamId, userId);
+
+    case 'goal_health':
+      return handleGoalHealth(command.content, teamId);
+
+    case 'priority_conflicts':
+      return handlePriorityConflicts(teamId);
+
+    case 'link_knowledge':
+      return handleLinkKnowledge(command.content, teamId, userId);
+
+    case 'research_for':
+      return handleResearchFor(command.content, teamId, userId);
 
     case 'query':
     default:
@@ -1455,6 +1486,294 @@ Use \`@raven research status\` to check progress.`,
       metadata: { command: 'deep_research', error: error.message }
     };
   }
+}
+
+// ============================================================================
+// WORK CONTEXT HANDLERS (AI-first productivity)
+// ============================================================================
+
+/**
+ * Handle "@raven status" - show work status with health
+ */
+async function handleWorkStatus(target, teamId, userId) {
+  try {
+    const context = await WorkContextService.getWorkContext(teamId, userId);
+
+    let response = '**Work Status**\n\n';
+
+    // Goals overview
+    if (context.goals?.length > 0) {
+      response += `**Goals (${context.goals.length})**\n`;
+      for (const goal of context.goals.slice(0, 5)) {
+        const health = goal.health || {};
+        const statusEmoji = {
+          on_track: '🟢',
+          at_risk: '🟡',
+          blocked: '🔴',
+          behind: '🟠'
+        }[health.status] || '⚪';
+        response += `${statusEmoji} **${goal.title}** - ${health.progress || 0}% (${health.completedCount || 0}/${health.taskCount || 0} tasks)\n`;
+        if (health.riskFactors?.length > 0) {
+          response += `   ⚠️ ${health.riskFactors[0]}\n`;
+        }
+      }
+    } else {
+      response += 'No active goals.\n';
+    }
+
+    // Blockers
+    if (context.blockers?.length > 0) {
+      response += `\n**🚫 Blocked (${context.blockers.length})**\n`;
+      for (const blocker of context.blockers.slice(0, 3)) {
+        response += `• ${blocker.title}: ${blocker.blockedReason || 'No reason given'}\n`;
+      }
+    }
+
+    // Priority conflicts
+    const conflicts = await PriorityService.getPriorityConflictSummary(teamId);
+    if (conflicts.hasConflicts) {
+      response += `\n⚡ ${conflicts.summary}\n`;
+    }
+
+    response += `\n${context.summary || ''}`;
+
+    return {
+      responseText: response,
+      metadata: { command: 'work_status', goalCount: context.goals?.length || 0 }
+    };
+  } catch (error) {
+    console.error('Work status error:', error);
+    return { responseText: `Error getting status: ${error.message}` };
+  }
+}
+
+/**
+ * Handle "@raven prioritize" - suggest what to work on
+ */
+async function handlePrioritize(teamId, userId) {
+  try {
+    const queue = await PriorityService.getPriorityQueue(teamId, userId, { limit: 5 });
+    const suggestions = await PriorityService.suggestPriorities(teamId);
+
+    let response = '**Priority Queue** (What to work on next)\n\n';
+
+    if (queue.length === 0) {
+      response += 'No open tasks. Create one with `@raven task [description]`';
+    } else {
+      queue.forEach((item, i) => {
+        const priorityEmoji = {
+          critical: '🔴',
+          high: '🟠',
+          medium: '🟡',
+          low: '⚪'
+        }[item.effectivePriorityLabel] || '⚪';
+        const blockedTag = item.isBlocked ? ' 🚫' : '';
+        const conflictTag = item.hasPriorityConflict ? ' ⚡' : '';
+        response += `${i + 1}. ${priorityEmoji} **${item.title}**${blockedTag}${conflictTag}\n`;
+        if (item.goalNames) response += `   → ${item.goalNames}\n`;
+      });
+    }
+
+    if (suggestions.suggestions.length > 0) {
+      response += `\n**💡 Suggestions**\n`;
+      suggestions.suggestions.slice(0, 3).forEach(s => {
+        response += `• ${s.reason}\n`;
+      });
+    }
+
+    return {
+      responseText: response,
+      metadata: { command: 'prioritize', taskCount: queue.length }
+    };
+  } catch (error) {
+    console.error('Prioritize error:', error);
+    return { responseText: `Error: ${error.message}` };
+  }
+}
+
+/**
+ * Handle "@raven priority queue" - show priority-ordered tasks
+ */
+async function handlePriorityQueue(teamId, userId) {
+  try {
+    const queue = await PriorityService.getPriorityQueue(teamId, userId, { limit: 10 });
+
+    if (queue.length === 0) {
+      return { responseText: 'No open tasks in the queue.' };
+    }
+
+    let response = '**Priority Queue**\n\n';
+    queue.forEach((item, i) => {
+      const score = (item.effectiveScore * 100).toFixed(0);
+      const priorityEmoji = {
+        critical: '🔴',
+        high: '🟠',
+        medium: '🟡',
+        low: '⚪'
+      }[item.effectivePriorityLabel] || '⚪';
+      response += `${i + 1}. ${priorityEmoji} [${score}] **${item.title}**\n`;
+    });
+
+    return {
+      responseText: response,
+      metadata: { command: 'priority_queue', count: queue.length }
+    };
+  } catch (error) {
+    console.error('Priority queue error:', error);
+    return { responseText: `Error: ${error.message}` };
+  }
+}
+
+/**
+ * Handle "@raven what's blocking [goal]" - show blockers
+ */
+async function handleShowBlockers(target, teamId, userId) {
+  try {
+    const context = await WorkContextService.getWorkContext(teamId, userId);
+    const blockers = context.blockers || [];
+
+    if (blockers.length === 0) {
+      return { responseText: '✅ No blocked tasks. Everything is flowing!' };
+    }
+
+    let response = `**🚫 Blocked Tasks (${blockers.length})**\n\n`;
+    blockers.forEach(b => {
+      response += `• **${b.title}**\n`;
+      response += `  Reason: ${b.blockedReason || 'Not specified'}\n`;
+      if (b.blockedBy) response += `  Blocked by: ${b.blockedByName || 'Unknown'}\n`;
+      response += '\n';
+    });
+
+    return {
+      responseText: response,
+      metadata: { command: 'show_blockers', count: blockers.length }
+    };
+  } catch (error) {
+    console.error('Show blockers error:', error);
+    return { responseText: `Error: ${error.message}` };
+  }
+}
+
+/**
+ * Handle "@raven health of [goal]" - show goal health
+ */
+async function handleGoalHealth(target, teamId) {
+  try {
+    // Try to find the goal by name
+    const goals = await GoalService.getGoals(teamId, 'active');
+    const goal = goals.find(g =>
+      g.title.toLowerCase().includes(target.toLowerCase())
+    );
+
+    if (!goal) {
+      return { responseText: `Goal "${target}" not found. Available goals:\n${goals.map(g => `• ${g.title}`).join('\n')}` };
+    }
+
+    const health = await WorkContextService.computeGoalHealth(goal.id);
+
+    const statusEmoji = {
+      on_track: '🟢',
+      at_risk: '🟡',
+      blocked: '🔴',
+      behind: '🟠'
+    }[health.status] || '⚪';
+
+    let response = `**${goal.title}** ${statusEmoji}\n\n`;
+    response += `**Health Score:** ${health.score}/100\n`;
+    response += `**Progress:** ${health.progress}% (${health.completedCount}/${health.taskCount} tasks)\n`;
+    response += `**Status:** ${health.status.replace('_', ' ')}\n`;
+
+    if (health.blockedCount > 0) {
+      response += `\n⚠️ **${health.blockedCount} blocked** tasks\n`;
+    }
+    if (health.overdueCount > 0) {
+      response += `⚠️ **${health.overdueCount} overdue** tasks\n`;
+    }
+
+    if (health.riskFactors?.length > 0) {
+      response += `\n**Risk Factors:**\n`;
+      health.riskFactors.forEach(r => {
+        response += `• ${r}\n`;
+      });
+    }
+
+    return {
+      responseText: response,
+      metadata: { command: 'goal_health', goalId: goal.id, health }
+    };
+  } catch (error) {
+    console.error('Goal health error:', error);
+    return { responseText: `Error: ${error.message}` };
+  }
+}
+
+/**
+ * Handle "@raven priority conflicts" - show priority mismatches
+ */
+async function handlePriorityConflicts(teamId) {
+  try {
+    const conflicts = await PriorityService.getPriorityConflictSummary(teamId);
+
+    if (!conflicts.hasConflicts) {
+      return { responseText: '✅ No priority conflicts. Task priorities are aligned with goals.' };
+    }
+
+    let response = `**⚡ Priority Conflicts (${conflicts.conflictCount})**\n\n`;
+    response += `${conflicts.summary}\n\n`;
+
+    conflicts.conflicts.slice(0, 5).forEach(c => {
+      response += `• **${c.taskTitle}** (${c.taskPriority})\n`;
+      response += `  → Goal "${c.goalTitle}" is ${c.goalPriority}\n`;
+      response += `  💡 ${c.suggestion}\n\n`;
+    });
+
+    if (conflicts.conflicts.length > 5) {
+      response += `...and ${conflicts.conflicts.length - 5} more conflicts\n`;
+    }
+
+    return {
+      responseText: response,
+      metadata: { command: 'priority_conflicts', ...conflicts }
+    };
+  } catch (error) {
+    console.error('Priority conflicts error:', error);
+    return { responseText: `Error: ${error.message}` };
+  }
+}
+
+/**
+ * Handle "@raven link [fact/decision] to [task/goal]"
+ */
+async function handleLinkKnowledge(content, teamId, userId) {
+  // This is a complex operation that requires parsing the content
+  // For now, return a helpful message about how to do it via UI
+  return {
+    responseText: `To link knowledge to work items, use the task or goal detail view in the dashboard.
+
+**Linking via commands coming soon!**
+
+In the meantime, you can:
+1. Open a task → Link Knowledge panel
+2. Open a goal → Related Knowledge section
+3. Or use the GraphQL mutation: \`linkKnowledgeToTask\``,
+    metadata: { command: 'link_knowledge' }
+  };
+}
+
+/**
+ * Handle "@raven research for [task/goal]"
+ */
+async function handleResearchFor(target, teamId, userId) {
+  // Create a learning objective linked to the specified work item
+  return {
+    responseText: `To start research for a specific task or goal:
+
+1. Use \`@raven research [topic]\` to start general research
+2. Then link it to your work item in the Learning Objectives panel
+
+**Direct linking coming soon!**`,
+    metadata: { command: 'research_for', target }
+  };
 }
 
 export default {
