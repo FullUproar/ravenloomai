@@ -8108,3 +8108,61 @@ input[type="date"].property-value {
 .ai-focus-display-clear:hover {
   color: var(--danger);
 }
+
+/* ============================================================================
+   UX PREFERENCES (AI-controlled personalization)
+   ============================================================================ */
+
+/* Animation toggle */
+.animations-disabled,
+.animations-disabled * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Card density: compact */
+.density-compact .nav-section-header,
+.density-compact .nav-item {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.density-compact .message {
+  padding: 8px 12px;
+}
+
+.density-compact .task-item,
+.density-compact .goal-item,
+.density-compact .project-item {
+  padding: 8px 12px;
+  margin-bottom: 4px;
+}
+
+/* Card density: spacious */
+.density-spacious .nav-section-header,
+.density-spacious .nav-item {
+  padding: 14px 18px;
+  font-size: 1rem;
+}
+
+.density-spacious .message {
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+
+.density-spacious .task-item,
+.density-spacious .goal-item,
+.density-spacious .project-item {
+  padding: 20px 24px;
+  margin-bottom: 12px;
+}
+
+/* Sidebar width: narrow */
+.sidebar-narrow .sidebar {
+  width: 220px;
+}
+
+/* Sidebar width: wide */
+.sidebar-wide .sidebar {
+  width: 320px;
+}

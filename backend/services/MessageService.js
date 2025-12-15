@@ -14,6 +14,7 @@ import * as DeepResearchService from './DeepResearchService.js';
 import * as WorkContextService from './WorkContextService.js';
 import * as PriorityService from './PriorityService.js';
 import * as GoalService from './GoalService.js';
+import * as UXPreferencesService from './UXPreferencesService.js';
 
 /**
  * Get a message by ID
@@ -268,6 +269,40 @@ Just type naturally and I'll help manage your schedule!`
 
     case 'research_for':
       return handleResearchFor(command.content, teamId, userId);
+
+    // ============================================================================
+    // UX PREFERENCES COMMANDS (AI-controlled personalization)
+    // ============================================================================
+
+    case 'ux_hide':
+      return handleUXHide(command.content, teamId, userId);
+
+    case 'ux_show':
+      return handleUXShow(command.content, teamId, userId);
+
+    case 'ux_move':
+      return handleUXMove(command.content, teamId, userId);
+
+    case 'ux_density':
+      return handleUXDensity(command.content, teamId, userId);
+
+    case 'ux_animations':
+      return handleUXAnimations(command.content, teamId, userId);
+
+    case 'ux_badges':
+      return handleUXBadges(command.content, teamId, userId);
+
+    case 'ux_ai_summaries':
+      return handleUXAISummaries(command.content, teamId, userId);
+
+    case 'ux_simplify':
+      return handleUXSimplify(teamId, userId);
+
+    case 'ux_reset':
+      return handleUXReset(teamId, userId);
+
+    case 'ux_list_hidden':
+      return handleUXListHidden(teamId, userId);
 
     case 'query':
     default:
@@ -1774,6 +1809,228 @@ async function handleResearchFor(target, teamId, userId) {
 **Direct linking coming soon!**`,
     metadata: { command: 'research_for', target }
   };
+}
+
+// ============================================================================
+// UX PREFERENCES HANDLERS (AI-controlled personalization)
+// ============================================================================
+
+/**
+ * Handle "@raven hide [nav item]"
+ */
+async function handleUXHide(item, teamId, userId) {
+  try {
+    const result = await UXPreferencesService.hideNavItem(teamId, userId, item);
+    return {
+      responseText: result.success ? result.message : `Sorry, I couldn't hide that: ${result.error}`,
+      metadata: { command: 'ux_hide', item, success: result.success }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't hide that item. Try something like "@raven hide calendar".`,
+      metadata: { command: 'ux_hide', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven show [nav item]"
+ */
+async function handleUXShow(item, teamId, userId) {
+  try {
+    const result = await UXPreferencesService.showNavItem(teamId, userId, item);
+    return {
+      responseText: result.success ? result.message : `Sorry, I couldn't show that: ${result.error}`,
+      metadata: { command: 'ux_show', item, success: result.success }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't show that item. Try something like "@raven show calendar".`,
+      metadata: { command: 'ux_show', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven put [item] before [other]" or "@raven put [item] at the top"
+ */
+async function handleUXMove(content, teamId, userId) {
+  try {
+    // Parse "tasks before goals" or "tasks at the top"
+    const beforeMatch = content.match(/^(.+?)\s+before\s+(.+)$/i);
+    const topMatch = content.match(/^(.+?)\s+(at the top|first)$/i);
+
+    let item, beforeItem;
+    if (beforeMatch) {
+      item = beforeMatch[1].trim();
+      beforeItem = beforeMatch[2].trim();
+    } else if (topMatch) {
+      item = topMatch[1].trim();
+      beforeItem = null; // null means move to top
+    } else {
+      return {
+        responseText: `I didn't quite understand. Try:
+• "@raven put tasks before goals" - Move Tasks above Goals
+• "@raven put calendar at the top" - Move Calendar to the top`,
+        metadata: { command: 'ux_move' }
+      };
+    }
+
+    const result = await UXPreferencesService.moveNavItem(teamId, userId, item, beforeItem);
+    return {
+      responseText: result.success ? result.message : `Sorry, I couldn't move that: ${result.error}`,
+      metadata: { command: 'ux_move', item, beforeItem, success: result.success }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't move that item. Try "@raven put tasks before goals".`,
+      metadata: { command: 'ux_move', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven compact view" / "@raven spacious view"
+ */
+async function handleUXDensity(density, teamId, userId) {
+  try {
+    const result = await UXPreferencesService.setDensity(teamId, userId, density);
+    return {
+      responseText: result.success
+        ? `${result.message} - more ${density === 'compact' ? 'items visible' : density === 'spacious' ? 'breathing room' : 'balanced spacing'}.`
+        : result.error,
+      metadata: { command: 'ux_density', density, success: result.success }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't change the view density.`,
+      metadata: { command: 'ux_density', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven disable animations" / "@raven enable animations"
+ */
+async function handleUXAnimations(enabled, teamId, userId) {
+  try {
+    const result = await UXPreferencesService.setAnimations(teamId, userId, enabled);
+    return {
+      responseText: result.message,
+      metadata: { command: 'ux_animations', enabled, success: result.success }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't change the animation setting.`,
+      metadata: { command: 'ux_animations', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven hide badges" / "@raven show badges"
+ */
+async function handleUXBadges(enabled, teamId, userId) {
+  try {
+    const result = await UXPreferencesService.setBadges(teamId, userId, enabled);
+    return {
+      responseText: result.message,
+      metadata: { command: 'ux_badges', enabled, success: result.success }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't change the badge setting.`,
+      metadata: { command: 'ux_badges', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven hide ai summaries" / "@raven show ai summaries"
+ */
+async function handleUXAISummaries(enabled, teamId, userId) {
+  try {
+    const result = await UXPreferencesService.setAISummaries(teamId, userId, enabled);
+    return {
+      responseText: result.message,
+      metadata: { command: 'ux_ai_summaries', enabled, success: result.success }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't change the AI summaries setting.`,
+      metadata: { command: 'ux_ai_summaries', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven simplify my view"
+ */
+async function handleUXSimplify(teamId, userId) {
+  try {
+    const result = await UXPreferencesService.simplifyView(teamId, userId);
+    return {
+      responseText: result.message,
+      metadata: { command: 'ux_simplify', success: result.success }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't simplify your view. Try again later.`,
+      metadata: { command: 'ux_simplify', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven reset my preferences"
+ */
+async function handleUXReset(teamId, userId) {
+  try {
+    await UXPreferencesService.resetUserPreferences(teamId, userId);
+    return {
+      responseText: `Done! Your preferences have been reset to team defaults. Your sidebar should look like everyone else's now.`,
+      metadata: { command: 'ux_reset', success: true }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't reset your preferences.`,
+      metadata: { command: 'ux_reset', error: error.message }
+    };
+  }
+}
+
+/**
+ * Handle "@raven what have i hidden"
+ */
+async function handleUXListHidden(teamId, userId) {
+  try {
+    const hidden = await UXPreferencesService.getHiddenItems(teamId, userId);
+    if (hidden.length === 0) {
+      return {
+        responseText: `You haven't hidden any sidebar items. Everything is visible!`,
+        metadata: { command: 'ux_list_hidden', hidden: [] }
+      };
+    }
+
+    const itemNames = {
+      digest: 'Digest', raven: 'Raven', channels: 'Channels', tasks: 'Tasks',
+      goals: 'Goals', projects: 'Projects', calendar: 'Calendar',
+      insights: 'AI Insights', team: 'Team', knowledge: 'Knowledge'
+    };
+
+    const hiddenNames = hidden.map(item => itemNames[item] || item).join(', ');
+    return {
+      responseText: `You've hidden: **${hiddenNames}**
+
+To show any of these again, say "@raven show [item name]".`,
+      metadata: { command: 'ux_list_hidden', hidden }
+    };
+  } catch (error) {
+    return {
+      responseText: `Sorry, I couldn't check your hidden items.`,
+      metadata: { command: 'ux_list_hidden', error: error.message }
+    };
+  }
 }
 
 export default {

@@ -261,6 +261,83 @@ export function parseRavenCommand(content) {
     return { type: 'priority_conflicts' };
   }
 
+  // ============================================================================
+  // UX PREFERENCES COMMANDS (AI-controlled personalization)
+  // ============================================================================
+
+  // Hide nav item: @raven hide calendar
+  if (lowerAfterRaven.startsWith('hide ')) {
+    const item = afterRaven.substring(5).trim();
+    return { type: 'ux_hide', content: item };
+  }
+
+  // Show nav item: @raven show calendar
+  if (lowerAfterRaven.startsWith('show ') && !lowerAfterRaven.startsWith('show tasks') &&
+      !lowerAfterRaven.startsWith('show facts') && !lowerAfterRaven.startsWith('show reminders') &&
+      !lowerAfterRaven.startsWith('show blockers') && !lowerAfterRaven.startsWith('show calendar')) {
+    const item = afterRaven.substring(5).trim();
+    return { type: 'ux_show', content: item };
+  }
+
+  // Move nav item: @raven put tasks before goals / @raven put tasks at the top
+  if (lowerAfterRaven.startsWith('put ') || lowerAfterRaven.startsWith('move ')) {
+    const content = afterRaven.substring(4).trim();
+    return { type: 'ux_move', content };
+  }
+
+  // Density: @raven compact view / @raven spacious view / @raven comfortable view
+  if (lowerAfterRaven === 'compact view' || lowerAfterRaven === 'compact mode' || lowerAfterRaven === 'compact') {
+    return { type: 'ux_density', content: 'compact' };
+  }
+  if (lowerAfterRaven === 'spacious view' || lowerAfterRaven === 'spacious mode' || lowerAfterRaven === 'spacious') {
+    return { type: 'ux_density', content: 'spacious' };
+  }
+  if (lowerAfterRaven === 'comfortable view' || lowerAfterRaven === 'comfortable mode' || lowerAfterRaven === 'comfortable' || lowerAfterRaven === 'normal view') {
+    return { type: 'ux_density', content: 'comfortable' };
+  }
+
+  // Toggle animations: @raven disable animations / @raven enable animations
+  if (lowerAfterRaven === 'disable animations' || lowerAfterRaven === 'turn off animations' || lowerAfterRaven === 'no animations') {
+    return { type: 'ux_animations', content: false };
+  }
+  if (lowerAfterRaven === 'enable animations' || lowerAfterRaven === 'turn on animations') {
+    return { type: 'ux_animations', content: true };
+  }
+
+  // Toggle badges: @raven hide badges / @raven show badges
+  if (lowerAfterRaven === 'hide badges' || lowerAfterRaven === 'disable badges' || lowerAfterRaven === 'no badges') {
+    return { type: 'ux_badges', content: false };
+  }
+  if (lowerAfterRaven === 'show badges' || lowerAfterRaven === 'enable badges') {
+    return { type: 'ux_badges', content: true };
+  }
+
+  // Toggle AI summaries: @raven hide ai summaries / @raven show ai summaries
+  if (lowerAfterRaven === 'hide ai summaries' || lowerAfterRaven === 'disable ai summaries' || lowerAfterRaven === 'no ai summaries') {
+    return { type: 'ux_ai_summaries', content: false };
+  }
+  if (lowerAfterRaven === 'show ai summaries' || lowerAfterRaven === 'enable ai summaries') {
+    return { type: 'ux_ai_summaries', content: true };
+  }
+
+  // Simplify view: @raven simplify my view / @raven simplify
+  if (lowerAfterRaven === 'simplify my view' || lowerAfterRaven === 'simplify view' ||
+      lowerAfterRaven === 'simplify' || lowerAfterRaven === 'minimal view') {
+    return { type: 'ux_simplify' };
+  }
+
+  // Reset preferences: @raven reset my preferences
+  if (lowerAfterRaven === 'reset my preferences' || lowerAfterRaven === 'reset preferences' ||
+      lowerAfterRaven === 'reset my view' || lowerAfterRaven === 'default view') {
+    return { type: 'ux_reset' };
+  }
+
+  // What's hidden: @raven what have i hidden / @raven hidden items
+  if (lowerAfterRaven === 'what have i hidden' || lowerAfterRaven === 'whats hidden' ||
+      lowerAfterRaven === 'hidden items' || lowerAfterRaven === 'my hidden items') {
+    return { type: 'ux_list_hidden' };
+  }
+
   // Default: treat as a query
   return {
     type: 'query',

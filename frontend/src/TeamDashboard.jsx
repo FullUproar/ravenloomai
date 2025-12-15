@@ -1,10 +1,11 @@
 import { gql, useQuery, useMutation, useLazyQuery } from '@apollo/client';
-import { useState, useEffect, useRef, Component } from 'react';
+import { useState, useEffect, useRef, Component, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import CalendarView from './CalendarView';
 import { useToast } from './Toast.jsx';
 import AdminDashboard from './pages/AdminDashboard';
+import { useUXPreferences, UXPreferencesProvider } from './contexts/UXPreferencesContext';
 
 // PM Components (modular - can be removed by deleting this import and the components folder)
 import {
@@ -1059,6 +1060,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  // UX Preferences (AI-controlled personalization)
+  const uxPrefs = useUXPreferences();
+
   // Keyboard shortcuts modal state
   const [showShortcuts, setShowShortcuts] = useState(false);
   // Confirmation modal state
@@ -1189,6 +1193,26 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     knowledge: false,
     insights: false
   });
+
+  // Helper: check if a nav item is hidden by UX preferences
+  const isNavItemHidden = (itemKey) => uxPrefs.navHidden?.includes(itemKey);
+
+  // Sync expanded sections with UX preferences on load
+  useEffect(() => {
+    if (uxPrefs.navCollapsed) {
+      setExpandedSections(prev => ({
+        ...prev,
+        channels: !uxPrefs.navCollapsed.includes('channels'),
+        tasks: !uxPrefs.navCollapsed.includes('tasks'),
+        goals: !uxPrefs.navCollapsed.includes('goals'),
+        projects: !uxPrefs.navCollapsed.includes('projects'),
+        team: !uxPrefs.navCollapsed.includes('team'),
+        knowledge: !uxPrefs.navCollapsed.includes('knowledge'),
+        insights: !uxPrefs.navCollapsed.includes('insights')
+      }));
+    }
+  }, [uxPrefs.navCollapsed]);
+
   // Goals state
   const [showCreateGoal, setShowCreateGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
@@ -2918,33 +2942,38 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         </div>
 
         {/* Tree Navigation */}
-        <nav className={`nav-tree persona-${featureFlags.workflowPersona || 'contributor'}`}>
+        <nav className={`nav-tree persona-${featureFlags.workflowPersona || 'contributor'} ${uxPrefs.animationsEnabled ? 'animations-enabled' : 'animations-disabled'}`}>
           {/* Your Digest (Default Landing) */}
-          <div className="nav-section">
-            <button
-              className={`nav-section-header nav-single ${activeView === 'digest' ? 'active' : ''}`}
-              onClick={() => setActiveView('digest')}
-            >
-              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-              <span className="nav-icon">📋</span>
-              <span className="nav-label">Your Digest</span>
-            </button>
-          </div>
+          {!isNavItemHidden('digest') && (
+            <div className="nav-section">
+              <button
+                className={`nav-section-header nav-single ${activeView === 'digest' ? 'active' : ''}`}
+                onClick={() => setActiveView('digest')}
+              >
+                <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+                <span className="nav-icon">📋</span>
+                <span className="nav-label">Your Digest</span>
+              </button>
+            </div>
+          )}
 
           {/* Private Raven Chat */}
-          <div className="nav-section">
-            <button
-              className={`nav-section-header nav-single ${activeView === 'raven' ? 'active' : ''}`}
-              onClick={handleOpenRavenChat}
-            >
-              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-              <span className="nav-icon">🪶</span>
-              <span className="nav-label">Raven</span>
-              <span className="nav-badge nav-badge-private">Private</span>
-            </button>
-          </div>
+          {!isNavItemHidden('raven') && (
+            <div className="nav-section">
+              <button
+                className={`nav-section-header nav-single ${activeView === 'raven' ? 'active' : ''}`}
+                onClick={handleOpenRavenChat}
+              >
+                <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+                <span className="nav-icon">🪶</span>
+                <span className="nav-label">Raven</span>
+                <span className="nav-badge nav-badge-private">Private</span>
+              </button>
+            </div>
+          )}
 
           {/* Channels Section */}
+          {!isNavItemHidden('channels') && (
           <div className={`nav-section ${expandedSections.channels ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'chat' ? 'active' : ''}`}
@@ -2980,8 +3009,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
 
           {/* Tasks Section */}
+          {!isNavItemHidden('tasks') && (
           <div className={`nav-section ${expandedSections.tasks ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'tasks' ? 'active' : ''}`}
@@ -3041,8 +3072,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
 
           {/* Goals Section */}
+          {!isNavItemHidden('goals') && (
           <div className={`nav-section ${expandedSections.goals ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'goals' ? 'active' : ''}`}
@@ -3077,8 +3110,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
 
           {/* Projects Section */}
+          {!isNavItemHidden('projects') && (
           <div className={`nav-section ${expandedSections.projects ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'projects' ? 'active' : ''}`}
@@ -3113,20 +3148,24 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
 
           {/* Calendar */}
-          <div className="nav-section">
-            <button
-              className={`nav-section-header nav-single ${activeView === 'calendar' ? 'active' : ''}`}
-              onClick={() => handleSectionItemClick('calendar', 'calendar')}
-            >
-              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-              <span className="nav-icon">📅</span>
-              <span className="nav-label">Calendar</span>
-            </button>
-          </div>
+          {!isNavItemHidden('calendar') && (
+            <div className="nav-section">
+              <button
+                className={`nav-section-header nav-single ${activeView === 'calendar' ? 'active' : ''}`}
+                onClick={() => handleSectionItemClick('calendar', 'calendar')}
+              >
+                <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+                <span className="nav-icon">📅</span>
+                <span className="nav-label">Calendar</span>
+              </button>
+            </div>
+          )}
 
           {/* AI Insights - Morning Focus, Nudges, Workload */}
+          {!isNavItemHidden('insights') && (
           <div className={`nav-section ${expandedSections.insights ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'insights' ? 'active' : ''}`}
@@ -3203,8 +3242,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
 
           {/* Team - Ask, Workload, Time Blocks, Milestones */}
+          {!isNavItemHidden('team') && (
           <div className={`nav-section ${expandedSections.team ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'ask' || activeView === 'workload' || activeView === 'timeblocks' || activeView === 'milestones' ? 'active' : ''}`}
@@ -3257,8 +3298,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
 
           {/* Knowledge - Research, KB, Connections */}
+          {!isNavItemHidden('knowledge') && (
           <div className={`nav-section ${expandedSections.knowledge ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'learning' || activeView === 'knowledge' ? 'active' : ''}`}
@@ -3306,6 +3349,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
+          )}
 
           {/* Alerts indicator */}
           {pendingAlerts.length > 0 && (
@@ -6797,11 +6841,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   );
 }
 
-// Wrap with ErrorBoundary to catch render errors
+// Wrap with ErrorBoundary and UXPreferencesProvider to catch render errors
 function TeamDashboardWithErrorBoundary(props) {
   return (
     <ErrorBoundary>
-      <TeamDashboard {...props} />
+      <UXPreferencesProvider teamId={props.teamId}>
+        <TeamDashboard {...props} />
+      </UXPreferencesProvider>
     </ErrorBoundary>
   );
 }

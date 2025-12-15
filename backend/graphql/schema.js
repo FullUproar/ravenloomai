@@ -1808,6 +1808,22 @@ export default gql`
   }
 
   # ============================================================================
+  # UX PREFERENCES (AI-controlled personalization)
+  # ============================================================================
+
+  type UXPreferences {
+    navOrder: [String!]!
+    navHidden: [String!]!
+    navCollapsed: [String!]!
+    cardDensity: String!
+    defaultView: String!
+    sidebarWidth: String!
+    animationsEnabled: Boolean!
+    showBadges: Boolean!
+    showAISummaries: Boolean!
+  }
+
+  # ============================================================================
   # KNOWLEDGE LINK INPUTS
   # ============================================================================
 
@@ -2032,6 +2048,9 @@ export default gql`
 
     # Feature Flags (Pro Mode)
     getMyFeatureFlags: UserFeatureFlags
+
+    # UX Preferences (AI-controlled personalization)
+    getMyUXPreferences(teamId: ID!): UXPreferences!
 
     # Eisenhower Matrix
     getEisenhowerMatrix(teamId: ID!): EisenhowerMatrix!

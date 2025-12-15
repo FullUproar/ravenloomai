@@ -8,6 +8,7 @@
  */
 
 import * as PMService from '../../services/PMService.js';
+import * as UXPreferencesService from '../../services/UXPreferencesService.js';
 
 export const pmQueryResolvers = {
   // User Availability
@@ -88,6 +89,12 @@ export const pmQueryResolvers = {
   getMyFeatureFlags: async (_, __, { userId }) => {
     if (!userId) throw new Error('Not authenticated');
     return PMService.getMyFeatureFlags(userId);
+  },
+
+  // UX Preferences (AI-controlled personalization)
+  getMyUXPreferences: async (_, { teamId }, { userId }) => {
+    if (!userId) throw new Error('Not authenticated');
+    return UXPreferencesService.getEffectivePreferences(teamId, userId);
   },
 
   // Eisenhower Matrix
