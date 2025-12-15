@@ -37,6 +37,7 @@ const GET_MESSAGES = gql`
       id
       content
       isAi
+      metadata
       createdAt
       user {
         id
@@ -46,16 +47,16 @@ const GET_MESSAGES = gql`
   }
 `;
 
-// Navigation action patterns that Raven can recognize
+// Navigation action patterns that Raven can recognize (flexible matching)
 const NAVIGATION_PATTERNS = {
-  tasks: /(?:go to|show|open|navigate to)\s*(?:the\s*)?tasks?/i,
-  goals: /(?:go to|show|open|navigate to)\s*(?:the\s*)?goals?/i,
-  projects: /(?:go to|show|open|navigate to)\s*(?:the\s*)?projects?/i,
-  calendar: /(?:go to|show|open|navigate to)\s*(?:the\s*)?calendar/i,
-  knowledge: /(?:go to|show|open|navigate to)\s*(?:the\s*)?knowledge/i,
-  team: /(?:go to|show|open|navigate to)\s*(?:the\s*)?team/i,
-  insights: /(?:go to|show|open|navigate to)\s*(?:the\s*)?insights?/i,
-  raven: /(?:go to|show|open|navigate to)\s*(?:the\s*)?(?:raven|digest|home)/i,
+  tasks: /(?:go\s*(?:to)?|show|open|navigate\s*(?:to)?|take\s*me\s*to|switch\s*to|view)\s*(?:the\s*|my\s*)?tasks?|^tasks?$/i,
+  goals: /(?:go\s*(?:to)?|show|open|navigate\s*(?:to)?|take\s*me\s*to|switch\s*to|view)\s*(?:the\s*|my\s*)?goals?|^goals?$/i,
+  projects: /(?:go\s*(?:to)?|show|open|navigate\s*(?:to)?|take\s*me\s*to|switch\s*to|view)\s*(?:the\s*|my\s*)?projects?|^projects?$/i,
+  calendar: /(?:go\s*(?:to)?|show|open|navigate\s*(?:to)?|take\s*me\s*to|switch\s*to|view)\s*(?:the\s*|my\s*)?(?:calendar|schedule|events?)|^calendar$/i,
+  knowledge: /(?:go\s*(?:to)?|show|open|navigate\s*(?:to)?|take\s*me\s*to|switch\s*to|view)\s*(?:the\s*)?knowledge|^knowledge$/i,
+  team: /(?:go\s*(?:to)?|show|open|navigate\s*(?:to)?|take\s*me\s*to|switch\s*to|view)\s*(?:the\s*)?team|^team$/i,
+  insights: /(?:go\s*(?:to)?|show|open|navigate\s*(?:to)?|take\s*me\s*to|switch\s*to|view)\s*(?:the\s*)?insights?|^insights?$/i,
+  digest: /(?:go\s*(?:to)?|show|open|navigate\s*(?:to)?|take\s*me\s*to|switch\s*to|view)\s*(?:the\s*)?(?:digest|home|dashboard)|^(?:digest|home)$/i,
 };
 
 export default function RavenCopilot({
