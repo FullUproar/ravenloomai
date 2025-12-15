@@ -238,6 +238,7 @@ function getTimeWindow() {
 
 /**
  * Get channels with unread messages for a user
+ * Excludes private raven_dm channels (Copilot messages shouldn't show as unread)
  */
 async function getUnreadChannels(teamId, userId) {
   const result = await db.query(
@@ -251,6 +252,7 @@ async function getUnreadChannels(teamId, userId) {
      JOIN messages m ON m.channel_id = c.id
      LEFT JOIN channel_last_seen cls ON cls.channel_id = c.id AND cls.user_id = $2
      WHERE c.team_id = $1
+       AND c.channel_type NOT IN ('raven_dm', 'calendar_chat')
        AND m.created_at > COALESCE(cls.last_seen_at, '1970-01-01'::timestamp)
      GROUP BY c.id, c.name, c.channel_type, c.description
      HAVING COUNT(m.id) > 0

@@ -141,7 +141,7 @@ export async function getOrCreateRavenDM(teamId, userId) {
      RETURNING *`,
     [
       teamId,
-      `raven-dm-${userId.substring(0, 8)}`,  // Unique name per user
+      'Raven',  // Friendly name for private chat with AI
       'Private chat with Raven',
       'active',  // Always active in Raven DMs
       'raven_dm',

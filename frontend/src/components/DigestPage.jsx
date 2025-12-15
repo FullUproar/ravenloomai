@@ -639,7 +639,7 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
     return (
       <div className="digest-page">
         <header className="digest-header">
-          <h2>Your Digest</h2>
+          <h2>🪶 Raven</h2>
         </header>
         {/* Skeleton briefing */}
         <div className="digest-briefing skeleton-briefing">
