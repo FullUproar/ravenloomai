@@ -1515,7 +1515,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     onCompleted: () => refetchSettings()
   });
 
-  // Lazy query for private Raven channel
+  // Lazy query for private Raven channel (navigates to raven view)
   const [fetchRavenChannel] = useLazyQuery(GET_MY_RAVEN_CHANNEL, {
     onCompleted: (data) => {
       if (data?.getMyRavenChannel) {
@@ -1526,12 +1526,28 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     }
   });
 
+  // Separate query for Copilot - doesn't navigate
+  const [fetchRavenChannelForCopilot] = useLazyQuery(GET_MY_RAVEN_CHANNEL, {
+    onCompleted: (data) => {
+      if (data?.getMyRavenChannel) {
+        setRavenChannel(data.getMyRavenChannel);
+      }
+    }
+  });
+
   // Fetch Raven channel if initial view is 'raven'
   useEffect(() => {
     if (initialView === 'raven' && teamId && !ravenChannel) {
       fetchRavenChannel({ variables: { teamId } });
     }
   }, [initialView, teamId, ravenChannel, fetchRavenChannel]);
+
+  // Fetch Raven channel for Copilot (on any view except raven/chat/digest)
+  useEffect(() => {
+    if (teamId && !ravenChannel && initialView !== 'raven' && initialView !== 'chat' && initialView !== 'digest') {
+      fetchRavenChannelForCopilot({ variables: { teamId } });
+    }
+  }, [teamId, ravenChannel, initialView, fetchRavenChannelForCopilot]);
 
   // Scroll to bottom when messages change
   useEffect(() => {

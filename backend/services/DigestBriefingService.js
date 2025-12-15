@@ -447,8 +447,8 @@ async function generateBriefing(context, teamId) {
     await RateLimiterService.incrementRateLimit(teamId, tokens);
     await RateLimiterService.logApiCall({
       teamId,
-      serviceName: 'DigestBriefingService',
-      operationType: 'generateBriefing',
+      service: 'DigestBriefingService',
+      operation: 'generateBriefing',
       model: 'gpt-4o',
       promptTokens: response.usage?.prompt_tokens || 0,
       completionTokens: response.usage?.completion_tokens || 0,
@@ -463,8 +463,8 @@ async function generateBriefing(context, teamId) {
 
     await RateLimiterService.logApiCall({
       teamId,
-      serviceName: 'DigestBriefingService',
-      operationType: 'generateBriefing',
+      service: 'DigestBriefingService',
+      operation: 'generateBriefing',
       model: 'gpt-4o',
       promptTokens: 0,
       completionTokens: 0,
