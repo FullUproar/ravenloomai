@@ -551,6 +551,8 @@ export default gql`
     channelId: ID
     title: String!
     description: String
+    summary: String              # Brief summary/objective of the task
+    definitionOfDone: String     # Criteria for completion
     status: String!  # todo, in_progress, done
     priority: String!  # low, medium, high, urgent
     # Effective priority (inherited from goals)
@@ -809,6 +811,8 @@ export default gql`
     channelId: ID
     title: String!
     description: String
+    summary: String
+    definitionOfDone: String
     priority: String
     assignedTo: String
     dueAt: DateTime
@@ -821,6 +825,8 @@ export default gql`
   input UpdateTaskInput {
     title: String
     description: String
+    summary: String
+    definitionOfDone: String
     status: String
     priority: String
     projectId: ID

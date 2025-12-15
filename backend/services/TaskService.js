@@ -12,6 +12,8 @@ export async function createTask(teamId, {
   channelId = null,
   title,
   description = null,
+  summary = null,
+  definitionOfDone = null,
   priority = 'medium',
   assignedTo = null,
   dueAt = null,
@@ -19,10 +21,10 @@ export async function createTask(teamId, {
   sourceMessageId = null
 }) {
   const result = await db.query(
-    `INSERT INTO tasks (team_id, project_id, channel_id, title, description, status, priority, assigned_to, due_at, created_by, source_message_id)
-     VALUES ($1, $2, $3, $4, $5, 'todo', $6, $7, $8, $9, $10)
+    `INSERT INTO tasks (team_id, project_id, channel_id, title, description, summary, definition_of_done, status, priority, assigned_to, due_at, created_by, source_message_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'todo', $8, $9, $10, $11, $12)
      RETURNING *`,
-    [teamId, projectId, channelId, title, description, priority, assignedTo, dueAt, createdBy, sourceMessageId]
+    [teamId, projectId, channelId, title, description, summary, definitionOfDone, priority, assignedTo, dueAt, createdBy, sourceMessageId]
   );
   return mapTask(result.rows[0]);
 }
@@ -31,7 +33,7 @@ export async function createTask(teamId, {
  * Update a task
  */
 export async function updateTask(taskId, updates) {
-  const allowedFields = ['title', 'description', 'status', 'priority', 'assigned_to', 'due_at', 'project_id'];
+  const allowedFields = ['title', 'description', 'summary', 'definition_of_done', 'status', 'priority', 'assigned_to', 'due_at', 'project_id'];
   const setClauses = [];
   const params = [taskId];
   let paramIndex = 2;
@@ -40,6 +42,7 @@ export async function updateTask(taskId, updates) {
     const dbKey = key === 'assignedTo' ? 'assigned_to'
       : key === 'dueAt' ? 'due_at'
       : key === 'projectId' ? 'project_id'
+      : key === 'definitionOfDone' ? 'definition_of_done'
       : key;
 
     if (allowedFields.includes(dbKey) && value !== undefined) {
@@ -333,6 +336,8 @@ function mapTask(row) {
     channelId: row.channel_id,
     title: row.title,
     description: row.description,
+    summary: row.summary,
+    definitionOfDone: row.definition_of_done,
     status: row.status,
     priority: row.priority,
     assignedTo: row.assigned_to,

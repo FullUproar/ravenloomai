@@ -1,0 +1,258 @@
+/**
+ * GoalTree - Hierarchical tree view styling
+ */
+
+.goal-tree {
+  padding: 16px;
+}
+
+.goal-tree-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.goal-tree-header-bar h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--text);
+}
+
+.goal-tree-warning {
+  font-size: 0.85rem;
+  color: var(--warning);
+  padding: 4px 8px;
+  background: var(--warning-bg, rgba(255, 193, 7, 0.1));
+  border-radius: 4px;
+}
+
+.goal-tree-content-area {
+  padding-left: 8px;
+}
+
+/* Tree Node */
+.goal-tree-node {
+  margin-bottom: 4px;
+}
+
+.goal-tree-node.level-0 > .goal-tree-item {
+  border-left: 4px solid var(--primary);
+}
+
+.goal-tree-node.level-1 {
+  margin-left: 24px;
+}
+
+.goal-tree-node.level-2 {
+  margin-left: 24px;
+}
+
+.goal-tree-node.level-3 {
+  margin-left: 24px;
+}
+
+.goal-tree-node.level-4 {
+  margin-left: 24px;
+}
+
+/* Tree Item */
+.goal-tree-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.goal-tree-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary);
+}
+
+.goal-tree-item.selected {
+  background: var(--bg-tertiary);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.goal-tree-item.achieved {
+  opacity: 0.8;
+}
+
+.goal-tree-item.abandoned {
+  opacity: 0.5;
+}
+
+/* Toggle button */
+.goal-tree-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.goal-tree-toggle:hover {
+  color: var(--text);
+}
+
+/* Content */
+.goal-tree-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.goal-tree-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.goal-tree-priority {
+  font-size: 0.85rem;
+}
+
+.goal-tree-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.goal-tree-badge {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--success);
+  color: white;
+}
+
+/* Progress bar */
+.goal-tree-progress {
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.goal-tree-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Meta info */
+.goal-tree-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.goal-tree-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Add child button */
+.goal-tree-add-child {
+  background: var(--primary);
+  color: white;
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.goal-tree-item:hover .goal-tree-add-child {
+  opacity: 1;
+}
+
+.goal-tree-add-child:hover {
+  background: var(--primary-hover);
+  transform: scale(1.1);
+}
+
+/* Children container */
+.goal-tree-children {
+  margin-top: 4px;
+  border-left: 2px solid var(--border);
+  margin-left: 10px;
+  padding-left: 12px;
+}
+
+/* Empty state */
+.goal-tree-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.goal-tree-empty .empty-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.goal-tree-empty h3 {
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.goal-tree-empty p {
+  margin: 0 0 20px;
+}
+
+/* Button styles */
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}

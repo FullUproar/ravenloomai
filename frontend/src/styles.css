@@ -353,6 +353,35 @@ button:active:not(:disabled),
   overflow: hidden;
 }
 
+/* Adjust main content when Raven Copilot is visible */
+.team-dashboard.has-copilot > main,
+.team-dashboard.has-copilot > .chat-area,
+.team-dashboard.has-copilot > .tasks-area,
+.team-dashboard.has-copilot > .ask-area,
+.team-dashboard.has-copilot > .goals-area,
+.team-dashboard.has-copilot > .projects-area,
+.team-dashboard.has-copilot > .calendar-area,
+.team-dashboard.has-copilot > .knowledge-area,
+.team-dashboard.has-copilot > .learning-area,
+.team-dashboard.has-copilot > .insights-view {
+  margin-right: 320px;
+  transition: margin-right 0.3s ease;
+}
+
+.team-dashboard.has-copilot-collapsed > main,
+.team-dashboard.has-copilot-collapsed > .chat-area,
+.team-dashboard.has-copilot-collapsed > .tasks-area,
+.team-dashboard.has-copilot-collapsed > .ask-area,
+.team-dashboard.has-copilot-collapsed > .goals-area,
+.team-dashboard.has-copilot-collapsed > .projects-area,
+.team-dashboard.has-copilot-collapsed > .calendar-area,
+.team-dashboard.has-copilot-collapsed > .knowledge-area,
+.team-dashboard.has-copilot-collapsed > .learning-area,
+.team-dashboard.has-copilot-collapsed > .insights-view {
+  margin-right: 48px;
+  transition: margin-right 0.3s ease;
+}
+
 /* Sidebar */
 .sidebar {
   width: 250px;
@@ -2541,6 +2570,157 @@ button:active:not(:disabled),
   flex: 1;
   overflow-y: auto;
   padding: 0;
+}
+
+/* Kanban Board */
+.kanban-board {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  height: calc(100vh - 120px);
+  overflow-x: auto;
+}
+
+.kanban-column {
+  flex: 0 0 280px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+}
+
+.kanban-column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+}
+
+.kanban-column.status-backlog .kanban-column-header {
+  border-bottom-color: var(--text-muted);
+}
+
+.kanban-column.status-todo .kanban-column-header {
+  border-bottom-color: var(--primary);
+}
+
+.kanban-column.status-in_progress .kanban-column-header {
+  border-bottom-color: var(--warning);
+}
+
+.kanban-column.status-blocked .kanban-column-header {
+  border-bottom-color: var(--error);
+}
+
+.kanban-column.status-done .kanban-column-header {
+  border-bottom-color: var(--success);
+}
+
+.kanban-status-icon {
+  font-size: 1rem;
+}
+
+.kanban-status-label {
+  flex: 1;
+}
+
+.kanban-count {
+  background: var(--bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.kanban-column-tasks {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kanban-task {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.kanban-task:hover {
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.kanban-task.priority-low {
+  border-left-color: var(--success);
+}
+
+.kanban-task.priority-medium {
+  border-left-color: var(--warning);
+}
+
+.kanban-task.priority-high {
+  border-left-color: var(--error);
+}
+
+.kanban-task.priority-urgent {
+  border-left-color: #e91e63;
+}
+
+.kanban-task-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.kanban-task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+
+.kanban-assignee {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+
+.kanban-due {
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.kanban-due.overdue {
+  color: var(--error);
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.kanban-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 20px;
 }
 
 /* Inline Add Task */
@@ -5012,6 +5192,50 @@ input[type="date"].property-value {
 }
 
 /* Task Description Section */
+/* Task Summary and Definition of Done */
+.task-summary-section,
+.task-dod-section {
+  margin-bottom: 1.25rem;
+}
+
+.task-summary-section h4,
+.task-dod-section h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.task-summary-input,
+.task-dod-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.task-summary-input:focus,
+.task-dod-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.task-summary-input::placeholder,
+.task-dod-input::placeholder {
+  color: var(--text-muted);
+}
+
+.task-dod-input {
+  border-left: 3px solid var(--success);
+}
+
 .task-description-section {
   margin-bottom: 1.5rem;
   padding-bottom: 1.5rem;
@@ -5020,7 +5244,9 @@ input[type="date"].property-value {
 
 .task-description-section h4,
 .task-comments-section h4,
-.task-activity-section h4 {
+.task-activity-section h4,
+.task-summary-section h4,
+.task-dod-section h4 {
   margin: 0 0 0.75rem;
   font-size: 0.875rem;
   color: var(--text-muted);

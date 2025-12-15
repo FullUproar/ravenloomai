@@ -122,16 +122,17 @@ ${nudges.length > 0 ? `ATTENTION NEEDED:\n${nudges.map(n => `- ${n.title}: ${n.m
 
 Generate a daily plan in JSON format:
 {
-  "greeting": "Personalized good morning message (1 sentence)",
+  "greeting": "Brief summary of today's focus (1 sentence, NO time-based greeting like 'Good morning' - briefing may be viewed later)",
   "topPriority": "The ONE thing to focus on today",
   "scheduledBlocks": [
-    {"time": "9:00 AM", "activity": "...", "duration": "1h", "type": "focus|meeting|break"},
-    ...
+    {"time": "9:00 AM", "activity": "...", "duration": "1h", "type": "focus|meeting|break"}
   ],
   "tasksToComplete": ["task title 1", "task title 2"],
   "warnings": ["Any concerns or conflicts"],
   "tip": "One productivity tip for the day"
-}`;
+}
+
+IMPORTANT: Do NOT include time-based greetings. Start the greeting with the focus, like "Today is about..." or "Your main focus:" etc.`;
 
   try {
     const response = await openai.chat.completions.create({

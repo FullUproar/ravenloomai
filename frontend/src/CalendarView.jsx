@@ -155,7 +155,7 @@ const WORK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7 AM to 8 PM
 
 export default function CalendarView({ teamId }) {
-  const [viewMode, setViewMode] = useState('month'); // month, week, work-week
+  const [viewMode, setViewMode] = useState('month'); // month, week, work-week, day
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEventModal, setShowEventModal] = useState(false);
@@ -521,6 +521,12 @@ export default function CalendarView({ teamId }) {
         </div>
         <div className="calendar-view-toggle">
           <button
+            className={`btn ${viewMode === 'day' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewMode('day')}
+          >
+            Day
+          </button>
+          <button
             className={`btn ${viewMode === 'work-week' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setViewMode('work-week')}
           >
@@ -542,6 +548,86 @@ export default function CalendarView({ teamId }) {
       </div>
 
       {loading && <div className="calendar-loading">Loading events...</div>}
+
+      {/* Day View */}
+      {viewMode === 'day' && (
+        <div className="calendar-day-view">
+          <div className="day-view-header">
+            <h3>{currentDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h3>
+          </div>
+          <div className="day-view-content">
+            {/* All-day section */}
+            <div className="day-view-allday">
+              <div className="time-label">All day</div>
+              <div className="allday-events">
+                {events.filter(e => e.isAllDay && isSameDay(e.startAt, currentDate)).map(event => (
+                  <div
+                    key={event.id}
+                    className="event-chip allday"
+                    style={{ backgroundColor: event.color || '#3B82F6' }}
+                    onClick={(e) => handleEventClick(event, e)}
+                  >
+                    {event.title}
+                  </div>
+                ))}
+                {tasksDue.filter(task => isSameDay(task.dueAt, currentDate)).map(task => (
+                  <div
+                    key={`task-${task.id}`}
+                    className="event-chip task-chip allday"
+                    style={{ backgroundColor: task.project?.color || '#F59E0B' }}
+                  >
+                    <span className="task-icon">✓</span> {task.title}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Hourly timeline */}
+            <div className="day-view-timeline">
+              {HOURS.map(hour => {
+                const hourEvents = events.filter(event => {
+                  if (event.isAllDay) return false;
+                  const eventStart = new Date(event.startAt);
+                  return isSameDay(eventStart, currentDate) && eventStart.getHours() === hour;
+                });
+
+                return (
+                  <div key={hour} className="day-view-hour">
+                    <div className="time-label">
+                      {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                    </div>
+                    <div className="hour-content" onClick={() => {
+                      const clickedDate = new Date(currentDate);
+                      clickedDate.setHours(hour, 0, 0, 0);
+                      setNewEventDate(clickedDate);
+                      setSelectedEvent(null);
+                      setShowEventModal(true);
+                    }}>
+                      {hourEvents.map(event => (
+                        <div
+                          key={event.id}
+                          className="day-event-block"
+                          style={{
+                            backgroundColor: event.color || '#3B82F6',
+                            height: `${Math.max(30, ((new Date(event.endAt) - new Date(event.startAt)) / (1000 * 60 * 60)) * 60)}px`
+                          }}
+                          onClick={(e) => handleEventClick(event, e)}
+                        >
+                          <div className="event-time">
+                            {new Date(event.startAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                          </div>
+                          <div className="event-title">{event.title}</div>
+                          {event.location && <div className="event-location">{event.location}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Month View */}
       {viewMode === 'month' && (

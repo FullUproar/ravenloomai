@@ -105,6 +105,19 @@
   margin-bottom: 0;
 }
 
+.briefing-content p.briefing-action {
+  background: var(--bg-tertiary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 4px 0;
+  border-left: 3px solid var(--primary);
+  font-weight: 500;
+}
+
+.briefing-content p.briefing-action:hover {
+  background: var(--bg-hover);
+}
+
 .briefing-meta {
   display: flex;
   align-items: center;

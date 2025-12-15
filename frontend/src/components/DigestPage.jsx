@@ -698,9 +698,14 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
       )}
 
       <header className="digest-header">
-        <h2>Your Digest</h2>
-        <button className="refresh-btn" onClick={() => refetch()} title="Refresh">
-          🔄
+        <h2>🪶 Raven</h2>
+        <button
+          className="refresh-btn"
+          onClick={() => { refetch(); handleRegenerateBriefing(); }}
+          disabled={briefingLoading}
+          title="Refresh"
+        >
+          {briefingLoading ? '...' : '🔄'}
         </button>
       </header>
 
@@ -708,23 +713,16 @@ function DigestPage({ teamId, onNavigateToChannel, onNavigateToTask, onNavigateT
       {briefing?.briefing && (
         <section className={`digest-briefing ${hasAnimated ? 'animate-in' : ''}`}>
           <div className="briefing-header">
-            <span className="briefing-icon">🪶</span>
-            <span className="briefing-title">Raven's Briefing</span>
-            <button
-              className="briefing-refresh-btn"
-              onClick={handleRegenerateBriefing}
-              disabled={briefingLoading}
-              title="Regenerate briefing"
-            >
-              {briefingLoading ? '...' : '↻'}
-            </button>
+            <span className="briefing-title">What needs your attention</span>
           </div>
           <div className="briefing-content">
-            {briefing.briefing}
+            {briefing.briefing.split('\n').map((line, i) => (
+              <p key={i} className={line.startsWith('•') ? 'briefing-action' : ''}>{line}</p>
+            ))}
           </div>
           {briefing.generatedAt && (
             <span className="briefing-cached">
-              {briefing.cached ? 'Cached ' : 'Generated '}{formatBriefingTime(briefing.generatedAt)}
+              {briefing.cached ? 'Cached ' : 'Updated '}{formatBriefingTime(briefing.generatedAt)}
             </span>
           )}
         </section>

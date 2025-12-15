@@ -16,9 +16,14 @@ const GET_GANTT_DATA = gql`
         title
         startDate
         endDate
-        status
-        assignedTo
-        projectId
+        progress
+        isCriticalPath
+        isMilestone
+        color
+        assignee {
+          id
+          displayName
+        }
       }
       milestones {
         id
@@ -26,6 +31,7 @@ const GET_GANTT_DATA = gql`
         targetDate
         status
       }
+      criticalPath
       projectStart
       projectEnd
     }
@@ -109,9 +115,10 @@ function GanttChart({ teamId, onClose, onTaskClick }) {
   };
 
   const getBarClass = (task) => {
-    if (task.status === 'done') return 'completed';
-    if (task.status === 'in_progress') return 'in-progress';
+    if (task.progress >= 100) return 'completed';
+    if (task.progress > 0) return 'in-progress';
     if (task.endDate && new Date(task.endDate) < new Date()) return 'overdue';
+    if (task.isCriticalPath) return 'critical-path';
     return '';
   };
 

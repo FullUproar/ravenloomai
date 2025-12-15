@@ -21,6 +21,8 @@ import {
 } from './components/pm';
 import './components/pm/PMStyles.css';
 import DigestPage from './components/DigestPage';
+import RavenCopilot from './components/RavenCopilot';
+import GoalTree from './components/GoalTree';
 import { CommandPaletteProvider } from './components/CommandPalette';
 
 // API base URL - uses /api prefix in production, localhost in development
@@ -966,6 +968,8 @@ const GET_TASK_DETAIL = gql`
       id
       title
       description
+      summary
+      definitionOfDone
       status
       priority
       dueAt
@@ -1133,6 +1137,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [statusPopupTaskId, setStatusPopupTaskId] = useState(null);
   const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
   const [tasksViewMode, setTasksViewMode] = useState('list'); // 'list' or 'matrix'
+  const [goalsViewMode, setGoalsViewMode] = useState('tree'); // 'tree' or 'list'
+  const [selectedGoalId, setSelectedGoalId] = useState(null);
   const [addingTask, setAddingTask] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
   const taskInputRef = useRef(null);
@@ -1181,6 +1187,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [replyingTo, setReplyingTo] = useState(null);
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Raven Copilot state
+  const [copilotCollapsed, setCopilotCollapsed] = useState(false);
   // User menu dropdown state
   const [showUserMenu, setShowUserMenu] = useState(false);
   // Sidebar tree expansion state
@@ -1217,6 +1225,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [showCreateGoal, setShowCreateGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalTargetDate, setNewGoalTargetDate] = useState('');
+  const [newGoalParentId, setNewGoalParentId] = useState('');
   const [creatingGoal, setCreatingGoal] = useState(false);
   // Task detail panel state
   const [selectedTaskId, setSelectedTaskId] = useState(null);
@@ -2927,7 +2936,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       goals={goals}
       projects={projects}
     >
-    <div className="team-dashboard">
+    <div className={`team-dashboard ${activeView !== 'chat' && activeView !== 'digest' && activeView !== 'raven' ? (copilotCollapsed ? 'has-copilot-collapsed' : 'has-copilot') : ''}`}>
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
@@ -2943,31 +2952,16 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
         {/* Tree Navigation */}
         <nav className={`nav-tree persona-${featureFlags.workflowPersona || 'contributor'} ${uxPrefs.animationsEnabled ? 'animations-enabled' : 'animations-disabled'}`}>
-          {/* Your Digest (Default Landing) */}
-          {!isNavItemHidden('digest') && (
-            <div className="nav-section">
-              <button
-                className={`nav-section-header nav-single ${activeView === 'digest' ? 'active' : ''}`}
-                onClick={() => setActiveView('digest')}
-              >
-                <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-                <span className="nav-icon">📋</span>
-                <span className="nav-label">Your Digest</span>
-              </button>
-            </div>
-          )}
-
-          {/* Private Raven Chat */}
+          {/* Raven Command Center (combined Digest + Chat) */}
           {!isNavItemHidden('raven') && (
             <div className="nav-section">
               <button
-                className={`nav-section-header nav-single ${activeView === 'raven' ? 'active' : ''}`}
-                onClick={handleOpenRavenChat}
+                className={`nav-section-header nav-single ${activeView === 'digest' || activeView === 'raven' ? 'active' : ''}`}
+                onClick={() => setActiveView('digest')}
               >
                 <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
                 <span className="nav-icon">🪶</span>
                 <span className="nav-label">Raven</span>
-                <span className="nav-badge nav-badge-private">Private</span>
               </button>
             </div>
           )}
@@ -4224,16 +4218,23 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 All
               </button>
             </div>
-            {/* View Mode Toggle - List vs Matrix (Pro Mode) */}
-            {isProModeEnabled && featureFlags.showEisenhowerMatrix && (
-              <div className="view-mode-toggle">
-                <button
-                  className={`view-mode-btn ${tasksViewMode === 'list' ? 'active' : ''}`}
-                  onClick={() => setTasksViewMode('list')}
-                  title="List View"
-                >
-                  ☰
-                </button>
+            {/* View Mode Toggle - List, Kanban, Matrix */}
+            <div className="view-mode-toggle">
+              <button
+                className={`view-mode-btn ${tasksViewMode === 'list' ? 'active' : ''}`}
+                onClick={() => setTasksViewMode('list')}
+                title="List View"
+              >
+                ☰
+              </button>
+              <button
+                className={`view-mode-btn ${tasksViewMode === 'kanban' ? 'active' : ''}`}
+                onClick={() => setTasksViewMode('kanban')}
+                title="Kanban Board"
+              >
+                ▤
+              </button>
+              {isProModeEnabled && featureFlags.showEisenhowerMatrix && (
                 <button
                   className={`view-mode-btn ${tasksViewMode === 'matrix' ? 'active' : ''}`}
                   onClick={() => setTasksViewMode('matrix')}
@@ -4241,8 +4242,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 >
                   ⊞
                 </button>
-              </div>
-            )}
+              )}
+            </div>
             <div className="user-menu-container">
               <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
                 <span></span><span></span><span></span>
@@ -4265,13 +4266,69 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </header>
 
-          {/* Tasks Content - List or Matrix View */}
+          {/* Tasks Content - List, Kanban, or Matrix View */}
           {tasksViewMode === 'matrix' && isProModeEnabled && featureFlags.showEisenhowerMatrix ? (
             <EisenhowerMatrix
               teamId={teamId}
               onClose={() => setTasksViewMode('list')}
               onTaskClick={(taskId) => setSelectedTaskId(taskId)}
             />
+          ) : tasksViewMode === 'kanban' ? (
+            <div className="kanban-board">
+              {/* Kanban columns by status */}
+              {['backlog', 'todo', 'in_progress', 'blocked', 'done'].map(status => {
+                const statusTasks = filteredTasks.filter(t => t.status === status);
+                const statusLabels = {
+                  backlog: 'Backlog',
+                  todo: 'To Do',
+                  in_progress: 'In Progress',
+                  blocked: 'Blocked',
+                  done: 'Done'
+                };
+                const statusIcons = {
+                  backlog: '📋',
+                  todo: '○',
+                  in_progress: '◐',
+                  blocked: '⛔',
+                  done: '✓'
+                };
+                return (
+                  <div key={status} className={`kanban-column status-${status}`}>
+                    <div className="kanban-column-header">
+                      <span className="kanban-status-icon">{statusIcons[status]}</span>
+                      <span className="kanban-status-label">{statusLabels[status]}</span>
+                      <span className="kanban-count">{statusTasks.length}</span>
+                    </div>
+                    <div className="kanban-column-tasks">
+                      {statusTasks.map(task => (
+                        <div
+                          key={task.id}
+                          className={`kanban-task priority-${task.priority || 'medium'}`}
+                          onClick={() => setSelectedTaskId(task.id)}
+                        >
+                          <div className="kanban-task-title">{task.title}</div>
+                          <div className="kanban-task-meta">
+                            {task.assignedToUser && (
+                              <span className="kanban-assignee" title={task.assignedToUser.displayName || task.assignedToUser.email}>
+                                {(task.assignedToUser.displayName || task.assignedToUser.email || '?')[0].toUpperCase()}
+                              </span>
+                            )}
+                            {task.dueAt && (
+                              <span className={`kanban-due ${new Date(task.dueAt) < new Date() && task.status !== 'done' ? 'overdue' : ''}`}>
+                                {new Date(task.dueAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {statusTasks.length === 0 && (
+                        <div className="kanban-empty">No tasks</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
           <div className="tasks-container">
             {/* Inline Add Task */}
@@ -5798,6 +5855,23 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             <button className="btn-primary btn-small" onClick={() => setShowCreateGoal(true)}>
               + New Goal
             </button>
+            {/* View Mode Toggle */}
+            <div className="view-mode-toggle">
+              <button
+                className={`view-mode-btn ${goalsViewMode === 'tree' ? 'active' : ''}`}
+                onClick={() => setGoalsViewMode('tree')}
+                title="Tree View"
+              >
+                🌳
+              </button>
+              <button
+                className={`view-mode-btn ${goalsViewMode === 'list' ? 'active' : ''}`}
+                onClick={() => setGoalsViewMode('list')}
+                title="List View"
+              >
+                ☰
+              </button>
+            </div>
             <div className="header-spacer"></div>
             <div className="user-menu-container">
               <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
@@ -5824,9 +5898,15 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
           <div className="goals-content">
             {/* Create Goal Modal */}
             {showCreateGoal && (
-              <div className="modal-overlay" onClick={() => setShowCreateGoal(false)}>
+              <div className="modal-overlay" onClick={() => { setShowCreateGoal(false); setNewGoalParentId(''); }}>
                 <div className="modal" onClick={(e) => e.stopPropagation()}>
-                  <h3>Create Goal</h3>
+                  <h3>{newGoalParentId ? 'Create Sub-Goal' : 'Create Goal'}</h3>
+                  {newGoalParentId && (
+                    <div className="parent-goal-indicator">
+                      <span>Parent: </span>
+                      <strong>{goals.find(g => g.id === newGoalParentId)?.title || 'Unknown'}</strong>
+                    </div>
+                  )}
                   <form onSubmit={async (e) => {
                     e.preventDefault();
                     if (!newGoalTitle.trim() || creatingGoal) return;
@@ -5837,12 +5917,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                           teamId,
                           input: {
                             title: newGoalTitle.trim(),
-                            targetDate: newGoalTargetDate ? new Date(newGoalTargetDate + 'T00:00:00').toISOString() : null
+                            targetDate: newGoalTargetDate ? new Date(newGoalTargetDate + 'T00:00:00').toISOString() : null,
+                            parentGoalId: newGoalParentId || null
                           }
                         }
                       });
                       setNewGoalTitle('');
                       setNewGoalTargetDate('');
+                      setNewGoalParentId('');
                       setShowCreateGoal(false);
                       refetchGoals();
                     } catch (err) {
@@ -5854,7 +5936,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <input
                       type="text"
                       className="input-field"
-                      placeholder="Goal title (e.g., Launch Q1 product line)"
+                      placeholder={newGoalParentId ? "Sub-goal title" : "Goal title (e.g., Launch Q1 product line)"}
                       value={newGoalTitle}
                       onChange={(e) => setNewGoalTitle(e.target.value)}
                       autoFocus
@@ -5866,12 +5948,25 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                       value={newGoalTargetDate}
                       onChange={(e) => setNewGoalTargetDate(e.target.value)}
                     />
+                    {!newGoalParentId && (
+                      <select
+                        className="input-field"
+                        style={{ marginTop: '0.75rem' }}
+                        value={newGoalParentId}
+                        onChange={(e) => setNewGoalParentId(e.target.value)}
+                      >
+                        <option value="">Top-level goal (no parent)</option>
+                        {goals.map(g => (
+                          <option key={g.id} value={g.id}>{g.title}</option>
+                        ))}
+                      </select>
+                    )}
                     <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => setShowCreateGoal(false)} disabled={creatingGoal}>
+                      <button type="button" className="btn-secondary" onClick={() => { setShowCreateGoal(false); setNewGoalParentId(''); }} disabled={creatingGoal}>
                         Cancel
                       </button>
                       <button type="submit" className="btn-primary" disabled={!newGoalTitle.trim() || creatingGoal}>
-                        {creatingGoal ? 'Creating...' : 'Create Goal'}
+                        {creatingGoal ? 'Creating...' : (newGoalParentId ? 'Create Sub-Goal' : 'Create Goal')}
                       </button>
                     </div>
                   </form>
@@ -5951,8 +6046,25 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
 
-            {/* Goals List */}
-            {goals.length === 0 ? (
+            {/* Goals View - Tree or List */}
+            {goalsViewMode === 'tree' ? (
+              <GoalTree
+                goals={goals}
+                onSelect={(goal) => setSelectedGoalId(goal?.id)}
+                onAddChild={(parentId) => {
+                  // Pre-fill parent goal when creating child
+                  setNewGoalTitle('');
+                  setNewGoalTargetDate('');
+                  setNewGoalParentId(parentId);
+                  setShowCreateGoal(true);
+                }}
+                onAddRoot={() => {
+                  setNewGoalParentId('');
+                  setShowCreateGoal(true);
+                }}
+                selectedGoalId={selectedGoalId}
+              />
+            ) : goals.length === 0 ? (
               <div className="goals-empty">
                 <div className="goals-empty-icon">🎯</div>
                 <h4>No goals yet</h4>
@@ -6652,6 +6764,53 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 </div>
               </div>
 
+              {/* Summary */}
+              <div className="task-summary-section">
+                <h4>Summary</h4>
+                <textarea
+                  className="task-summary-input"
+                  placeholder="Brief summary or objective of this task..."
+                  value={selectedTask.summary || ''}
+                  onChange={(e) => {
+                    // Update local state immediately for responsiveness
+                    // The actual save happens on blur
+                  }}
+                  onBlur={async (e) => {
+                    const newValue = e.target.value.trim();
+                    if (newValue !== (selectedTask.summary || '')) {
+                      await updateTask({
+                        variables: { taskId: selectedTaskId, input: { summary: newValue || null } }
+                      });
+                      refetchTaskDetail();
+                    }
+                  }}
+                  rows={2}
+                />
+              </div>
+
+              {/* Definition of Done */}
+              <div className="task-dod-section">
+                <h4>Definition of Done</h4>
+                <textarea
+                  className="task-dod-input"
+                  placeholder="Criteria that must be met for this task to be complete..."
+                  value={selectedTask.definitionOfDone || ''}
+                  onChange={(e) => {
+                    // Update local state immediately for responsiveness
+                  }}
+                  onBlur={async (e) => {
+                    const newValue = e.target.value.trim();
+                    if (newValue !== (selectedTask.definitionOfDone || '')) {
+                      await updateTask({
+                        variables: { taskId: selectedTaskId, input: { definitionOfDone: newValue || null } }
+                      });
+                      refetchTaskDetail();
+                    }
+                  }}
+                  rows={3}
+                />
+              </div>
+
               {/* Description */}
               {selectedTask.description && (
                 <div className="task-description-section">
@@ -6835,6 +6994,19 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </div>
         </div>
+      )}
+
+      {/* Raven Copilot - persistent AI assistant side panel */}
+      {activeView !== 'chat' && activeView !== 'digest' && activeView !== 'raven' && ravenChannel && (
+        <RavenCopilot
+          teamId={teamId}
+          ravenChannelId={ravenChannel.id}
+          currentView={activeView}
+          onNavigate={(view) => setActiveView(view)}
+          collapsed={copilotCollapsed}
+          onToggleCollapse={() => setCopilotCollapsed(!copilotCollapsed)}
+          user={user}
+        />
       )}
     </div>
     </CommandPaletteProvider>
