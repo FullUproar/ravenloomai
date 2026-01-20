@@ -424,7 +424,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
 
           {/* New interaction button */}
           <button className="raven-knowledge-new" onClick={reset}>
-            New Question
+            Start New
           </button>
         </div>
       )}
