@@ -299,6 +299,29 @@
   width: 100%;
 }
 
+.result-query {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-tertiary, #f8f9fa);
+  border-radius: 8px;
+  border-left: 3px solid var(--primary, #5c5ce0);
+}
+
+.result-query-label {
+  font-size: 0.75rem;
+  color: var(--text-muted, #6c757d);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.result-query-text {
+  font-size: 0.9375rem;
+  color: var(--text-primary, #212529);
+}
+
 .result-ask {
   background: var(--bg-primary, #ffffff);
   border-radius: 12px;

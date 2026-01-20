@@ -207,8 +207,8 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
 
   return (
     <div className="raven-knowledge">
-      {/* Input area (shown when idle or on result) */}
-      {(mode === 'idle' || mode === 'result') && (
+      {/* Input area (shown only when idle - not during results) */}
+      {mode === 'idle' && (
         <div className="raven-knowledge-input-section">
           <div className="raven-knowledge-scope-label">
             {scopeName || 'Knowledge'}
@@ -346,6 +346,12 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
       {/* Result display */}
       {mode === 'result' && (
         <div className="raven-knowledge-result">
+          {/* Show what was asked/remembered */}
+          <div className="result-query">
+            <span className="result-query-label">{askResult ? 'You asked:' : 'You remembered:'}</span>
+            <span className="result-query-text">{input}</span>
+          </div>
+
           {/* Ask result */}
           {askResult && (
             <div className="result-ask">
