@@ -70,12 +70,6 @@ const resolvers = {
       return ChannelService.getOrCreateRavenDM(teamId, userId);
     },
 
-    getMyCalendarChat: async (_, { teamId }, context) => {
-      const userId = context.userId;
-      if (!userId) throw new Error('Must be authenticated');
-      return ChannelService.getOrCreateCalendarChat(teamId, userId);
-    },
-
     // Threads
     getThread: async (_, { threadId }) => {
       return ThreadService.getThread(threadId);
