@@ -23,6 +23,7 @@ import KnowledgeBaseService from '../../services/KnowledgeBaseService.js';
 import { graphRAGSearch, getGraphStats } from '../../services/KnowledgeGraphService.js';
 import * as RateLimiterService from '../../services/RateLimiterService.js';
 import * as ScopeService from '../../services/ScopeService.js';
+import * as RavenService from '../../services/RavenService.js';
 // SlackImportService temporarily disabled - needs adm-zip dependency
 // import * as SlackImportService from '../../services/SlackImportService.js';
 
@@ -459,6 +460,20 @@ const resolvers = {
       }
 
       return ScopeService.getScopeConversation(targetScopeId, userId);
+    },
+
+    // ============================================================================
+    // ASK/REMEMBER
+    // ============================================================================
+
+    askRaven: async (_, { scopeId, question }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return RavenService.ask(scopeId, userId, question);
+    },
+
+    getFactAttribution: async (_, { factId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return RavenService.getFactAttribution(factId);
     }
   },
 
@@ -922,6 +937,25 @@ const resolvers = {
         factsCreated: [],
         alertsCreated: []
       };
+    },
+
+    // ============================================================================
+    // ASK/REMEMBER
+    // ============================================================================
+
+    previewRemember: async (_, { scopeId, statement, sourceUrl }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return RavenService.previewRemember(scopeId, userId, statement, sourceUrl);
+    },
+
+    confirmRemember: async (_, { previewId, skipConflictIds }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return RavenService.confirmRemember(previewId, skipConflictIds);
+    },
+
+    cancelRemember: async (_, { previewId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return RavenService.cancelRemember(previewId);
     }
   },
 

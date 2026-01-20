@@ -292,6 +292,7 @@ function mapFact(row) {
   return {
     id: row.id,
     teamId: row.team_id,
+    scopeId: row.scope_id,
     content: row.content,
     // Structured entity model
     entityType: row.entity_type,
@@ -302,6 +303,9 @@ function mapFact(row) {
     confidenceScore: row.confidence_score ? parseFloat(row.confidence_score) : null,
     sourceType: row.source_type,
     sourceId: row.source_id,
+    // Source attribution for provenance
+    sourceQuote: row.source_quote,
+    sourceUrl: row.source_url,
     createdBy: row.created_by,
     createdByUser: row.created_by_name ? {
       id: row.created_by,

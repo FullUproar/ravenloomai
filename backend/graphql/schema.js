@@ -123,6 +123,64 @@ export default gql`
     alertsCreated: [Alert!]
   }
 
+  # ============================================================================
+  # ASK/REMEMBER TYPES (Clean Knowledge Management)
+  # ============================================================================
+
+  # Response from Ask query (instant, no confirmation needed)
+  type AskResponse {
+    answer: String!
+    confidence: Float
+    factsUsed: [Fact!]!
+    suggestedFollowups: [String!]
+  }
+
+  # A fact extracted from a Remember statement (for preview)
+  type ExtractedFact {
+    content: String!
+    entityType: String
+    entityName: String
+    attribute: String
+    value: String
+    category: String
+    confidenceScore: Float
+  }
+
+  # Potential conflict with existing knowledge
+  type FactConflict {
+    existingFact: Fact!
+    conflictType: String!  # contradiction, update, duplicate
+    explanation: String!
+  }
+
+  # Preview response from Remember (requires confirmation)
+  type RememberPreview {
+    previewId: ID!
+    sourceText: String!
+    extractedFacts: [ExtractedFact!]!
+    conflicts: [FactConflict!]!
+    isMismatch: Boolean!  # True if input looks like a question
+    mismatchSuggestion: String
+  }
+
+  # Result after confirming a Remember
+  type RememberResult {
+    success: Boolean!
+    factsCreated: [Fact!]!
+    factsUpdated: [Fact!]!
+    message: String
+  }
+
+  # Source attribution for facts
+  type FactAttribution {
+    sourceQuote: String
+    sourceUrl: String
+    sourceType: String!
+    sourceId: ID
+    createdBy: User
+    createdAt: DateTime!
+  }
+
   # AI Usage Statistics
   type AIUsageStats {
     period: String!
@@ -409,8 +467,11 @@ export default gql`
     value: String       # "john@example.com", "$99", "active"
     category: String    # product, manufacturing, marketing, sales, general
     confidenceScore: Float  # 0.0 - 1.0
-    sourceType: String!  # conversation, document, manual, integration
+    sourceType: String!  # conversation, document, manual, integration, user_statement
     sourceId: ID
+    # Source attribution for provenance tracking
+    sourceQuote: String  # Original verbatim text that created this fact
+    sourceUrl: String    # External reference URL (Google Doc, etc.)
     createdBy: String
     createdByUser: User
     validFrom: DateTime!
@@ -818,6 +879,16 @@ export default gql`
 
     # Get scope conversation
     getScopeConversation(scopeId: ID!, includePrivate: Boolean): ScopeConversation
+
+    # ============================================================================
+    # ASK/REMEMBER (Clean Knowledge Interface)
+    # ============================================================================
+
+    # Ask a question - instant AI response (read-only)
+    askRaven(scopeId: ID!, question: String!): AskResponse!
+
+    # Get fact attribution/provenance
+    getFactAttribution(factId: ID!): FactAttribution
   }
 
   # ============================================================================
@@ -931,5 +1002,18 @@ export default gql`
 
     # Send a message in a scope conversation (triggers AI if @raven mentioned)
     sendScopeMessage(scopeId: ID!, includePrivate: Boolean, input: SendScopeMessageInput!): ScopeAIResponse!
+
+    # ============================================================================
+    # ASK/REMEMBER (Clean Knowledge Interface)
+    # ============================================================================
+
+    # Preview a Remember statement - extracts facts, detects conflicts
+    previewRemember(scopeId: ID!, statement: String!, sourceUrl: String): RememberPreview!
+
+    # Confirm and save facts from a preview
+    confirmRemember(previewId: ID!, skipConflictIds: [ID!]): RememberResult!
+
+    # Cancel a Remember preview (cleanup)
+    cancelRemember(previewId: ID!): Boolean!
   }
 `;

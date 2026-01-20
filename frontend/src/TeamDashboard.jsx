@@ -6,6 +6,7 @@ import { useToast } from './Toast.jsx';
 import AdminDashboard from './pages/AdminDashboard';
 import DataImportPage from './pages/DataImportPage';
 import RavenCopilot from './components/RavenCopilot';
+import RavenKnowledge from './components/RavenKnowledge';
 import { CommandPaletteProvider } from './components/CommandPalette';
 
 // API base URL - uses /api prefix in production, localhost in development
@@ -3369,95 +3370,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </div>
           </header>
 
-          {/* Scope Messages */}
-          <div className="messages-container">
-            {scopeMessagesLoading && scopeMessages.length === 0 ? (
-              <div className="messages-loading">Loading messages...</div>
-            ) : scopeMessages.length === 0 ? (
-              <div className="messages-empty">
-                <div className="empty-icon">🎯</div>
-                <h4>No messages in this scope yet</h4>
-                <p>Start a conversation about {activeScopeDetails?.name || 'this topic'}</p>
-                {includePrivate && (
-                  <p className="text-muted" style={{ marginTop: '8px', fontSize: '13px' }}>
-                    Private mode: Only you can see these messages
-                  </p>
-                )}
-                <div className="empty-suggestions">
-                  <button className="suggestion-btn" onClick={() => setScopeMessageInput('@raven remember ')}>
-                    @raven remember...
-                  </button>
-                  <button className="suggestion-btn" onClick={() => setScopeMessageInput('@raven what do you know about this?')}>
-                    Ask Raven about this scope
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="messages-list">
-                {scopeMessages.map((message, index) => {
-                  const prevMessage = scopeMessages[index - 1];
-                  const isGrouped = prevMessage &&
-                    !message.isAi && !prevMessage.isAi &&
-                    message.user?.id === prevMessage.user?.id &&
-                    (new Date(message.createdAt) - new Date(prevMessage.createdAt)) < 5 * 60 * 1000;
-
-                  const isAiGrouped = prevMessage &&
-                    message.isAi && prevMessage.isAi &&
-                    (new Date(message.createdAt) - new Date(prevMessage.createdAt)) < 60 * 1000;
-
-                  const shouldShowHeader = !isGrouped && !isAiGrouped;
-
-                  return (
-                    <div
-                      key={message.id}
-                      className={`message ${message.isAi ? 'ai-message' : 'user-message'} ${!shouldShowHeader ? 'grouped' : ''}`}
-                    >
-                      {shouldShowHeader && (
-                        <div className="message-header">
-                          <span className="message-avatar">
-                            {message.isAi ? '🪶' : (message.user?.displayName || message.user?.email || 'U')[0].toUpperCase()}
-                          </span>
-                          <span className="message-author">
-                            {message.isAi ? 'Raven' : (message.user?.displayName || message.user?.email || 'User')}
-                          </span>
-                          <span className="message-time">
-                            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      )}
-                      <div className={`message-body ${!shouldShowHeader ? 'no-header' : ''}`}>
-                        <div className="message-content">
-                          <ReactMarkdown>{message.content}</ReactMarkdown>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </div>
-
-          {/* Scope Message Input */}
-          <div className="message-input-area">
-            <form onSubmit={handleSendScopeMessage} className="message-form">
-              <input
-                type="text"
-                value={scopeMessageInput}
-                onChange={(e) => setScopeMessageInput(e.target.value)}
-                placeholder={`Message ${activeScopeDetails?.name || 'scope'}... ${includePrivate ? '(private)' : ''}`}
-                disabled={scopeIsSending || !activeScope?.id}
-                className="message-input"
-              />
-              <button
-                type="submit"
-                disabled={scopeIsSending || !scopeMessageInput.trim() || !activeScope?.id}
-                className="send-btn"
-              >
-                {scopeIsSending ? '...' : 'Send'}
-              </button>
-            </form>
-          </div>
+          {/* Clean Ask/Remember Interface */}
+          <RavenKnowledge
+            scopeId={activeScope?.id}
+            scopeName={activeScopeDetails?.name || activeScope?.name}
+            onFactsChanged={() => {
+              // Optionally refetch facts or other data
+            }}
+          />
         </main>
       ) : activeView === 'ask' ? (
         <main className="ask-area">
