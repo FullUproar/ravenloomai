@@ -365,15 +365,9 @@ const resolvers = {
         throw new Error('Only admins can view team settings');
       }
       const settings = await TeamService.getTeamSettings(teamId);
-      // Transform to GraphQL shape
+      // Return simplified settings
       return {
-        proactiveAI: {
-          enabled: settings?.proactiveAI?.enabled !== false,
-          morningFocusEnabled: settings?.proactiveAI?.morningFocusEnabled !== false,
-          smartNudgesEnabled: settings?.proactiveAI?.smartNudgesEnabled !== false,
-          insightsEnabled: settings?.proactiveAI?.insightsEnabled !== false,
-          meetingPrepEnabled: settings?.proactiveAI?.meetingPrepEnabled !== false
-        }
+        aiEnabled: settings?.proactiveAI?.enabled !== false
       };
     },
 
@@ -444,16 +438,16 @@ const resolvers = {
       if (!['admin', 'owner'].includes(role)) {
         throw new Error('Only admins can update team settings');
       }
-      const updatedSettings = await TeamService.updateTeamSettings(teamId, input);
-      // Transform to GraphQL shape
-      return {
+      // Convert simplified input to internal format
+      const internalSettings = {
         proactiveAI: {
-          enabled: updatedSettings?.proactiveAI?.enabled !== false,
-          morningFocusEnabled: updatedSettings?.proactiveAI?.morningFocusEnabled !== false,
-          smartNudgesEnabled: updatedSettings?.proactiveAI?.smartNudgesEnabled !== false,
-          insightsEnabled: updatedSettings?.proactiveAI?.insightsEnabled !== false,
-          meetingPrepEnabled: updatedSettings?.proactiveAI?.meetingPrepEnabled !== false
+          enabled: input.aiEnabled
         }
+      };
+      const updatedSettings = await TeamService.updateTeamSettings(teamId, internalSettings);
+      // Return simplified settings
+      return {
+        aiEnabled: updatedSettings?.proactiveAI?.enabled !== false
       };
     },
 
