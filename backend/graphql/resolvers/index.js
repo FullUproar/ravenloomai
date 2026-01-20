@@ -22,6 +22,7 @@ import GifService from '../../services/GifService.js';
 import KnowledgeBaseService from '../../services/KnowledgeBaseService.js';
 import { graphRAGSearch, getGraphStats } from '../../services/KnowledgeGraphService.js';
 import * as RateLimiterService from '../../services/RateLimiterService.js';
+import * as ScopeService from '../../services/ScopeService.js';
 // SlackImportService temporarily disabled - needs adm-zip dependency
 // import * as SlackImportService from '../../services/SlackImportService.js';
 
@@ -390,6 +391,71 @@ const resolvers = {
         } : null,
         rateLimits: stats.rateLimits
       };
+    },
+
+    // ============================================================================
+    // SCOPES
+    // ============================================================================
+
+    getTeamScope: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ScopeService.getTeamScope(teamId);
+    },
+
+    getScopeTree: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ScopeService.getScopeTree(teamId);
+    },
+
+    getScope: async (_, { scopeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ScopeService.getScopeById(scopeId);
+    },
+
+    getChildScopes: async (_, { scopeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ScopeService.getChildScopes(scopeId);
+    },
+
+    getMyPrivateScope: async (_, { teamId, coupledScopeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ScopeService.getUserPrivateScope(teamId, userId, coupledScopeId);
+    },
+
+    getMyPrivateScopes: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ScopeService.getUserPrivateScopes(teamId, userId);
+    },
+
+    getScopeMessages: async (_, { scopeId, includePrivate, limit, before }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      // If includePrivate, get messages from user's private scope instead
+      let targetScopeId = scopeId;
+      if (includePrivate) {
+        const scope = await ScopeService.getScopeById(scopeId);
+        if (scope) {
+          const privateScope = await ScopeService.getUserPrivateScope(scope.teamId, userId, scopeId);
+          targetScopeId = privateScope.id;
+        }
+      }
+
+      return ScopeService.getScopeMessages(targetScopeId, userId, { limit: limit || 50, before });
+    },
+
+    getScopeConversation: async (_, { scopeId, includePrivate }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      let targetScopeId = scopeId;
+      if (includePrivate) {
+        const scope = await ScopeService.getScopeById(scopeId);
+        if (scope) {
+          const privateScope = await ScopeService.getUserPrivateScope(scope.teamId, userId, scopeId);
+          targetScopeId = privateScope.id;
+        }
+      }
+
+      return ScopeService.getScopeConversation(targetScopeId, userId);
     }
   },
 
@@ -781,6 +847,78 @@ const resolvers = {
 
       // Slack import temporarily disabled
       throw new Error('Data import is temporarily disabled');
+    },
+
+    // ============================================================================
+    // SCOPES
+    // ============================================================================
+
+    createScope: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      // Get parent scope to determine the new scope's parent
+      let parentScopeId = input.parentScopeId;
+      if (!parentScopeId) {
+        // Default to team scope as parent
+        const teamScope = await ScopeService.getTeamScope(teamId);
+        parentScopeId = teamScope?.id;
+      }
+
+      return ScopeService.createScope(teamId, {
+        parentScopeId,
+        type: 'project',
+        name: input.name,
+        description: input.description,
+        createdBy: userId
+      });
+    },
+
+    updateScope: async (_, { scopeId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ScopeService.updateScope(scopeId, input);
+    },
+
+    deleteScope: async (_, { scopeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await ScopeService.deleteScope(scopeId);
+      return true;
+    },
+
+    sendScopeMessage: async (_, { scopeId, includePrivate, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      // Determine target scope (private or public)
+      let targetScopeId = scopeId;
+      let scope = await ScopeService.getScopeById(scopeId);
+
+      if (includePrivate && scope) {
+        const privateScope = await ScopeService.getUserPrivateScope(scope.teamId, userId, scopeId);
+        targetScopeId = privateScope.id;
+        scope = privateScope;
+      }
+
+      // Send user message
+      const userMessage = await ScopeService.sendScopeMessage(targetScopeId, userId, input.content, {
+        replyToMessageId: input.replyToMessageId
+      });
+
+      // Check if @raven is mentioned - if so, trigger AI response
+      const mentionsRaven = input.content.toLowerCase().includes('@raven');
+
+      if (mentionsRaven && scope) {
+        // Get search scope IDs for knowledge retrieval
+        const searchScopeIds = await ScopeService.getSearchScopeIds(scopeId, userId, includePrivate);
+
+        // TODO: Process with AIService.processMessageWithScope()
+        // For now, return just the user message
+        // The AI integration will be added in the next phase
+      }
+
+      return {
+        message: userMessage,
+        factsCreated: [],
+        alertsCreated: []
+      };
     }
   },
 
@@ -795,6 +933,54 @@ const resolvers = {
 
     channels: async (team) => {
       return ChannelService.getChannels(team.id);
+    }
+  },
+
+  Scope: {
+    parentScope: async (scope) => {
+      if (!scope.parentScopeId) return null;
+      return ScopeService.getScopeById(scope.parentScopeId);
+    },
+
+    coupledScope: async (scope) => {
+      if (!scope.coupledScopeId) return null;
+      return ScopeService.getScopeById(scope.coupledScopeId);
+    },
+
+    children: async (scope) => {
+      return ScopeService.getChildScopes(scope.id);
+    },
+
+    path: async (scope) => {
+      return ScopeService.getScopePath(scope.id);
+    },
+
+    createdByUser: async (scope) => {
+      if (!scope.createdBy) return null;
+      return UserService.getUserById(scope.createdBy);
+    }
+  },
+
+  ScopeConversation: {
+    scope: async (conversation) => {
+      return ScopeService.getScopeById(conversation.scopeId);
+    },
+
+    messages: async (conversation, { limit, before }) => {
+      return ScopeService.getScopeMessages(conversation.scopeId, conversation.userId, { limit: limit || 50, before });
+    }
+  },
+
+  ScopeMessage: {
+    user: async (message) => {
+      if (!message.userId) return null;
+      return UserService.getUserById(message.userId);
+    },
+
+    replyToMessage: async (message) => {
+      if (!message.replyToMessageId) return null;
+      // Need to implement getting a single scope message by ID
+      return null; // TODO: Implement
     }
   },
 
@@ -835,6 +1021,11 @@ const resolvers = {
     createdByUser: async (fact) => {
       if (!fact.createdBy) return null;
       return UserService.getUserById(fact.createdBy);
+    },
+
+    scope: async (fact) => {
+      if (!fact.scopeId) return null;
+      return ScopeService.getScopeById(fact.scopeId);
     }
   },
 
@@ -882,6 +1073,11 @@ const resolvers = {
 
     attachments: async (question) => {
       return UploadService.getQuestionAttachments(question.id);
+    },
+
+    scope: async (question) => {
+      if (!question.scopeId) return null;
+      return ScopeService.getScopeById(question.scopeId);
     }
   },
 
@@ -898,6 +1094,18 @@ const resolvers = {
 
     questions: async (objective) => {
       return LearningObjectiveService.getObjectiveQuestions(objective.id);
+    },
+
+    scope: async (objective) => {
+      if (!objective.scopeId) return null;
+      return ScopeService.getScopeById(objective.scopeId);
+    }
+  },
+
+  Alert: {
+    scope: async (alert) => {
+      if (!alert.scopeId) return null;
+      return ScopeService.getScopeById(alert.scopeId);
     }
   }
 };

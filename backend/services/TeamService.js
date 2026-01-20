@@ -4,6 +4,7 @@
 
 import db from '../db.js';
 import crypto from 'crypto';
+import * as ScopeService from './ScopeService.js';
 
 /**
  * Create a new team
@@ -37,15 +38,18 @@ export async function createTeam(name, ownerId) {
     [team.id, ownerId]
   );
 
-  // Create default #general channel
+  // Create default #general channel (keeping for backwards compatibility)
   await db.query(
     `INSERT INTO channels (team_id, name, description, is_default, created_by)
      VALUES ($1, 'general', 'General discussion', true, $2)`,
     [team.id, ownerId]
   );
 
-  // Note: Calendar chat is now created on-demand per user (like Raven DM)
-  // instead of a shared #calendar channel
+  // Initialize team scope (root scope for knowledge hierarchy)
+  const teamScope = await ScopeService.initializeTeamScopes(team.id, name, ownerId);
+
+  // Initialize private scope for the owner
+  await ScopeService.initializeUserPrivateScope(team.id, ownerId);
 
   return mapTeam(team);
 }
@@ -359,6 +363,14 @@ export async function acceptInvite(token, userId) {
     'UPDATE team_invites SET accepted_at = NOW() WHERE id = $1',
     [invite.id]
   );
+
+  // Initialize private scope for the new member
+  try {
+    await ScopeService.initializeUserPrivateScope(invite.team_id, userId);
+  } catch (err) {
+    console.warn('Failed to initialize private scope for new member:', err.message);
+    // Don't fail the invite acceptance if scope creation fails
+  }
 
   // Fetch full member info
   const fullMemberResult = await db.query(

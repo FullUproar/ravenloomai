@@ -50,6 +50,79 @@ export default gql`
     aiEnabled: Boolean
   }
 
+  # ============================================================================
+  # SCOPE TYPES (Hierarchical Knowledge Boundaries)
+  # ============================================================================
+
+  type Scope {
+    id: ID!
+    teamId: ID!
+    parentScopeId: ID
+    parentScope: Scope
+    type: String!  # team, project, private
+    name: String!
+    description: String
+    summary: String  # AI-generated summary for parent scope awareness
+    ownerId: String  # For private scopes
+    coupledScopeId: ID  # For private scopes - which public scope it's coupled to
+    coupledScope: Scope
+    children: [Scope!]!  # Child scopes
+    path: [Scope!]!  # Breadcrumb from root to this scope
+    createdBy: String
+    createdByUser: User
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  type ScopeConversation {
+    id: ID!
+    scopeId: ID!
+    scope: Scope
+    userId: String  # NULL for shared team/project conversations
+    messages(limit: Int, before: DateTime): [ScopeMessage!]!
+    createdAt: DateTime!
+    lastMessageAt: DateTime!
+  }
+
+  type ScopeMessage {
+    id: ID!
+    conversationId: ID!
+    scopeId: ID!
+    userId: String
+    user: User
+    content: String!
+    isAi: Boolean!
+    referencedFacts: [ID!]
+    replyToMessageId: ID
+    replyToMessage: ScopeMessage
+    aiCommand: String
+    metadata: JSON
+    createdAt: DateTime!
+  }
+
+  input CreateScopeInput {
+    parentScopeId: ID
+    name: String!
+    description: String
+  }
+
+  input UpdateScopeInput {
+    name: String
+    description: String
+    summary: String
+  }
+
+  input SendScopeMessageInput {
+    content: String!
+    replyToMessageId: ID
+  }
+
+  type ScopeAIResponse {
+    message: ScopeMessage!
+    factsCreated: [Fact!]
+    alertsCreated: [Alert!]
+  }
+
   # AI Usage Statistics
   type AIUsageStats {
     period: String!
@@ -326,6 +399,8 @@ export default gql`
   type Fact {
     id: ID!
     teamId: ID!
+    scopeId: ID
+    scope: Scope
     content: String!
     # Structured entity model
     entityType: String  # person, product, process, policy, etc.
@@ -387,6 +462,8 @@ export default gql`
   type Alert {
     id: ID!
     teamId: ID!
+    scopeId: ID
+    scope: Scope
     channelId: ID
     createdBy: String
     triggerType: String!  # date, recurring, condition
@@ -497,6 +574,8 @@ export default gql`
   type TeamQuestion {
     id: ID!
     teamId: ID!
+    scopeId: ID
+    scope: Scope
     askedBy: ID!
     askedByUser: User
     askedByName: String
@@ -555,6 +634,8 @@ export default gql`
   type LearningObjective {
     id: ID!
     teamId: ID!
+    scopeId: ID
+    scope: Scope
     title: String!
     description: String
     status: String!  # active, paused, completed
@@ -709,6 +790,34 @@ export default gql`
     # Team Settings (admin only)
     getTeamSettings(teamId: ID!): TeamSettings!
     getAIUsageStats(teamId: ID!, period: String): AIUsageStats
+
+    # ============================================================================
+    # SCOPES
+    # ============================================================================
+
+    # Get the team's root scope
+    getTeamScope(teamId: ID!): Scope!
+
+    # Get all public scopes for a team (tree structure)
+    getScopeTree(teamId: ID!): [Scope!]!
+
+    # Get a specific scope
+    getScope(scopeId: ID!): Scope
+
+    # Get child scopes of a parent
+    getChildScopes(scopeId: ID!): [Scope!]!
+
+    # Get user's private scope for a given public scope
+    getMyPrivateScope(teamId: ID!, coupledScopeId: ID!): Scope!
+
+    # Get all user's private scopes in a team
+    getMyPrivateScopes(teamId: ID!): [Scope!]!
+
+    # Get messages in a scope conversation
+    getScopeMessages(scopeId: ID!, includePrivate: Boolean, limit: Int, before: DateTime): [ScopeMessage!]!
+
+    # Get scope conversation
+    getScopeConversation(scopeId: ID!, includePrivate: Boolean): ScopeConversation
   }
 
   # ============================================================================
@@ -806,5 +915,21 @@ export default gql`
 
     # Execute the import based on channel mappings
     executeImport(teamId: ID!, source: String!, fileData: String!, mappings: [ChannelMappingInput!]!): ImportResult!
+
+    # ============================================================================
+    # SCOPES
+    # ============================================================================
+
+    # Create a new scope (project or sub-scope)
+    createScope(teamId: ID!, input: CreateScopeInput!): Scope!
+
+    # Update a scope
+    updateScope(scopeId: ID!, input: UpdateScopeInput!): Scope!
+
+    # Delete a scope (and all child scopes)
+    deleteScope(scopeId: ID!): Boolean!
+
+    # Send a message in a scope conversation (triggers AI if @raven mentioned)
+    sendScopeMessage(scopeId: ID!, includePrivate: Boolean, input: SendScopeMessageInput!): ScopeAIResponse!
   }
 `;
