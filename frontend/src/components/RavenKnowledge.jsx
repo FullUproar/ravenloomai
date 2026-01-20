@@ -83,6 +83,7 @@ const CANCEL_REMEMBER = gql`
 
 export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [input, setInput] = useState('');
+  const [followUpInput, setFollowUpInput] = useState('');
   const [mode, setMode] = useState('idle'); // idle, asking, remembering, preview, result
   const [askResult, setAskResult] = useState(null);
   const [rememberPreview, setRememberPreview] = useState(null);
@@ -90,6 +91,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [skipConflictIds, setSkipConflictIds] = useState([]);
   const [error, setError] = useState(null);
   const inputRef = useRef(null);
+  const followUpRef = useRef(null);
 
   // GraphQL operations
   const [askRaven, { loading: askLoading }] = useLazyQuery(ASK_RAVEN, {
@@ -107,6 +109,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   // Reset when scope changes (prevent cross-scope data blending)
   useEffect(() => {
     setInput('');
+    setFollowUpInput('');
     setMode('idle');
     setAskResult(null);
     setRememberPreview(null);
@@ -119,6 +122,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   // Reset to idle state
   const reset = () => {
     setInput('');
+    setFollowUpInput('');
     setMode('idle');
     setAskResult(null);
     setRememberPreview(null);
@@ -213,6 +217,44 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   // Handle mismatch detection (user typed question but clicked Remember)
   const handleSwitchToAsk = () => {
     handleAsk();
+  };
+
+  // Handle follow-up question from result view
+  const handleFollowUp = async () => {
+    if (!followUpInput.trim() || !scopeId) return;
+
+    setInput(followUpInput);
+    setFollowUpInput('');
+    setMode('asking');
+    setAskResult(null);
+    setError(null);
+
+    try {
+      const { data } = await askRaven({
+        variables: { scopeId, question: followUpInput.trim() }
+      });
+
+      setAskResult(data.askRaven);
+      setMode('result');
+    } catch (err) {
+      console.error('Follow-up error:', err);
+      setError(err.message);
+      setMode('result'); // Stay in result mode to show error
+    }
+  };
+
+  // Handle correction - switch to Remember mode with the correction text
+  const handleCorrection = () => {
+    if (!followUpInput.trim()) return;
+    setInput(followUpInput);
+    setFollowUpInput('');
+    setAskResult(null);
+    setRememberResult(null);
+    setMode('idle');
+    // Trigger Remember after a tick to let state update
+    setTimeout(() => {
+      handleRemember();
+    }, 0);
   };
 
   const isLoading = askLoading || previewLoading || confirmLoading;
@@ -394,17 +436,49 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                     <button
                       key={i}
                       className="followup-btn"
-                      onClick={() => {
-                        setInput(q);
-                        setMode('idle');
-                        setAskResult(null);
-                      }}
+                      onClick={() => setFollowUpInput(q)}
                     >
                       {q}
                     </button>
                   ))}
                 </div>
               )}
+
+              {/* Follow-up input area */}
+              <div className="result-followup-input">
+                <input
+                  ref={followUpRef}
+                  type="text"
+                  className="followup-input"
+                  placeholder="Ask a follow-up or correct this..."
+                  value={followUpInput}
+                  onChange={(e) => setFollowUpInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleFollowUp();
+                    }
+                  }}
+                />
+                <div className="followup-actions">
+                  <button
+                    className="followup-action-btn ask"
+                    onClick={handleFollowUp}
+                    disabled={!followUpInput.trim() || isLoading}
+                    title="Ask follow-up question"
+                  >
+                    Ask
+                  </button>
+                  <button
+                    className="followup-action-btn correct"
+                    onClick={handleCorrection}
+                    disabled={!followUpInput.trim() || isLoading}
+                    title="Save as correction"
+                  >
+                    Correct
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
