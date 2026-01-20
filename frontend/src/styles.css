@@ -882,33 +882,105 @@ button:active:not(:disabled),
   font-size: 0.75rem;
 }
 
-/* Scope tree hierarchy styles */
-.scope-tree-line {
-  font-family: monospace;
+/* Scope tree hierarchy styles - VS Code style with guide lines */
+.scope-tree {
+  position: relative;
+}
+
+.scope-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  background: none;
+  border: none;
   color: var(--text-muted);
-  opacity: 0.5;
-  margin-right: 0.25rem;
-  white-space: pre;
-  font-size: 0.75rem;
-  min-width: 12px;
-}
-
-.scope-tree-nested {
-  letter-spacing: -2px;
-}
-
-.scope-level-0 {
-  padding-left: 1.5rem;
-  font-weight: 500;
-}
-
-.scope-level-1 {
-  padding-left: 1.5rem;
-}
-
-.scope-level-2 {
-  padding-left: 1.5rem;
   font-size: 0.8125rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.1s;
+  position: relative;
+}
+
+.scope-tree-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+.scope-tree-item.active {
+  background: rgba(93, 75, 140, 0.15);
+  color: var(--primary);
+}
+
+/* Indentation per level */
+.scope-tree-item[data-depth="0"] { padding-left: 0.75rem; font-weight: 500; }
+.scope-tree-item[data-depth="1"] { padding-left: 1.5rem; }
+.scope-tree-item[data-depth="2"] { padding-left: 2.25rem; }
+.scope-tree-item[data-depth="3"] { padding-left: 3rem; }
+
+/* Guide lines */
+.scope-tree-item[data-depth="1"]::before,
+.scope-tree-item[data-depth="2"]::before,
+.scope-tree-item[data-depth="3"]::before {
+  content: '';
+  position: absolute;
+  left: 0.875rem;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.5;
+}
+
+.scope-tree-item[data-depth="2"]::after {
+  content: '';
+  position: absolute;
+  left: 1.625rem;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.5;
+}
+
+.scope-tree-item[data-depth="3"]::after {
+  content: '';
+  position: absolute;
+  left: 2.375rem;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.5;
+}
+
+/* Expand/collapse chevron */
+.scope-tree-chevron {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.scope-tree-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.scope-tree-chevron.hidden {
+  visibility: hidden;
+}
+
+.scope-tree-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Toggle switch in navigation */

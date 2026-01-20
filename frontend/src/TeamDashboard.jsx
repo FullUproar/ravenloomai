@@ -2434,54 +2434,51 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               {teamScope?.children?.length > 0 && <span className="nav-count">{teamScope.children.length}</span>}
             </button>
             {expandedSections.scopes !== false && (
-              <div className="nav-children">
+              <div className="nav-children scope-tree">
                 {/* Team Scope (root) */}
                 {teamScope && (
                   <button
-                    className={`nav-item scope-level-0 ${activeScope?.id === teamScope.id && activeView === 'scope' ? 'active' : ''}`}
+                    className={`scope-tree-item ${activeScope?.id === teamScope.id && activeView === 'scope' ? 'active' : ''}`}
+                    data-depth="0"
                     onClick={() => handleSelectScope(teamScope)}
                   >
-                    <span className="scope-tree-line"></span>
-                    <span className="nav-item-label">{teamScope.name || 'Team'}</span>
+                    <span className={`scope-tree-chevron ${teamScope.children?.length > 0 ? 'expanded' : 'hidden'}`}>▶</span>
+                    <span className="scope-tree-label">{teamScope.name || 'Team'}</span>
                   </button>
                 )}
 
                 {/* Project Scopes (children of team scope) */}
-                {teamScope?.children?.map((projectScope, idx) => (
-                  <div key={projectScope.id} className="nav-scope-group">
+                {teamScope?.children?.map((projectScope) => (
+                  <div key={projectScope.id}>
                     <button
-                      className={`nav-item scope-level-1 ${activeScope?.id === projectScope.id && activeView === 'scope' ? 'active' : ''}`}
+                      className={`scope-tree-item ${activeScope?.id === projectScope.id && activeView === 'scope' ? 'active' : ''}`}
+                      data-depth="1"
                       onClick={() => handleSelectScope(projectScope)}
                     >
-                      <span className="scope-tree-line">
-                        {idx === teamScope.children.length - 1 ? '└' : '├'}
-                      </span>
-                      {projectScope.children?.length > 0 && (
-                        <span
-                          className="nav-scope-expand"
-                          onClick={(e) => {
+                      <span
+                        className={`scope-tree-chevron ${projectScope.children?.length > 0 ? (expandedScopes[projectScope.id] ? 'expanded' : '') : 'hidden'}`}
+                        onClick={(e) => {
+                          if (projectScope.children?.length > 0) {
                             e.stopPropagation();
                             toggleScopeExpansion(projectScope.id);
-                          }}
-                        >
-                          {expandedScopes[projectScope.id] ? '▼' : '▶'}
-                        </span>
-                      )}
-                      <span className="nav-item-label">{projectScope.name}</span>
+                          }
+                        }}
+                      >
+                        ▶
+                      </span>
+                      <span className="scope-tree-label">{projectScope.name}</span>
                     </button>
 
                     {/* Sub-project scopes */}
-                    {expandedScopes[projectScope.id] && projectScope.children?.map((subScope, subIdx) => (
+                    {expandedScopes[projectScope.id] && projectScope.children?.map((subScope) => (
                       <button
                         key={subScope.id}
-                        className={`nav-item scope-level-2 ${activeScope?.id === subScope.id && activeView === 'scope' ? 'active' : ''}`}
+                        className={`scope-tree-item ${activeScope?.id === subScope.id && activeView === 'scope' ? 'active' : ''}`}
+                        data-depth="2"
                         onClick={() => handleSelectScope(subScope)}
                       >
-                        <span className="scope-tree-line scope-tree-nested">
-                          {idx === teamScope.children.length - 1 ? ' ' : '│'}
-                          {subIdx === projectScope.children.length - 1 ? '└' : '├'}
-                        </span>
-                        <span className="nav-item-label">{subScope.name}</span>
+                        <span className={`scope-tree-chevron ${subScope.children?.length > 0 ? '' : 'hidden'}`}>▶</span>
+                        <span className="scope-tree-label">{subScope.name}</span>
                       </button>
                     ))}
                   </div>
