@@ -1,0 +1,390 @@
+/* Data Import Page Styles */
+
+.data-import-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #0D0D0D;
+  z-index: 1000;
+  overflow-y: auto;
+  padding: 2rem;
+}
+
+.import-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #2D2D40;
+}
+
+.import-header h1 {
+  margin: 0;
+  color: #5D4B8C;
+  font-family: 'Cinzel', serif;
+}
+
+.import-header .close-btn {
+  background: #333;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.import-header .close-btn:hover {
+  background: #444;
+}
+
+.import-error {
+  background: rgba(255, 111, 89, 0.1);
+  border: 1px solid #FF6F59;
+  color: #FF6F59;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.import-step {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.import-step h2 {
+  color: #D9D9E3;
+  margin-bottom: 0.5rem;
+}
+
+.step-description {
+  color: #888;
+  margin-bottom: 2rem;
+}
+
+.step-description a {
+  color: #5D4B8C;
+  margin-left: 0.5rem;
+}
+
+.step-description a:hover {
+  text-decoration: underline;
+}
+
+/* Source Selection Cards */
+.source-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.source-card {
+  background: #1A1A1A;
+  border: 2px solid #2D2D40;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.source-card:hover:not(.disabled) {
+  border-color: #5D4B8C;
+  transform: translateY(-2px);
+}
+
+.source-card.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.source-icon {
+  font-size: 2.5rem;
+}
+
+.source-name {
+  color: #D9D9E3;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.source-status {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+}
+
+.source-status.available {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4CAF50;
+}
+
+.source-status.coming-soon {
+  background: rgba(255, 215, 0, 0.2);
+  color: #FFD700;
+}
+
+/* Upload Zone */
+.upload-zone {
+  background: #1A1A1A;
+  border: 2px dashed #2D2D40;
+  border-radius: 12px;
+  padding: 3rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.upload-zone:hover {
+  border-color: #5D4B8C;
+  background: #1F1F2A;
+}
+
+.upload-zone.loading {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.upload-icon {
+  font-size: 3rem;
+}
+
+.upload-text {
+  color: #D9D9E3;
+  font-size: 1.1rem;
+}
+
+.upload-hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+/* Mapping Table */
+.mapping-table-container {
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+.mapping-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #1A1A1A;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mapping-table th,
+.mapping-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #2D2D40;
+}
+
+.mapping-table th {
+  background: #2D2D40;
+  color: #D9D9E3;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mapping-table td {
+  color: #B8B8C0;
+}
+
+.mapping-table tr:hover td {
+  background: #222;
+}
+
+.mapping-table tr.skipped td {
+  opacity: 0.5;
+}
+
+.mapping-table .channel-name {
+  color: #5D4B8C;
+  font-weight: 500;
+}
+
+.mapping-table select,
+.mapping-table input {
+  background: #2D2D40;
+  color: #D9D9E3;
+  border: 1px solid #3D3D50;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 200px;
+}
+
+.mapping-table select:focus,
+.mapping-table input:focus {
+  outline: none;
+  border-color: #5D4B8C;
+}
+
+.skip-label {
+  color: #666;
+  font-style: italic;
+}
+
+/* Import Summary */
+.import-summary {
+  background: rgba(93, 75, 140, 0.1);
+  border: 1px solid #5D4B8C;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.import-summary p {
+  margin: 0;
+  color: #D9D9E3;
+}
+
+.import-summary strong {
+  color: #5D4B8C;
+}
+
+/* Buttons */
+.import-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.back-btn {
+  background: #333;
+  color: #fff;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.back-btn:hover {
+  background: #444;
+}
+
+.import-btn {
+  background: #5D4B8C;
+  color: #fff;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.import-btn:hover:not(:disabled) {
+  background: #6D5B9C;
+}
+
+.import-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Importing State */
+.importing-indicator {
+  text-align: center;
+  padding: 3rem;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #2D2D40;
+  border-top-color: #5D4B8C;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.importing-indicator p {
+  color: #888;
+}
+
+/* Results */
+.results-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.result-stat {
+  background: #1A1A1A;
+  border: 1px solid #2D2D40;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.stat-value {
+  display: block;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #5D4B8C;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.import-errors {
+  background: rgba(255, 111, 89, 0.1);
+  border: 1px solid #FF6F59;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.import-errors h3 {
+  color: #FF6F59;
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.import-errors ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.import-errors li {
+  color: #FF9999;
+  margin-bottom: 0.5rem;
+}
+
+.close-btn.primary {
+  background: #5D4B8C;
+  color: #fff;
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+}
+
+.close-btn.primary:hover {
+  background: #6D5B9C;
+}

@@ -6,15 +6,9 @@ import db from '../db.js';
 import AIService from './AIService.js';
 import KnowledgeService from './KnowledgeService.js';
 import AlertService from './AlertService.js';
-import TaskService from './TaskService.js';
 import DiscussionService from './DiscussionService.js';
-import * as CalendarService from './CalendarService.js';
 import * as KnowledgeGraphService from './KnowledgeGraphService.js';
 import * as DeepResearchService from './DeepResearchService.js';
-import * as WorkContextService from './WorkContextService.js';
-import * as PriorityService from './PriorityService.js';
-import * as GoalService from './GoalService.js';
-import * as UXPreferencesService from './UXPreferencesService.js';
 
 /**
  * Get a message by ID
@@ -150,31 +144,14 @@ async function processAICommand(command, teamId, channelId, userId, replyContext
   }
 
   if (!command) {
-    // Default response differs for calendar chat
-    if (isCalendarChat) {
-      return {
-        responseText: `I'm your calendar assistant! I can help you:
-• View upcoming events - "What's on my calendar this week?"
-• Add events - "Add meeting tomorrow at 2pm"
-• Check due dates - "What's due soon?"
-• Schedule reminders - "Remind me about the report on Friday"
-
-Just type naturally and I'll help manage your schedule!`
-      };
-    }
     return {
       responseText: `I'm here! Commands I understand:
 • \`@raven remember [fact]\` - Save information
 • \`@raven forget [fact]\` - Remove information
+• \`@raven decide [decision]\` - Record a decision
 • \`@raven remind [when] [what]\` - Set a reminder
-• \`@raven task [description]\` - Create a task
-• \`@raven tasks\` - List your tasks
-• \`@raven calendar\` - Show upcoming events & due dates
-• \`@raven add event [details]\` - Add a calendar event
-• \`@raven what's due\` - Show task deadlines
-• Or just ask me a question!
-
-💡 Tip: In the #calendar channel, you can talk to me without @raven!`
+• \`@raven research [topic]\` - Start deep research
+• Or just ask me a question!`
     };
   }
 
@@ -186,7 +163,10 @@ Just type naturally and I'll help manage your schedule!`
       return handleRemind(command.content, teamId, channelId, userId);
 
     case 'task':
-      return handleTask(command.content, teamId, channelId, userId);
+      return {
+        responseText: "Task management has been simplified. Use @raven remember to store information or @raven remind to set reminders.",
+        tasksCreated: []
+      };
 
     case 'decision':
       return handleDecision(command.content, teamId, userId);
@@ -204,7 +184,10 @@ Just type naturally and I'll help manage your schedule!`
       return handleStopLearning(channelId);
 
     case 'list_tasks':
-      return handleListTasks(teamId, userId);
+      return {
+        responseText: "Task management has been simplified. Use @raven facts to see stored knowledge or @raven reminders to see pending reminders.",
+        tasksCreated: []
+      };
 
     case 'list_knowledge':
       return handleListKnowledge(teamId);
@@ -231,78 +214,25 @@ Just type naturally and I'll help manage your schedule!`
       return handleContinueDiscussion(teamId, channelId);
 
     case 'calendar_query':
-      return handleCalendarQuery(teamId);
+      return {
+        responseText: "Calendar features have been simplified. Use @raven remind to set reminders for important dates.",
+        tasksCreated: []
+      };
 
     case 'add_event':
-      return handleAddEvent(command.content, teamId, userId);
+      return {
+        responseText: "Calendar features have been simplified. Use @raven remind to set reminders for important dates.",
+        tasksCreated: []
+      };
 
     case 'due_dates_query':
-      return handleDueDatesQuery(teamId);
+      return {
+        responseText: "Calendar features have been simplified. Use @raven remind to set reminders for important dates.",
+        tasksCreated: []
+      };
 
     case 'deep_research':
       return handleDeepResearch(command.content, teamId, userId);
-
-    // ============================================================================
-    // WORK CONTEXT COMMANDS (AI-first productivity)
-    // ============================================================================
-
-    case 'work_status':
-      return handleWorkStatus(command.content, teamId, userId);
-
-    case 'prioritize':
-      return handlePrioritize(teamId, userId);
-
-    case 'priority_queue':
-      return handlePriorityQueue(teamId, userId);
-
-    case 'show_blockers':
-      return handleShowBlockers(command.content, teamId, userId);
-
-    case 'goal_health':
-      return handleGoalHealth(command.content, teamId);
-
-    case 'priority_conflicts':
-      return handlePriorityConflicts(teamId);
-
-    case 'link_knowledge':
-      return handleLinkKnowledge(command.content, teamId, userId);
-
-    case 'research_for':
-      return handleResearchFor(command.content, teamId, userId);
-
-    // ============================================================================
-    // UX PREFERENCES COMMANDS (AI-controlled personalization)
-    // ============================================================================
-
-    case 'ux_hide':
-      return handleUXHide(command.content, teamId, userId);
-
-    case 'ux_show':
-      return handleUXShow(command.content, teamId, userId);
-
-    case 'ux_move':
-      return handleUXMove(command.content, teamId, userId);
-
-    case 'ux_density':
-      return handleUXDensity(command.content, teamId, userId);
-
-    case 'ux_animations':
-      return handleUXAnimations(command.content, teamId, userId);
-
-    case 'ux_badges':
-      return handleUXBadges(command.content, teamId, userId);
-
-    case 'ux_ai_summaries':
-      return handleUXAISummaries(command.content, teamId, userId);
-
-    case 'ux_simplify':
-      return handleUXSimplify(teamId, userId);
-
-    case 'ux_reset':
-      return handleUXReset(teamId, userId);
-
-    case 'ux_list_hidden':
-      return handleUXListHidden(teamId, userId);
 
     case 'query':
     default:
@@ -615,45 +545,6 @@ async function handleRemind(content, teamId, channelId, userId) {
 }
 
 /**
- * Handle "task" command
- */
-async function handleTask(content, teamId, channelId, userId) {
-  try {
-    // Extract task details
-    const extracted = await AIService.extractTask(content);
-
-    // Create the task
-    const task = await TaskService.createTask(teamId, {
-      title: extracted.title,
-      description: extracted.description,
-      priority: extracted.priority,
-      dueAt: extracted.dueAt,
-      channelId,
-      createdBy: userId
-    });
-
-    let responseText = `Task created: "${extracted.title}"`;
-    if (extracted.priority === 'high' || extracted.priority === 'urgent') {
-      responseText += ` [${extracted.priority.toUpperCase()}]`;
-    }
-    if (extracted.dueAt) {
-      responseText += ` (due ${new Date(extracted.dueAt).toLocaleDateString()})`;
-    }
-
-    return {
-      responseText,
-      tasksCreated: [task],
-      metadata: { command: 'task', taskId: task.id }
-    };
-  } catch (error) {
-    console.error('Task error:', error);
-    return {
-      responseText: `I couldn't create that task. Error: ${error.message}`
-    };
-  }
-}
-
-/**
  * Handle "decision" command
  */
 async function handleDecision(content, teamId, userId) {
@@ -716,14 +607,6 @@ async function handleQuery(query, teamId, channelId, replyContext = null, userId
     // Build enhanced query with context
     let enhancedQuery = query;
 
-    // Add calendar context if this is a calendar chat
-    if (isCalendarChat) {
-      const calendarContext = await getCalendarContext(teamId);
-      if (calendarContext) {
-        enhancedQuery = `[CALENDAR CONTEXT - You are acting as a calendar assistant. Use this information to answer the user's question:\n${calendarContext}]\n\n${query}`;
-      }
-    }
-
     // Add user context if available
     if (userContext) {
       const userInfo = [];
@@ -764,61 +647,6 @@ async function handleQuery(query, teamId, channelId, replyContext = null, userId
     return {
       responseText: `I had trouble answering that. Error: ${error.message}`
     };
-  }
-}
-
-/**
- * Get calendar context for AI queries in calendar chat
- */
-async function getCalendarContext(teamId) {
-  try {
-    const now = new Date();
-    const nextTwoWeeks = new Date(now);
-    nextTwoWeeks.setDate(nextTwoWeeks.getDate() + 14);
-
-    // Get upcoming events
-    const events = await CalendarService.getEvents(teamId, {
-      startDate: now.toISOString(),
-      endDate: nextTwoWeeks.toISOString()
-    });
-
-    // Get tasks with due dates
-    const allTasks = await TaskService.getTasks(teamId, {});
-    const tasksDue = allTasks.filter(t => t.dueAt).sort((a, b) =>
-      new Date(a.dueAt) - new Date(b.dueAt)
-    ).slice(0, 15);
-
-    let context = `Today is ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.\n\n`;
-
-    if (events.length > 0) {
-      context += `UPCOMING EVENTS (next 2 weeks):\n`;
-      events.forEach(event => {
-        const start = new Date(event.startAt);
-        const dateStr = start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const timeStr = event.isAllDay ? 'All day' : start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        context += `• ${dateStr} ${timeStr}: ${event.title}${event.location ? ` @ ${event.location}` : ''}\n`;
-      });
-      context += '\n';
-    } else {
-      context += `No upcoming events in the next 2 weeks.\n\n`;
-    }
-
-    if (tasksDue.length > 0) {
-      context += `TASKS WITH DUE DATES:\n`;
-      tasksDue.forEach(task => {
-        const due = new Date(task.dueAt);
-        const dueStr = due.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const overdue = due < now ? ' (OVERDUE)' : '';
-        context += `• ${dueStr}: ${task.title} [${task.status}]${overdue}\n`;
-      });
-    } else {
-      context += `No tasks with due dates.`;
-    }
-
-    return context;
-  } catch (error) {
-    console.error('Error getting calendar context:', error);
-    return null;
   }
 }
 
@@ -943,35 +771,6 @@ async function handleStopLearning(channelId) {
     };
   } catch (error) {
     console.error('Stop learning error:', error);
-    return { responseText: `Error: ${error.message}` };
-  }
-}
-
-/**
- * Handle "list tasks" - show tasks
- */
-async function handleListTasks(teamId, userId) {
-  try {
-    const tasks = await TaskService.getTasks(teamId, { status: 'todo', limit: 20 });
-    const inProgress = await TaskService.getTasks(teamId, { status: 'in_progress', limit: 10 });
-
-    const allTasks = [...inProgress, ...tasks];
-
-    if (allTasks.length === 0) {
-      return { responseText: "No open tasks. Create one with `@raven task [description]`" };
-    }
-
-    let response = `**Tasks (${allTasks.length})**\n`;
-    allTasks.forEach(task => {
-      const priority = task.priority === 'urgent' ? '🔴' : task.priority === 'high' ? '🟠' : '';
-      const status = task.status === 'in_progress' ? '▶️' : '◻️';
-      const due = task.dueAt ? ` (due ${new Date(task.dueAt).toLocaleDateString()})` : '';
-      response += `${status} ${priority}${task.title}${due}\n`;
-    });
-
-    return { responseText: response, metadata: { command: 'list_tasks', count: allTasks.length } };
-  } catch (error) {
-    console.error('List tasks error:', error);
     return { responseText: `Error: ${error.message}` };
   }
 }
@@ -1381,105 +1180,6 @@ async function handleContinueDiscussion(teamId, channelId) {
 }
 
 /**
- * Handle calendar query - show upcoming events and tasks
- */
-async function handleCalendarQuery(teamId) {
-  try {
-    const now = new Date();
-    const nextWeek = new Date(now);
-    nextWeek.setDate(nextWeek.getDate() + 7);
-
-    // Get events for next 7 days
-    const events = await CalendarService.getEvents(teamId, {
-      startDate: now.toISOString(),
-      endDate: nextWeek.toISOString()
-    });
-
-    // Get tasks with due dates
-    const allTasks = await TaskService.getTasks(teamId, {});
-    const tasksDue = allTasks.filter(t => t.dueAt);
-
-    const response = AIService.formatCalendarResponse(events, tasksDue);
-
-    return {
-      responseText: response,
-      metadata: { command: 'calendar_query' }
-    };
-  } catch (error) {
-    console.error('Calendar query error:', error);
-    return {
-      responseText: `I had trouble checking the calendar. ${error.message}`,
-      metadata: { command: 'calendar_query', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle adding a calendar event
- */
-async function handleAddEvent(content, teamId, userId) {
-  try {
-    // Extract event details using AI
-    const eventDetails = await AIService.extractCalendarEvent(content);
-
-    // Create the event
-    const event = await CalendarService.createEvent(teamId, {
-      title: eventDetails.title,
-      description: eventDetails.description,
-      startAt: eventDetails.startAt,
-      endAt: eventDetails.endAt,
-      isAllDay: eventDetails.isAllDay || false,
-      location: eventDetails.location,
-      createdBy: userId
-    });
-
-    const startDate = new Date(event.startAt);
-    const dateStr = startDate.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric'
-    });
-    const timeStr = event.isAllDay ? 'all day' :
-      startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-
-    return {
-      responseText: `Added to calendar: **${event.title}**\n📅 ${dateStr}${event.isAllDay ? '' : ` at ${timeStr}`}${event.location ? `\n📍 ${event.location}` : ''}`,
-      metadata: {
-        command: 'add_event',
-        eventId: event.id
-      }
-    };
-  } catch (error) {
-    console.error('Add event error:', error);
-    return {
-      responseText: `I couldn't add that event. ${error.message}\n\nTry: "add event [title] on [date] at [time]"`,
-      metadata: { command: 'add_event', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle due dates query
- */
-async function handleDueDatesQuery(teamId) {
-  try {
-    const allTasks = await TaskService.getTasks(teamId, {});
-    const response = AIService.formatDueDatesResponse(allTasks);
-
-    return {
-      responseText: response,
-      metadata: { command: 'due_dates_query' }
-    };
-  } catch (error) {
-    console.error('Due dates query error:', error);
-    return {
-      responseText: `I had trouble checking due dates. ${error.message}`,
-      metadata: { command: 'due_dates_query', error: error.message }
-    };
-  }
-}
-
-/**
  * Handle deep research command
  */
 async function handleDeepResearch(question, teamId, userId) {
@@ -1519,516 +1219,6 @@ Use \`@raven research status\` to check progress.`,
     return {
       responseText: `I had trouble starting the research. ${error.message}`,
       metadata: { command: 'deep_research', error: error.message }
-    };
-  }
-}
-
-// ============================================================================
-// WORK CONTEXT HANDLERS (AI-first productivity)
-// ============================================================================
-
-/**
- * Handle "@raven status" - show work status with health
- */
-async function handleWorkStatus(target, teamId, userId) {
-  try {
-    const context = await WorkContextService.getWorkContext(teamId, userId);
-
-    let response = '**Work Status**\n\n';
-
-    // Goals overview
-    if (context.goals?.length > 0) {
-      response += `**Goals (${context.goals.length})**\n`;
-      for (const goal of context.goals.slice(0, 5)) {
-        const health = goal.health || {};
-        const statusEmoji = {
-          on_track: '🟢',
-          at_risk: '🟡',
-          blocked: '🔴',
-          behind: '🟠'
-        }[health.status] || '⚪';
-        response += `${statusEmoji} **${goal.title}** - ${health.progress || 0}% (${health.completedCount || 0}/${health.taskCount || 0} tasks)\n`;
-        if (health.riskFactors?.length > 0) {
-          response += `   ⚠️ ${health.riskFactors[0]}\n`;
-        }
-      }
-    } else {
-      response += 'No active goals.\n';
-    }
-
-    // Blockers
-    if (context.blockers?.length > 0) {
-      response += `\n**🚫 Blocked (${context.blockers.length})**\n`;
-      for (const blocker of context.blockers.slice(0, 3)) {
-        response += `• ${blocker.title}: ${blocker.blockedReason || 'No reason given'}\n`;
-      }
-    }
-
-    // Priority conflicts
-    const conflicts = await PriorityService.getPriorityConflictSummary(teamId);
-    if (conflicts.hasConflicts) {
-      response += `\n⚡ ${conflicts.summary}\n`;
-    }
-
-    response += `\n${context.summary || ''}`;
-
-    return {
-      responseText: response,
-      metadata: { command: 'work_status', goalCount: context.goals?.length || 0 }
-    };
-  } catch (error) {
-    console.error('Work status error:', error);
-    return { responseText: `Error getting status: ${error.message}` };
-  }
-}
-
-/**
- * Handle "@raven prioritize" - suggest what to work on
- */
-async function handlePrioritize(teamId, userId) {
-  try {
-    const queue = await PriorityService.getPriorityQueue(teamId, userId, { limit: 5 });
-    const suggestions = await PriorityService.suggestPriorities(teamId);
-
-    let response = '**Priority Queue** (What to work on next)\n\n';
-
-    if (queue.length === 0) {
-      response += 'No open tasks. Create one with `@raven task [description]`';
-    } else {
-      queue.forEach((item, i) => {
-        const priorityEmoji = {
-          critical: '🔴',
-          high: '🟠',
-          medium: '🟡',
-          low: '⚪'
-        }[item.effectivePriorityLabel] || '⚪';
-        const blockedTag = item.isBlocked ? ' 🚫' : '';
-        const conflictTag = item.hasPriorityConflict ? ' ⚡' : '';
-        response += `${i + 1}. ${priorityEmoji} **${item.title}**${blockedTag}${conflictTag}\n`;
-        if (item.goalNames) response += `   → ${item.goalNames}\n`;
-      });
-    }
-
-    if (suggestions.suggestions.length > 0) {
-      response += `\n**💡 Suggestions**\n`;
-      suggestions.suggestions.slice(0, 3).forEach(s => {
-        response += `• ${s.reason}\n`;
-      });
-    }
-
-    return {
-      responseText: response,
-      metadata: { command: 'prioritize', taskCount: queue.length }
-    };
-  } catch (error) {
-    console.error('Prioritize error:', error);
-    return { responseText: `Error: ${error.message}` };
-  }
-}
-
-/**
- * Handle "@raven priority queue" - show priority-ordered tasks
- */
-async function handlePriorityQueue(teamId, userId) {
-  try {
-    const queue = await PriorityService.getPriorityQueue(teamId, userId, { limit: 10 });
-
-    if (queue.length === 0) {
-      return { responseText: 'No open tasks in the queue.' };
-    }
-
-    let response = '**Priority Queue**\n\n';
-    queue.forEach((item, i) => {
-      const score = (item.effectiveScore * 100).toFixed(0);
-      const priorityEmoji = {
-        critical: '🔴',
-        high: '🟠',
-        medium: '🟡',
-        low: '⚪'
-      }[item.effectivePriorityLabel] || '⚪';
-      response += `${i + 1}. ${priorityEmoji} [${score}] **${item.title}**\n`;
-    });
-
-    return {
-      responseText: response,
-      metadata: { command: 'priority_queue', count: queue.length }
-    };
-  } catch (error) {
-    console.error('Priority queue error:', error);
-    return { responseText: `Error: ${error.message}` };
-  }
-}
-
-/**
- * Handle "@raven what's blocking [goal]" - show blockers
- */
-async function handleShowBlockers(target, teamId, userId) {
-  try {
-    const context = await WorkContextService.getWorkContext(teamId, userId);
-    const blockers = context.blockers || [];
-
-    if (blockers.length === 0) {
-      return { responseText: '✅ No blocked tasks. Everything is flowing!' };
-    }
-
-    let response = `**🚫 Blocked Tasks (${blockers.length})**\n\n`;
-    blockers.forEach(b => {
-      response += `• **${b.title}**\n`;
-      response += `  Reason: ${b.blockedReason || 'Not specified'}\n`;
-      if (b.blockedBy) response += `  Blocked by: ${b.blockedByName || 'Unknown'}\n`;
-      response += '\n';
-    });
-
-    return {
-      responseText: response,
-      metadata: { command: 'show_blockers', count: blockers.length }
-    };
-  } catch (error) {
-    console.error('Show blockers error:', error);
-    return { responseText: `Error: ${error.message}` };
-  }
-}
-
-/**
- * Handle "@raven health of [goal]" - show goal health
- */
-async function handleGoalHealth(target, teamId) {
-  try {
-    // Try to find the goal by name
-    const goals = await GoalService.getGoals(teamId, 'active');
-    const goal = goals.find(g =>
-      g.title.toLowerCase().includes(target.toLowerCase())
-    );
-
-    if (!goal) {
-      return { responseText: `Goal "${target}" not found. Available goals:\n${goals.map(g => `• ${g.title}`).join('\n')}` };
-    }
-
-    const health = await WorkContextService.computeGoalHealth(goal.id);
-
-    const statusEmoji = {
-      on_track: '🟢',
-      at_risk: '🟡',
-      blocked: '🔴',
-      behind: '🟠'
-    }[health.status] || '⚪';
-
-    let response = `**${goal.title}** ${statusEmoji}\n\n`;
-    response += `**Health Score:** ${health.score}/100\n`;
-    response += `**Progress:** ${health.progress}% (${health.completedCount}/${health.taskCount} tasks)\n`;
-    response += `**Status:** ${health.status.replace('_', ' ')}\n`;
-
-    if (health.blockedCount > 0) {
-      response += `\n⚠️ **${health.blockedCount} blocked** tasks\n`;
-    }
-    if (health.overdueCount > 0) {
-      response += `⚠️ **${health.overdueCount} overdue** tasks\n`;
-    }
-
-    if (health.riskFactors?.length > 0) {
-      response += `\n**Risk Factors:**\n`;
-      health.riskFactors.forEach(r => {
-        response += `• ${r}\n`;
-      });
-    }
-
-    return {
-      responseText: response,
-      metadata: { command: 'goal_health', goalId: goal.id, health }
-    };
-  } catch (error) {
-    console.error('Goal health error:', error);
-    return { responseText: `Error: ${error.message}` };
-  }
-}
-
-/**
- * Handle "@raven priority conflicts" - show priority mismatches
- */
-async function handlePriorityConflicts(teamId) {
-  try {
-    const conflicts = await PriorityService.getPriorityConflictSummary(teamId);
-
-    if (!conflicts.hasConflicts) {
-      return { responseText: '✅ No priority conflicts. Task priorities are aligned with goals.' };
-    }
-
-    let response = `**⚡ Priority Conflicts (${conflicts.conflictCount})**\n\n`;
-    response += `${conflicts.summary}\n\n`;
-
-    conflicts.conflicts.slice(0, 5).forEach(c => {
-      response += `• **${c.taskTitle}** (${c.taskPriority})\n`;
-      response += `  → Goal "${c.goalTitle}" is ${c.goalPriority}\n`;
-      response += `  💡 ${c.suggestion}\n\n`;
-    });
-
-    if (conflicts.conflicts.length > 5) {
-      response += `...and ${conflicts.conflicts.length - 5} more conflicts\n`;
-    }
-
-    return {
-      responseText: response,
-      metadata: { command: 'priority_conflicts', ...conflicts }
-    };
-  } catch (error) {
-    console.error('Priority conflicts error:', error);
-    return { responseText: `Error: ${error.message}` };
-  }
-}
-
-/**
- * Handle "@raven link [fact/decision] to [task/goal]"
- */
-async function handleLinkKnowledge(content, teamId, userId) {
-  // This is a complex operation that requires parsing the content
-  // For now, return a helpful message about how to do it via UI
-  return {
-    responseText: `To link knowledge to work items, use the task or goal detail view in the dashboard.
-
-**Linking via commands coming soon!**
-
-In the meantime, you can:
-1. Open a task → Link Knowledge panel
-2. Open a goal → Related Knowledge section
-3. Or use the GraphQL mutation: \`linkKnowledgeToTask\``,
-    metadata: { command: 'link_knowledge' }
-  };
-}
-
-/**
- * Handle "@raven research for [task/goal]"
- */
-async function handleResearchFor(target, teamId, userId) {
-  // Create a learning objective linked to the specified work item
-  return {
-    responseText: `To start research for a specific task or goal:
-
-1. Use \`@raven research [topic]\` to start general research
-2. Then link it to your work item in the Learning Objectives panel
-
-**Direct linking coming soon!**`,
-    metadata: { command: 'research_for', target }
-  };
-}
-
-// ============================================================================
-// UX PREFERENCES HANDLERS (AI-controlled personalization)
-// ============================================================================
-
-/**
- * Handle "@raven hide [nav item]"
- */
-async function handleUXHide(item, teamId, userId) {
-  try {
-    const result = await UXPreferencesService.hideNavItem(teamId, userId, item);
-    return {
-      responseText: result.success ? result.message : `Sorry, I couldn't hide that: ${result.error}`,
-      metadata: { command: 'ux_hide', item, success: result.success }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't hide that item. Try something like "@raven hide calendar".`,
-      metadata: { command: 'ux_hide', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven show [nav item]"
- */
-async function handleUXShow(item, teamId, userId) {
-  try {
-    const result = await UXPreferencesService.showNavItem(teamId, userId, item);
-    return {
-      responseText: result.success ? result.message : `Sorry, I couldn't show that: ${result.error}`,
-      metadata: { command: 'ux_show', item, success: result.success }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't show that item. Try something like "@raven show calendar".`,
-      metadata: { command: 'ux_show', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven put [item] before [other]" or "@raven put [item] at the top"
- */
-async function handleUXMove(content, teamId, userId) {
-  try {
-    // Parse "tasks before goals" or "tasks at the top"
-    const beforeMatch = content.match(/^(.+?)\s+before\s+(.+)$/i);
-    const topMatch = content.match(/^(.+?)\s+(at the top|first)$/i);
-
-    let item, beforeItem;
-    if (beforeMatch) {
-      item = beforeMatch[1].trim();
-      beforeItem = beforeMatch[2].trim();
-    } else if (topMatch) {
-      item = topMatch[1].trim();
-      beforeItem = null; // null means move to top
-    } else {
-      return {
-        responseText: `I didn't quite understand. Try:
-• "@raven put tasks before goals" - Move Tasks above Goals
-• "@raven put calendar at the top" - Move Calendar to the top`,
-        metadata: { command: 'ux_move' }
-      };
-    }
-
-    const result = await UXPreferencesService.moveNavItem(teamId, userId, item, beforeItem);
-    return {
-      responseText: result.success ? result.message : `Sorry, I couldn't move that: ${result.error}`,
-      metadata: { command: 'ux_move', item, beforeItem, success: result.success }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't move that item. Try "@raven put tasks before goals".`,
-      metadata: { command: 'ux_move', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven compact view" / "@raven spacious view"
- */
-async function handleUXDensity(density, teamId, userId) {
-  try {
-    const result = await UXPreferencesService.setDensity(teamId, userId, density);
-    return {
-      responseText: result.success
-        ? `${result.message} - more ${density === 'compact' ? 'items visible' : density === 'spacious' ? 'breathing room' : 'balanced spacing'}.`
-        : result.error,
-      metadata: { command: 'ux_density', density, success: result.success }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't change the view density.`,
-      metadata: { command: 'ux_density', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven disable animations" / "@raven enable animations"
- */
-async function handleUXAnimations(enabled, teamId, userId) {
-  try {
-    const result = await UXPreferencesService.setAnimations(teamId, userId, enabled);
-    return {
-      responseText: result.message,
-      metadata: { command: 'ux_animations', enabled, success: result.success }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't change the animation setting.`,
-      metadata: { command: 'ux_animations', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven hide badges" / "@raven show badges"
- */
-async function handleUXBadges(enabled, teamId, userId) {
-  try {
-    const result = await UXPreferencesService.setBadges(teamId, userId, enabled);
-    return {
-      responseText: result.message,
-      metadata: { command: 'ux_badges', enabled, success: result.success }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't change the badge setting.`,
-      metadata: { command: 'ux_badges', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven hide ai summaries" / "@raven show ai summaries"
- */
-async function handleUXAISummaries(enabled, teamId, userId) {
-  try {
-    const result = await UXPreferencesService.setAISummaries(teamId, userId, enabled);
-    return {
-      responseText: result.message,
-      metadata: { command: 'ux_ai_summaries', enabled, success: result.success }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't change the AI summaries setting.`,
-      metadata: { command: 'ux_ai_summaries', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven simplify my view"
- */
-async function handleUXSimplify(teamId, userId) {
-  try {
-    const result = await UXPreferencesService.simplifyView(teamId, userId);
-    return {
-      responseText: result.message,
-      metadata: { command: 'ux_simplify', success: result.success }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't simplify your view. Try again later.`,
-      metadata: { command: 'ux_simplify', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven reset my preferences"
- */
-async function handleUXReset(teamId, userId) {
-  try {
-    await UXPreferencesService.resetUserPreferences(teamId, userId);
-    return {
-      responseText: `Done! Your preferences have been reset to team defaults. Your sidebar should look like everyone else's now.`,
-      metadata: { command: 'ux_reset', success: true }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't reset your preferences.`,
-      metadata: { command: 'ux_reset', error: error.message }
-    };
-  }
-}
-
-/**
- * Handle "@raven what have i hidden"
- */
-async function handleUXListHidden(teamId, userId) {
-  try {
-    const hidden = await UXPreferencesService.getHiddenItems(teamId, userId);
-    if (hidden.length === 0) {
-      return {
-        responseText: `You haven't hidden any sidebar items. Everything is visible!`,
-        metadata: { command: 'ux_list_hidden', hidden: [] }
-      };
-    }
-
-    const itemNames = {
-      digest: 'Digest', raven: 'Raven', channels: 'Channels', tasks: 'Tasks',
-      goals: 'Goals', projects: 'Projects', calendar: 'Calendar',
-      insights: 'AI Insights', team: 'Team', knowledge: 'Knowledge'
-    };
-
-    const hiddenNames = hidden.map(item => itemNames[item] || item).join(', ');
-    return {
-      responseText: `You've hidden: **${hiddenNames}**
-
-To show any of these again, say "@raven show [item name]".`,
-      metadata: { command: 'ux_list_hidden', hidden }
-    };
-  } catch (error) {
-    return {
-      responseText: `Sorry, I couldn't check your hidden items.`,
-      metadata: { command: 'ux_list_hidden', error: error.message }
     };
   }
 }

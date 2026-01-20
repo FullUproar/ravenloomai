@@ -41,29 +41,13 @@ export default gql`
     createdAt: DateTime!
   }
 
-  # Team Settings (proactive AI, rate limits, etc.)
+  # Team Settings
   type TeamSettings {
-    proactiveAI: ProactiveAISettings!
-  }
-
-  type ProactiveAISettings {
-    enabled: Boolean!
-    morningFocusEnabled: Boolean!
-    smartNudgesEnabled: Boolean!
-    insightsEnabled: Boolean!
-    meetingPrepEnabled: Boolean!
-  }
-
-  input ProactiveAISettingsInput {
-    enabled: Boolean
-    morningFocusEnabled: Boolean
-    smartNudgesEnabled: Boolean
-    insightsEnabled: Boolean
-    meetingPrepEnabled: Boolean
+    aiEnabled: Boolean!
   }
 
   input UpdateTeamSettingsInput {
-    proactiveAI: ProactiveAISettingsInput
+    aiEnabled: Boolean
   }
 
   # AI Usage Statistics
@@ -295,19 +279,12 @@ export default gql`
     name: String!
     description: String
     aiMode: String!  # mentions_only, active, silent
-    channelType: String!  # public, raven_dm, calendar
+    channelType: String!  # public, raven_dm
     ownerId: String  # For raven_dm - the user who owns this DM
     isDefault: Boolean!
     createdBy: String
     threads(limit: Int): [Thread!]!
     messages(limit: Int, before: ID): [Message!]!
-    # AI Focus - items kept in AI context for this channel
-    focusGoalId: ID
-    focusGoal: Goal
-    focusProjectId: ID
-    focusProject: Project
-    focusTaskId: ID
-    focusTask: Task
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -335,7 +312,7 @@ export default gql`
     content: String!
     isAi: Boolean!
     mentionsAi: Boolean!
-    aiCommand: String  # remember, query, remind, task, etc.
+    aiCommand: String  # remember, query, remind, etc.
     metadata: JSON
     hasAttachments: Boolean
     attachments: [Attachment!]
@@ -424,277 +401,6 @@ export default gql`
   }
 
   # ============================================================================
-  # GOALS, PROJECTS & TASKS
-  # ============================================================================
-
-  type Goal {
-    id: ID!
-    teamId: ID!
-    title: String!
-    description: String
-    targetDate: DateTime
-    startDate: DateTime
-    status: String!  # active, achieved, abandoned, paused
-    progress: Int!   # 0-100 (computed from linked tasks)
-    # Priority (cascades to linked tasks)
-    priority: String!  # low, medium, high, critical
-    priorityScore: Float!  # 0.0-1.0 numeric score
-    # Health computed from task status
-    health: GoalHealth
-    weightedProgress: Float  # Priority-weighted progress
-    owner: User
-    ownerId: String
-    createdBy: String
-    parentGoalId: ID
-    parentGoal: Goal
-    childGoals: [Goal!]!
-    # Many-to-many associations
-    projects: [Project!]!
-    tasks: [GoalTask!]!  # All tasks linked to this goal (direct + inherited)
-    taskCount: Int!
-    completedTaskCount: Int!
-    isFocused: Boolean  # Whether current user has this focused
-    # Knowledge links
-    requiredKnowledge: [KnowledgeLink!]
-    relatedKnowledge: [KnowledgeLink!]
-    supportingKnowledge: [KnowledgeLink!]
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  # Goal health computed from task completion and blockers
-  type GoalHealth {
-    score: Int!              # 0-100 health score
-    status: String!          # on_track, at_risk, blocked, behind
-    progress: Int!           # 0-100 completion
-    taskCount: Int!
-    completedCount: Int!
-    blockedCount: Int!
-    overdueCount: Int!
-    inProgressCount: Int!
-    riskFactors: [String!]!  # Human-readable risk descriptions
-  }
-
-  # Task with goal link type info
-  type GoalTask {
-    id: ID!
-    title: String!
-    status: String!
-    priority: String!
-    projectId: ID
-    linkType: String!  # 'direct' or 'inherited'
-    createdAt: DateTime!
-  }
-
-  # Goal with link type info (for task/project views)
-  type LinkedGoal {
-    id: ID!
-    title: String!
-    status: String!
-    priority: String
-    priorityScore: Float
-    linkType: String!  # 'direct' or 'inherited'
-  }
-
-  # Knowledge linked to tasks/goals
-  type KnowledgeLink {
-    id: ID!
-    knowledgeType: String!   # fact, decision, question
-    knowledgeId: ID!
-    linkType: String!        # required, related, produced, supports
-    content: String          # The actual fact/decision/question text
-    category: String         # For facts
-    status: String           # For questions (open/answered)
-    notes: String
-    createdAt: DateTime
-  }
-
-  # Knowledge item union-like type
-  type KnowledgeItem {
-    id: ID!
-    type: String!            # fact, decision, question
-    content: String!
-    category: String
-    status: String           # For questions
-    answer: String           # For answered questions
-    createdAt: DateTime
-  }
-
-  type Project {
-    id: ID!
-    teamId: ID!
-    name: String!
-    description: String
-    status: String!  # active, completed, archived
-    stage: String             # PM: concept, design, development, testing, launch, maintenance
-    color: String
-    dueDate: DateTime
-    owner: User
-    ownerId: String
-    createdBy: String
-    goalsInherit: Boolean!  # If true, tasks inherit goals from project
-    # Many-to-many: goals linked to this project
-    goals: [Goal!]!
-    tasks: [Task!]!
-    taskCount: Int!
-    completedTaskCount: Int!
-    isFocused: Boolean  # Whether current user has this focused
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type Task {
-    id: ID!
-    teamId: ID!
-    projectId: ID
-    project: Project
-    channelId: ID
-    title: String!
-    description: String
-    summary: String              # Brief summary/objective of the task
-    definitionOfDone: String     # Criteria for completion
-    status: String!  # todo, in_progress, done
-    priority: String!  # low, medium, high, urgent
-    # Effective priority (inherited from goals)
-    effectivePriority: Float           # 0.0-1.0 computed score
-    effectivePriorityLabel: String     # low, medium, high, critical
-    prioritySource: String             # manual, goal, project
-    hasPriorityConflict: Boolean       # True if task priority < goal priority
-    assignedTo: String
-    assignedToUser: User
-    dueAt: DateTime
-    startDate: DateTime
-    completedAt: DateTime
-    estimatedHours: Float
-    actualHours: Float
-    tags: [String!]
-    sortOrder: Int
-    createdBy: String
-    createdByUser: User
-    sourceMessageId: ID
-    # Many-to-many: goals for this task
-    goals: [LinkedGoal!]!       # Effective goals (direct + inherited)
-    directGoals: [Goal!]!       # Only directly linked goals
-    comments: [TaskComment!]!
-    commentCount: Int!
-    activity: [TaskActivity!]!
-    # Knowledge links
-    requiredKnowledge: [KnowledgeLink!]   # Knowledge needed to proceed
-    relatedKnowledge: [KnowledgeLink!]    # Related context
-    producedKnowledge: [KnowledgeLink!]   # Knowledge discovered during task
-    knowledgeGaps: [KnowledgeLink!]       # Required but unanswered
-    linkedLearningObjective: LearningObjective  # Research driving this task
-    # PM Enhancement fields (modular)
-    context: String           # GTD context
-    isUrgent: Boolean         # Eisenhower matrix
-    importance: String        # low, normal, high, critical
-    isQuickTask: Boolean      # 2-minute rule flag
-    # Blocked status (escalation)
-    isBlocked: Boolean
-    blockedReason: String
-    blockedAt: DateTime
-    blockedBy: String
-    blockedByUser: User
-    # Focus status
-    isFocused: Boolean        # Whether current user has this focused
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type TaskComment {
-    id: ID!
-    taskId: ID!
-    userId: String!
-    user: User!
-    content: String!
-    parentCommentId: ID
-    replies: [TaskComment!]
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type TaskActivity {
-    id: ID!
-    taskId: ID!
-    userId: String
-    user: User
-    action: String!  # created, status_changed, assigned, commented, due_date_set
-    oldValue: String
-    newValue: String
-    createdAt: DateTime!
-  }
-
-  # ============================================================================
-  # CALENDAR EVENTS
-  # ============================================================================
-
-  type Event {
-    id: ID!
-    teamId: ID!
-    title: String!
-    description: String
-    location: String
-    startAt: DateTime!
-    endAt: DateTime!
-    isAllDay: Boolean!
-    timezone: String
-    color: String
-    reminderMinutes: Int
-    recurrenceRule: String
-    # Google Calendar sync
-    googleEventId: String
-    googleCalendarId: String
-    syncStatus: String  # local, synced, sync_error
-    lastSyncedAt: DateTime
-    syncError: String
-    # Relationships
-    task: Task
-    taskId: ID
-    project: Project
-    projectId: ID
-    createdBy: String
-    createdByUser: User
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  input CreateEventInput {
-    title: String!
-    description: String
-    location: String
-    startAt: DateTime!
-    endAt: DateTime!
-    isAllDay: Boolean
-    timezone: String
-    color: String
-    reminderMinutes: Int
-    recurrenceRule: String
-    taskId: ID
-    projectId: ID
-  }
-
-  input UpdateEventInput {
-    title: String
-    description: String
-    location: String
-    startAt: DateTime
-    endAt: DateTime
-    isAllDay: Boolean
-    timezone: String
-    color: String
-    reminderMinutes: Int
-    recurrenceRule: String
-    taskId: ID
-    projectId: ID
-  }
-
-  # Calendar items result (events + task due dates)
-  type CalendarItemsResult {
-    events: [Event!]!
-    tasksDue: [Task!]!
-  }
-
-  # ============================================================================
   # INPUT TYPES
   # ============================================================================
 
@@ -765,86 +471,6 @@ export default gql`
     relatedFactId: ID
   }
 
-  input CreateGoalInput {
-    title: String!
-    description: String
-    targetDate: DateTime
-    startDate: DateTime
-    ownerId: String
-    parentGoalId: ID
-  }
-
-  input UpdateGoalInput {
-    title: String
-    description: String
-    targetDate: DateTime
-    startDate: DateTime
-    status: String
-    progress: Int
-    ownerId: String
-    priority: String      # low, medium, high, critical
-  }
-
-  input CreateProjectInput {
-    name: String!
-    description: String
-    goalIds: [ID!]  # Many-to-many: initial goals to link
-    color: String
-    dueDate: DateTime
-    ownerId: String
-    goalsInherit: Boolean  # Default true
-  }
-
-  input UpdateProjectInput {
-    name: String
-    description: String
-    status: String
-    goalIds: [ID!]  # Replace all goal associations
-    color: String
-    dueDate: DateTime
-    ownerId: String
-    goalsInherit: Boolean
-  }
-
-  input CreateTaskInput {
-    projectId: ID
-    channelId: ID
-    title: String!
-    description: String
-    summary: String
-    definitionOfDone: String
-    priority: String
-    assignedTo: String
-    dueAt: DateTime
-    startDate: DateTime
-    estimatedHours: Float
-    tags: [String!]
-    goalIds: [ID!]  # Direct goal links (in addition to inherited)
-  }
-
-  input UpdateTaskInput {
-    title: String
-    description: String
-    summary: String
-    definitionOfDone: String
-    status: String
-    priority: String
-    projectId: ID
-    assignedTo: String
-    dueAt: DateTime
-    startDate: DateTime
-    estimatedHours: Float
-    actualHours: Float
-    tags: [String!]
-    sortOrder: Int
-    goalIds: [ID!]  # Replace direct goal links
-  }
-
-  input CreateTaskCommentInput {
-    content: String!
-    parentCommentId: ID
-  }
-
   # ============================================================================
   # AI RESPONSE TYPES
   # ============================================================================
@@ -853,7 +479,6 @@ export default gql`
     message: Message!
     factsCreated: [Fact!]
     alertsCreated: [Alert!]
-    tasksCreated: [Task!]
   }
 
   # Ask the Company response
@@ -863,234 +488,6 @@ export default gql`
     factsUsed: [Fact!]
     decisionsUsed: [Decision!]
     suggestedFollowups: [String!]
-  }
-
-  # Daily Digest
-  type DailyDigest {
-    teamId: ID!
-    date: String!
-    overdueTasks: [Task!]!
-    dueTodayTasks: [Task!]!
-    upcomingAlerts: [Alert!]!
-    recentDecisions: [Decision!]!
-    newFacts: [Fact!]!
-    activitySummary: String
-  }
-
-  # ============================================================================
-  # AI PRODUCTIVITY FEATURES (Morning Focus, Standups, Insights, Nudges)
-  # ============================================================================
-
-  # Morning Focus - AI-generated daily plan
-  type MorningFocus {
-    id: ID!
-    status: String!
-    aiPlan: MorningFocusPlan
-    aiSummary: String
-    tasks: [Task!]
-    events: [Event!]
-    workload: WorkloadAnalysis
-  }
-
-  type MorningFocusPlan {
-    greeting: String!
-    topPriority: String!
-    scheduledBlocks: [ScheduledBlock!]
-    tasksToComplete: [String!]
-    warnings: [String!]
-    tip: String
-  }
-
-  type ScheduledBlock {
-    time: String!
-    activity: String!
-    duration: String!
-    type: String!  # focus, meeting, break
-  }
-
-  # Daily Standup
-  type DailyStandup {
-    id: ID!
-    status: String!
-    responses: JSON
-    aiSummary: String
-    questions: [StandupQuestion!]!
-  }
-
-  type StandupQuestion {
-    id: String!
-    question: String!
-    placeholder: String
-  }
-
-  type TeamStandup {
-    id: ID!
-    userId: String!
-    userName: String
-    avatarUrl: String
-    responses: JSON
-    aiSummary: String
-    completedAt: DateTime
-  }
-
-  # Weekly Review
-  type WeeklyReview {
-    id: ID!
-    status: String!
-    weekStart: DateTime
-    weekEnd: DateTime
-    review: WeeklyReviewContent
-    stats: WeeklyStats
-  }
-
-  type WeeklyReviewContent {
-    headline: String
-    highlights: [String!]
-    metrics: JSON
-    areasOfFocus: [String!]
-    celebration: String
-  }
-
-  type WeeklyStats {
-    tasksCompleted: Int!
-    tasksCreated: Int!
-    standupsCompleted: Int!
-    messagesSent: Int!
-    meetings: Int!
-  }
-
-  # Workload Analysis
-  type WorkloadAnalysis {
-    weekStart: DateTime
-    weekEnd: DateTime
-    tasksDue: Int!
-    estimatedTaskHours: Float!
-    meetingHours: Float!
-    availableHours: Float!
-    workloadRatio: Float!
-    workloadLevel: String!  # light, balanced, heavy, overloaded
-    recommendation: String
-  }
-
-  # Proactive Nudges
-  type ProactiveNudge {
-    id: ID!
-    nudgeType: String!  # overdue_task, stale_task, upcoming_deadline, meeting_prep
-    title: String!
-    message: String!
-    priority: String!  # low, medium, high, urgent
-    relatedTaskId: ID
-    relatedEventId: ID
-    suggestedActions: [NudgeAction!]
-    createdAt: DateTime!
-  }
-
-  type NudgeAction {
-    action: String!
-    label: String!
-  }
-
-  # Task Health
-  type TaskHealth {
-    taskId: ID!
-    taskTitle: String
-    healthScore: Float!  # 0.0 to 1.0
-    riskLevel: String!  # low, medium, high, critical
-    riskFactors: [String!]
-    interventions: [TaskIntervention!]
-  }
-
-  type TaskIntervention {
-    intervention: String!
-    impact: String!  # low, medium, high
-  }
-
-  # AI Insights
-  type TeamInsights {
-    insights: [Insight!]
-    recommendations: [Recommendation!]
-    summary: String
-    metrics: InsightMetrics
-    cached: Boolean
-    generatedAt: DateTime
-  }
-
-  type Insight {
-    title: String!
-    description: String!
-    sentiment: String!  # positive, neutral, warning
-  }
-
-  type Recommendation {
-    title: String!
-    action: String!
-  }
-
-  type InsightMetrics {
-    tasksCompleted: Int
-    overdueTasks: Int
-    atRiskTasks: Int
-    messagesThisWeek: Int
-  }
-
-  # Meeting Prep
-  type MeetingPrep {
-    id: ID!
-    eventId: ID!
-    eventTitle: String
-    eventDescription: String
-    eventStart: DateTime
-    relatedFacts: [Fact!]
-    relatedDecisions: [Decision!]
-    relatedTasks: [Task!]
-    suggestedAgenda: [AgendaItem!]
-    contextSummary: String
-    cached: Boolean
-  }
-
-  type AgendaItem {
-    item: String!
-    notes: String
-  }
-
-  # Focus Time Preferences
-  type FocusPreferences {
-    id: ID!
-    preferredFocusHours: JSON
-    minFocusBlockMinutes: Int
-    maxMeetingsPerDay: Int
-    workStartHour: Int
-    workEndHour: Int
-    workDays: [Int!]
-    morningFocusEnabled: Boolean
-    morningFocusTime: String
-    dailyStandupEnabled: Boolean
-    dailyStandupTime: String
-    weeklyReviewEnabled: Boolean
-    weeklyReviewDay: Int
-    weeklyReviewTime: String
-    nudgeOverdueTasks: Boolean
-    nudgeStaleTasks: Boolean
-    nudgeUpcomingDeadlines: Boolean
-  }
-
-  input UpdateFocusPreferencesInput {
-    preferredFocusHours: JSON
-    minFocusBlockMinutes: Int
-    maxMeetingsPerDay: Int
-    workStartHour: Int
-    workEndHour: Int
-    workDays: [Int!]
-    morningFocusEnabled: Boolean
-    morningFocusTime: String
-    dailyStandupEnabled: Boolean
-    dailyStandupTime: String
-    weeklyReviewEnabled: Boolean
-    weeklyReviewDay: Int
-    weeklyReviewTime: String
-    nudgeOverdueTasks: Boolean
-    nudgeStaleTasks: Boolean
-    nudgeUpcomingDeadlines: Boolean
   }
 
   # ============================================================================
@@ -1122,9 +519,6 @@ export default gql`
     learningObjectiveId: ID
     learningObjective: LearningObjective
     attachments: [Attachment!]
-    # Task created from this question
-    producedTaskId: ID
-    producedTask: Task
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -1175,11 +569,6 @@ export default gql`
     questionCount: Int!
     answeredCount: Int!
     questions: [TeamQuestion!]!
-    # Work links - what task/goal is this research supporting?
-    linkedTaskId: ID
-    linkedTask: Task
-    linkedGoalId: ID
-    linkedGoal: Goal
     createdAt: DateTime!
     updatedAt: DateTime!
     completedAt: DateTime
@@ -1200,655 +589,43 @@ export default gql`
   }
 
   # ============================================================================
-# ============================================================================  # PROJECT MANAGEMENT ENHANCEMENTS (Modular - can be removed)  # ============================================================================
+  # DATA IMPORT TYPES
+  # ============================================================================
+
+  type ImportSourceChannel {
+    id: String!
+    name: String!
+    messageCount: Int!
+    threadCount: Int!
+    memberCount: Int!
+  }
+
+  type ImportExportPreview {
+    source: String!
+    channels: [ImportSourceChannel!]!
+    userCount: Int!
+    totalMessages: Int!
+  }
+
+  input ChannelMappingInput {
+    sourceChannelId: String!
+    action: String!
+    targetChannelId: ID
+    newChannelName: String
+  }
+
+  type ImportResult {
+    success: Boolean!
+    channelsCreated: Int!
+    channelsMerged: Int!
+    messagesImported: Int!
+    threadsImported: Int!
+    errors: [String!]
+  }
+
+  # ============================================================================
   # QUERIES
   # ============================================================================
-# ============================================================================
-  # PROJECT MANAGEMENT ENHANCEMENTS (Modular - can be removed)
-  # ============================================================================
-
-  # User Availability & Work Schedule
-  type UserAvailability {
-    id: ID!
-    userId: String!
-    teamId: ID!
-    timezone: String!
-    workDayStart: String!
-    workDayEnd: String!
-    workDays: [Int!]!
-    weeklyCapacityHours: Float!
-    proModeEnabled: Boolean!
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  input UserAvailabilityInput {
-    timezone: String
-    workDayStart: String
-    workDayEnd: String
-    workDays: [Int!]
-    weeklyCapacityHours: Float
-    proModeEnabled: Boolean
-  }
-
-  # Time Off / Vacation
-  type TimeOff {
-    id: ID!
-    userId: String!
-    user: User
-    teamId: ID!
-    startDate: String!
-    endDate: String!
-    type: String!
-    description: String
-    isHalfDay: Boolean!
-    halfDayPeriod: String
-    status: String!
-    approvedBy: String
-    approvedByUser: User
-    createdAt: DateTime!
-  }
-
-  input CreateTimeOffInput {
-    startDate: String!
-    endDate: String!
-    type: String
-    description: String
-    isHalfDay: Boolean
-    halfDayPeriod: String
-  }
-
-  # GTD Contexts
-  type TaskContext {
-    id: ID!
-    teamId: ID!
-    name: String!
-    icon: String
-    color: String
-    sortOrder: Int!
-    isActive: Boolean!
-  }
-
-  input CreateTaskContextInput {
-    name: String!
-    icon: String
-    color: String
-  }
-
-  # Milestones
-  type Milestone {
-    id: ID!
-    teamId: ID!
-    projectId: ID
-    project: Project
-    name: String!
-    description: String
-    targetDate: String
-    completedAt: DateTime
-    status: String!
-    sortOrder: Int!
-    goalId: ID
-    goal: Goal
-    createdBy: String
-    createdByUser: User
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  input CreateMilestoneInput {
-    projectId: ID
-    name: String!
-    description: String
-    targetDate: String
-    goalId: ID
-  }
-
-  input UpdateMilestoneInput {
-    name: String
-    description: String
-    targetDate: String
-    status: String
-    goalId: ID
-  }
-
-  # Project Templates
-  type ProjectTemplate {
-    id: ID!
-    teamId: ID!
-    name: String!
-    description: String
-    templateData: JSON!
-    industryType: String
-    isActive: Boolean!
-    createdBy: String
-    createdByUser: User
-    createdAt: DateTime!
-  }
-
-  input CreateProjectTemplateInput {
-    name: String!
-    description: String
-    templateData: JSON
-    industryType: String
-  }
-
-  # Time Blocks
-  type TimeBlock {
-    id: ID!
-    userId: String!
-    user: User
-    teamId: ID!
-    taskId: ID
-    task: Task
-    title: String
-    startTime: DateTime!
-    endTime: DateTime!
-    status: String!
-    calendarEventId: ID
-    googleEventId: String
-    actualStart: DateTime
-    actualEnd: DateTime
-    focusScore: Int
-    notes: String
-    createdAt: DateTime!
-  }
-
-  input CreateTimeBlockInput {
-    taskId: ID
-    title: String
-    startTime: DateTime!
-    endTime: DateTime!
-  }
-
-  input UpdateTimeBlockInput {
-    title: String
-    startTime: DateTime
-    endTime: DateTime
-    status: String
-    focusScore: Int
-    notes: String
-  }
-
-  # Team Workload
-  type UserWorkload {
-    userId: String!
-    user: User
-    displayName: String
-    teamId: ID
-    openTasks: Int!
-    overdueTasks: Int!
-    dueThisWeek: Int!
-    totalEstimatedHours: Float!
-    weeklyCapacity: Float!
-    utilizationPercent: Float!
-    isOverallocated: Boolean!
-  }
-
-  type TeamWorkloadSummary {
-    teamId: ID!
-    totalOpenTasks: Int!
-    totalOverdueTasks: Int!
-    averageUtilization: Float!
-    overallocatedMembers: [UserWorkload!]!
-    underallocatedMembers: [UserWorkload!]!
-    members: [UserWorkload!]!
-  }
-
-  # Meeting Preferences
-  type MeetingPreferences {
-    id: ID!
-    userId: String!
-    preferredMeetingStart: String!
-    preferredMeetingEnd: String!
-    bufferBefore: Int!
-    bufferAfter: Int!
-    maxMeetingsPerDay: Int!
-    noMeetingDays: [Int!]!
-    protectedFocusStart: String
-    protectedFocusEnd: String
-  }
-
-  input MeetingPreferencesInput {
-    preferredMeetingStart: String
-    preferredMeetingEnd: String
-    bufferBefore: Int
-    bufferAfter: Int
-    maxMeetingsPerDay: Int
-    noMeetingDays: [Int!]
-    protectedFocusStart: String
-    protectedFocusEnd: String
-  }
-
-  # Smart Scheduling
-  type SchedulingSuggestion {
-    startTime: DateTime!
-    endTime: DateTime!
-    score: Float!
-    conflicts: [String!]
-    attendeesAvailable: [String!]!
-  }
-
-  type SchedulingResult {
-    suggestions: [SchedulingSuggestion!]!
-    unavailableUsers: [String!]!
-    message: String
-  }
-
-  input ScheduleMeetingInput {
-    attendeeIds: [String!]!
-    durationMinutes: Int!
-    preferredDateStart: DateTime
-    preferredDateEnd: DateTime
-    title: String
-  }
-
-  # User Feature Flags (Pro Mode)
-  type UserFeatureFlags {
-    id: ID!
-    userId: String!
-    proModeEnabled: Boolean!
-    showGanttChart: Boolean!
-    showTimeTracking: Boolean!
-    showDependenciesGraph: Boolean!
-    showResourceAllocation: Boolean!
-    showCriticalPath: Boolean!
-    showEisenhowerMatrix: Boolean!
-    showWorkloadHistogram: Boolean!
-    showMilestones: Boolean!
-    showTimeBlocking: Boolean!
-    showContexts: Boolean!
-    showWBS: Boolean!
-    preferredProductivityMethod: String!
-    workflowPersona: String!
-  }
-
-  input UserFeatureFlagsInput {
-    proModeEnabled: Boolean
-    showGanttChart: Boolean
-    showTimeTracking: Boolean
-    showDependenciesGraph: Boolean
-    showResourceAllocation: Boolean
-    showCriticalPath: Boolean
-    showEisenhowerMatrix: Boolean
-    showWorkloadHistogram: Boolean
-    showMilestones: Boolean
-    showTimeBlocking: Boolean
-    showContexts: Boolean
-    showWBS: Boolean
-    preferredProductivityMethod: String
-    workflowPersona: String
-  }
-
-  # Eisenhower Matrix
-  type EisenhowerMatrix {
-    doNow: [Task!]!
-    schedule: [Task!]!
-    delegate: [Task!]!
-    eliminate: [Task!]!
-  }
-
-  # Gantt Chart Data
-  type GanttTask {
-    id: ID!
-    title: String!
-    startDate: DateTime
-    endDate: DateTime
-    progress: Float!
-    dependencies: [GanttDependency!]!
-    assignee: User
-    isCriticalPath: Boolean!
-    isMilestone: Boolean!
-    color: String
-  }
-
-  type GanttDependency {
-    fromTaskId: ID!
-    toTaskId: ID!
-    type: String!
-  }
-
-  type GanttData {
-    tasks: [GanttTask!]!
-    milestones: [Milestone!]!
-    criticalPath: [ID!]!
-    projectStart: DateTime
-    projectEnd: DateTime
-  }
-
-  # Workload Histogram
-  type WorkloadHistogramEntry {
-    date: String!
-    userId: String!
-    userName: String!
-    scheduledHours: Float!
-    capacityHours: Float!
-    utilizationPercent: Float!
-  }
-
-  type WorkloadHistogram {
-    entries: [WorkloadHistogramEntry!]!
-    startDate: String!
-    endDate: String!
-    teamId: ID!
-  }
-
-  # Work Breakdown Structure (WBS)
-  type WBSNode {
-    id: ID!
-    title: String
-    name: String
-    description: String
-    type: String!
-    status: String
-    estimatedHours: Float!
-    actualHours: Float!
-    rollupEstimatedHours: Float!
-    rollupActualHours: Float!
-    completionPercent: Int!
-    assignedTo: String
-    parentId: ID
-    children: [WBSNode!]!
-  }
-
-  input WBSTaskInput {
-    title: String!
-    description: String
-    estimatedHours: Float
-    parentTaskId: ID
-  }
-
-  # Generic WBS Draft (Ephemeral Tree)
-  type WBSDraft {
-    id: ID!
-    teamId: ID!
-    createdBy: String!
-    createdByUser: User
-    name: String!
-    description: String
-    treeData: JSON!
-    materializedProjectId: ID
-    materializedProject: Project
-    materializedAt: DateTime
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type WBSDraftNode {
-    id: String!
-    label: String!
-    estimatedHours: Float
-    children: [WBSDraftNode!]!
-  }
-
-  input WBSDraftInput {
-    name: String!
-    description: String
-    treeData: JSON!
-  }
-
-  input WBSDraftNodeInput {
-    id: String!
-    label: String!
-    estimatedHours: Float
-    children: [WBSDraftNodeInput!]
-  }
-
-  # AI Materialization result
-  type WBSMaterializationResult {
-    project: Project!
-    tasksCreated: Int!
-    totalEstimatedHours: Float!
-    aiSummary: String
-  }
-
-  # ============================================================================
-  # USER DIGEST (Priority-ordered notifications)
-  # ============================================================================
-
-  type DigestItem {
-    priority: Float!
-    type: String!  # team_spotlight, blocked_task, unread_channel, focus_item, event_today, task_today, updated_goal, updated_project, updated_task, event_tomorrow, task_week
-    sortKey: DateTime
-    # Polymorphic data - only one will be populated based on type
-    channel: Channel
-    event: Event
-    task: Task
-    goal: Goal
-    project: Project
-    spotlight: TeamSpotlight     # For team_spotlight type
-    focusItem: FocusItem         # For focus_item type
-    unreadCount: Int             # For unread_channel type
-    latestMessage: DigestMessage # For unread_channel type
-  }
-
-  type DigestMessage {
-    content: String
-    userId: String
-  }
-
-  type UserDigest {
-    items: [DigestItem!]!
-    top3: [DigestItem!]!
-    totalCount: Int!
-    hasMore: Boolean!
-    briefing: DigestBriefing
-  }
-
-  type DigestBriefing {
-    briefing: String!
-    cached: Boolean!
-    generatedAt: DateTime
-  }
-
-  # ============================================================================
-  # FOCUS, BLOCKED & SPOTLIGHT
-  # ============================================================================
-
-  type FocusItem {
-    id: ID!
-    userId: String!
-    teamId: ID!
-    itemType: String!      # task, goal, project
-    itemId: ID!
-    itemTitle: String
-    itemStatus: String
-    focusOrder: Int!
-    focusedAt: DateTime
-  }
-
-  type BlockedTask {
-    id: ID!
-    teamId: ID!
-    projectId: ID
-    title: String!
-    description: String
-    status: String!
-    priority: String!
-    assignedTo: String
-    assignedToName: String
-    projectName: String
-    dueAt: DateTime
-    isBlocked: Boolean!
-    blockedReason: String
-    blockedAt: DateTime
-    blockedBy: String
-    blockedByName: String
-    blockedDuration: String  # e.g., "2d", "5h"
-  }
-
-  type TeamSpotlight {
-    id: ID!
-    teamId: ID!
-    itemType: String!      # task, goal, project, custom
-    itemId: ID
-    itemTitle: String
-    itemStatus: String
-    customTitle: String
-    customDescription: String
-    setBy: String!
-    setByName: String
-    createdAt: DateTime!
-    expiresAt: DateTime
-    sortOrder: Int
-    isActive: Boolean!
-  }
-
-  input AddSpotlightInput {
-    itemType: String!      # task, goal, project, custom
-    itemId: ID
-    customTitle: String
-    customDescription: String
-    expiresAt: DateTime
-  }
-
-  input UpdateSpotlightInput {
-    customTitle: String
-    customDescription: String
-    expiresAt: DateTime
-    sortOrder: Int
-  }
-
-  type FocusResult {
-    success: Boolean!
-    message: String
-  }
-
-  # ============================================================================
-  # WORK DASHBOARD (Unified goal→project→task hierarchy view)
-  # ============================================================================
-
-  type WorkDashboard {
-    # Hierarchy view
-    goals: [GoalWithProjects!]!
-    # Cross-cutting views
-    blockedItems: [BlockedTask!]!
-    priorityQueue: [PriorityQueueItem!]!  # Tasks sorted by effective priority
-    knowledgeGaps: [KnowledgeGap!]!       # Required knowledge not yet answered
-    # AI insights
-    aiSummary: String                      # Raven's analysis of current state
-    suggestedActions: [SuggestedAction!]
-  }
-
-  type GoalWithProjects {
-    goal: Goal!
-    projects: [ProjectWithTasks!]!
-    orphanTasks: [Task!]!              # Direct goal tasks not in projects
-    relatedKnowledge: [KnowledgeLink!]
-  }
-
-  type ProjectWithTasks {
-    project: Project!
-    tasks: [Task!]!
-    blockedCount: Int!
-    progress: Int!
-  }
-
-  type KnowledgeGap {
-    taskId: ID
-    task: Task
-    goalId: ID
-    goal: Goal
-    requiredKnowledge: String!         # What's needed
-    knowledgeType: String!             # fact, decision, question
-    suggestedQuestion: String          # Question to ask
-  }
-
-  type SuggestedAction {
-    type: String!                      # unblock, prioritize, research, complete, link
-    title: String!
-    description: String!
-    entityType: String!                # task, goal, project, question
-    entityId: ID!
-    priority: String!                  # low, medium, high
-  }
-
-  # Priority queue item
-  type PriorityQueueItem {
-    rank: Int!
-    taskId: ID!
-    task: Task
-    title: String!
-    priority: String!                  # Task's own priority
-    effectivePriority: Float!          # Computed from goals
-    effectivePriorityLabel: String!    # low, medium, high, critical
-    status: String!
-    dueAt: DateTime
-    projectName: String
-    goalNames: String
-    isBlocked: Boolean!
-    hasPriorityConflict: Boolean!
-  }
-
-  # Priority conflict detection
-  type PriorityConflict {
-    taskId: ID!
-    taskTitle: String!
-    taskPriority: String!
-    goalId: ID
-    goalTitle: String
-    goalPriority: String
-    suggestion: String!
-  }
-
-  type PriorityConflictSummary {
-    hasConflicts: Boolean!
-    conflictCount: Int!
-    criticalConflictCount: Int!
-    summary: String!
-    conflicts: [PriorityConflict!]!
-  }
-
-  # Work context for AI
-  type WorkContext {
-    goals: [Goal!]!
-    blockers: [BlockedTask!]!
-    knowledge: WorkKnowledge!
-    priorities: [PriorityQueueItem!]!
-    summary: String!
-  }
-
-  type WorkKnowledge {
-    facts: [Fact!]!
-    decisions: [Decision!]!
-    openQuestions: [TeamQuestion!]!
-  }
-
-  # ============================================================================
-  # UX PREFERENCES (AI-controlled personalization)
-  # ============================================================================
-
-  type UXPreferences {
-    navOrder: [String!]!
-    navHidden: [String!]!
-    navCollapsed: [String!]!
-    cardDensity: String!
-    defaultView: String!
-    sidebarWidth: String!
-    animationsEnabled: Boolean!
-    showBadges: Boolean!
-    showAISummaries: Boolean!
-  }
-
-  # ============================================================================
-  # KNOWLEDGE LINK INPUTS
-  # ============================================================================
-
-  input LinkKnowledgeInput {
-    knowledgeType: String!    # fact, decision, question
-    knowledgeId: ID!
-    linkType: String          # required, related, produced (default: related)
-    notes: String
-  }
-
-  input ConvertQuestionToTaskInput {
-    title: String!
-    description: String
-    projectId: ID
-    priority: String
-    assignedTo: String
-    dueAt: DateTime
-    goalIds: [ID!]
-  }
 
   type Query {
     # User
@@ -1863,7 +640,6 @@ export default gql`
     getChannel(channelId: ID!): Channel
     getChannels(teamId: ID!): [Channel!]!
     getMyRavenChannel(teamId: ID!): Channel!  # Gets or creates user's private Raven DM
-    getMyCalendarChat(teamId: ID!): Channel!  # Gets or creates user's private Calendar Chat
 
     # Threads
     getThread(threadId: ID!): Thread
@@ -1885,36 +661,9 @@ export default gql`
     getAlerts(teamId: ID!, status: String): [Alert!]!
     getPendingAlerts(teamId: ID!): [Alert!]!
 
-    # Goals
-    getGoals(teamId: ID!, status: String): [Goal!]!
-    getGoal(goalId: ID!): Goal
-    getTasksForGoal(teamId: ID!, goalId: ID!): [GoalTask!]!  # All tasks linked to a goal
-
-    # Projects & Tasks
-    getProjects(teamId: ID!, goalId: ID, status: String): [Project!]!
-    getProject(projectId: ID!): Project
-    getTasks(teamId: ID!, projectId: ID, goalId: ID, status: String, assignedTo: String): [Task!]!
-    getTask(taskId: ID!): Task
-    getTaskComments(taskId: ID!): [TaskComment!]!
-    getTaskActivity(taskId: ID!): [TaskActivity!]!
-
-    # ============================================================================
-    # WORK DASHBOARD & PRIORITY (AI-first productivity)
-    # ============================================================================
-    getWorkDashboard(teamId: ID!, goalId: ID): WorkDashboard!
-    getWorkContext(teamId: ID!): WorkContext!
-    getPriorityQueue(teamId: ID!, limit: Int, excludeBlocked: Boolean): [PriorityQueueItem!]!
-    getPriorityConflicts(teamId: ID!): PriorityConflictSummary!
-    getGoalHealth(goalId: ID!): GoalHealth!
-    getTaskKnowledge(taskId: ID!): [KnowledgeLink!]!
-    getGoalKnowledge(goalId: ID!): [KnowledgeLink!]!
-
     # Team Invites
     getTeamInvites(teamId: ID!): [TeamInvite!]!
     validateInviteToken(token: String!): TeamInvite
-
-    # Daily Digest
-    getDailyDigest(teamId: ID!): DailyDigest!
 
     # Team Questions
     getTeamQuestions(teamId: ID!, status: String, assignedTo: ID): [TeamQuestion!]!
@@ -1957,122 +706,9 @@ export default gql`
     getTrendingGifs(limit: Int): [Gif!]!
     getGifCategories: [GifCategory!]!
 
-    # Calendar Events
-    getEvents(teamId: ID!, startDate: DateTime, endDate: DateTime, taskId: ID, projectId: ID): [Event!]!
-    getEvent(eventId: ID!): Event
-    getCalendarMonth(teamId: ID!, year: Int!, month: Int!): [Event!]!
-    getCalendarItems(teamId: ID!, startDate: DateTime!, endDate: DateTime!): CalendarItemsResult!
-    exportCalendarICS(teamId: ID!, startDate: DateTime, endDate: DateTime): String!
-
-    # ============================================================================
-    # USER DIGEST (Priority-ordered landing page)
-    # ============================================================================
-    getUserDigest(teamId: ID!): UserDigest!
-
-    # ============================================================================
-    # FOCUS, BLOCKED & SPOTLIGHT
-    # ============================================================================
-    getUserFocusItems(teamId: ID!): [FocusItem!]!
-    getBlockedTasks(teamId: ID!): [BlockedTask!]!
-    getUserBlockedTasks(teamId: ID!): [BlockedTask!]!
-    getTeamSpotlights(teamId: ID!): [TeamSpotlight!]!
-    isItemFocused(teamId: ID!, itemType: String!, itemId: ID!): Boolean!
-
-    # ============================================================================
-    # AI PRODUCTIVITY FEATURES
-    # ============================================================================
-
-    # Morning Focus (AI daily plan)
-    getMorningFocus(teamId: ID!): MorningFocus
-
-    # Daily Standup
-    getMyStandup(teamId: ID!): DailyStandup
-    getTeamStandups(teamId: ID!): [TeamStandup!]!
-
-    # Weekly Review
-    getWeeklyReview(teamId: ID!): WeeklyReview
-
-    # Workload Analysis
-    getMyWorkload(teamId: ID!): WorkloadAnalysis
-
-    # Proactive Nudges
-    getMyNudges(teamId: ID!): [ProactiveNudge!]!
-
-    # Task Health
-    getTaskHealth(taskId: ID!): TaskHealth
-    getAtRiskTasks(teamId: ID!, threshold: Float): [TaskHealth!]!
-
-    # AI Insights
-    getTeamInsights(teamId: ID!): TeamInsights
-
-    # Meeting Prep
-    getMeetingPrep(eventId: ID!): MeetingPrep
-    getUpcomingMeetingsNeedingPrep(teamId: ID!, hoursAhead: Int): [Event!]!
-
-    # Focus Preferences
-    getMyFocusPreferences(teamId: ID!): FocusPreferences
-
     # Team Settings (admin only)
     getTeamSettings(teamId: ID!): TeamSettings!
     getAIUsageStats(teamId: ID!, period: String): AIUsageStats
-
-    # ============================================================================
-    # PROJECT MANAGEMENT QUERIES (Modular - can be removed)
-    # ============================================================================
-
-    # User Availability
-    getMyAvailability(teamId: ID!): UserAvailability
-    getTeamAvailability(teamId: ID!): [UserAvailability!]!
-
-    # Time Off
-    getMyTimeOff(teamId: ID!): [TimeOff!]!
-    getTeamTimeOff(teamId: ID!, startDate: String, endDate: String): [TimeOff!]!
-
-    # GTD Contexts
-    getTaskContexts(teamId: ID!): [TaskContext!]!
-
-    # Milestones
-    getMilestones(teamId: ID!, projectId: ID): [Milestone!]!
-    getMilestone(milestoneId: ID!): Milestone
-
-    # Project Templates
-    getProjectTemplates(teamId: ID!): [ProjectTemplate!]!
-    getProjectTemplate(templateId: ID!): ProjectTemplate
-
-    # Time Blocks
-    getMyTimeBlocks(teamId: ID!, startDate: DateTime, endDate: DateTime): [TimeBlock!]!
-
-    # Team Workload & Resource Allocation
-    getTeamWorkload(teamId: ID!): TeamWorkloadSummary!
-    getUserWorkload(teamId: ID!, userId: String!): UserWorkload
-
-    # Meeting Preferences
-    getMyMeetingPreferences: MeetingPreferences
-
-    # Smart Scheduling
-    findMeetingTimes(teamId: ID!, input: ScheduleMeetingInput!): SchedulingResult!
-
-    # Feature Flags (Pro Mode)
-    getMyFeatureFlags: UserFeatureFlags
-
-    # UX Preferences (AI-controlled personalization)
-    getMyUXPreferences(teamId: ID!): UXPreferences!
-
-    # Eisenhower Matrix
-    getEisenhowerMatrix(teamId: ID!): EisenhowerMatrix!
-
-    # Gantt Chart
-    getGanttData(teamId: ID!, projectId: ID): GanttData!
-
-    # Workload Histogram
-    getWorkloadHistogram(teamId: ID!, startDate: String!, endDate: String!): WorkloadHistogram!
-
-    # Work Breakdown Structure
-    getWBSData(projectId: ID!): WBSNode!
-
-    # WBS Drafts (Generic Ephemeral Trees)
-    getWBSDrafts(teamId: ID!): [WBSDraft!]!
-    getWBSDraft(draftId: ID!): WBSDraft
   }
 
   # ============================================================================
@@ -2100,10 +736,6 @@ export default gql`
     updateChannel(channelId: ID!, input: UpdateChannelInput!): Channel!
     deleteChannel(channelId: ID!): Boolean!
 
-    # AI Focus - Set context for AI in a channel
-    setChannelAIFocus(channelId: ID!, goalId: ID, projectId: ID, taskId: ID): Channel!
-    clearChannelAIFocus(channelId: ID!): Channel!
-
     # Threads
     createThread(channelId: ID!, input: CreateThreadInput!): Thread!
     resolveThread(threadId: ID!): Thread!
@@ -2111,21 +743,6 @@ export default gql`
     # Messages & AI
     sendMessage(channelId: ID!, input: SendMessageInput!): AIResponse!
     sendThreadMessage(threadId: ID!, input: SendMessageInput!): AIResponse!
-
-    # User Digest Tracking
-    markDigestViewed(teamId: ID!): Boolean!
-    markChannelSeen(channelId: ID!): Boolean!
-    markDigestItemViewed(itemType: String!, itemId: ID!): Boolean!
-    regenerateDigestBriefing(teamId: ID!): DigestBriefing!
-
-    # Focus, Blocked & Spotlight
-    addFocusItem(teamId: ID!, itemType: String!, itemId: ID!): FocusResult!
-    removeFocusItem(teamId: ID!, itemType: String!, itemId: ID!): FocusResult!
-    markTaskBlocked(taskId: ID!, reason: String): Task!
-    unblockTask(taskId: ID!): Task!
-    addSpotlight(teamId: ID!, input: AddSpotlightInput!): TeamSpotlight!
-    removeSpotlight(spotlightId: ID!): FocusResult!
-    updateSpotlight(spotlightId: ID!, input: UpdateSpotlightInput!): TeamSpotlight!
 
     # Knowledge - Manual
     createFact(teamId: ID!, input: CreateFactInput!): Fact!
@@ -2137,60 +754,6 @@ export default gql`
     createAlert(teamId: ID!, input: CreateAlertInput!): Alert!
     snoozeAlert(alertId: ID!, until: DateTime!): Alert!
     cancelAlert(alertId: ID!): Alert!
-
-    # Goals
-    createGoal(teamId: ID!, input: CreateGoalInput!): Goal!
-    updateGoal(goalId: ID!, input: UpdateGoalInput!): Goal!
-    deleteGoal(goalId: ID!): Boolean!
-
-    # Projects
-    createProject(teamId: ID!, input: CreateProjectInput!): Project!
-    updateProject(projectId: ID!, input: UpdateProjectInput!): Project!
-    deleteProject(projectId: ID!): Boolean!
-
-    # Tasks
-    createTask(teamId: ID!, input: CreateTaskInput!): Task!
-    updateTask(taskId: ID!, input: UpdateTaskInput!): Task!
-    completeTask(taskId: ID!): Task!
-    reopenTask(taskId: ID!): Task!
-    deleteTask(taskId: ID!): Boolean!
-    reorderTasks(projectId: ID!, taskIds: [ID!]!): [Task!]!
-
-    # Task Comments
-    addTaskComment(taskId: ID!, input: CreateTaskCommentInput!): TaskComment!
-    updateTaskComment(commentId: ID!, content: String!): TaskComment!
-    deleteTaskComment(commentId: ID!): Boolean!
-
-    # Goal Associations (many-to-many)
-    linkGoalToProject(goalId: ID!, projectId: ID!): Boolean!
-    unlinkGoalFromProject(goalId: ID!, projectId: ID!): Boolean!
-    setProjectGoals(projectId: ID!, goalIds: [ID!]!): [Goal!]!
-    linkGoalToTask(goalId: ID!, taskId: ID!): Boolean!
-    unlinkGoalFromTask(goalId: ID!, taskId: ID!): Boolean!
-    setTaskGoals(taskId: ID!, goalIds: [ID!]!): [Goal!]!
-
-    # ============================================================================
-    # PRIORITY & KNOWLEDGE LINKS (AI-first productivity)
-    # ============================================================================
-
-    # Priority management
-    setGoalPriority(goalId: ID!, priority: String!): Goal!
-    setTaskPriority(taskId: ID!, priority: String!): Task!
-    recomputeTeamPriorities(teamId: ID!): Boolean!
-
-    # Knowledge-work linking
-    linkKnowledgeToTask(taskId: ID!, input: LinkKnowledgeInput!): KnowledgeLink!
-    unlinkKnowledgeFromTask(taskId: ID!, knowledgeType: String!, knowledgeId: ID!): Boolean!
-    linkKnowledgeToGoal(goalId: ID!, input: LinkKnowledgeInput!): KnowledgeLink!
-    unlinkKnowledgeFromGoal(goalId: ID!, knowledgeType: String!, knowledgeId: ID!): Boolean!
-
-    # Convert question to task
-    convertQuestionToTask(questionId: ID!, input: ConvertQuestionToTaskInput!): Task!
-
-    # Link learning objective to work
-    linkLearningObjectiveToTask(objectiveId: ID!, taskId: ID!): LearningObjective!
-    linkLearningObjectiveToGoal(objectiveId: ID!, goalId: ID!): LearningObjective!
-    unlinkLearningObjectiveFromWork(objectiveId: ID!): LearningObjective!
 
     # Team Questions
     createTeamQuestion(teamId: ID!, input: CreateTeamQuestionInput!): TeamQuestion!
@@ -2234,115 +797,14 @@ export default gql`
     attachToQuestion(attachmentId: ID!, questionId: ID!): Attachment
     deleteAttachment(attachmentId: ID!): Boolean!
 
-    # Calendar Events
-    createEvent(teamId: ID!, input: CreateEventInput!): Event!
-    updateEvent(eventId: ID!, input: UpdateEventInput!): Event!
-    deleteEvent(eventId: ID!): Boolean!
-    syncEventToGoogle(eventId: ID!): Event!
-    importCalendarFromGoogle(teamId: ID!, calendarId: String, daysBack: Int, daysForward: Int): [Event!]!
-
     # ============================================================================
-    # AI PRODUCTIVITY FEATURES
+    # DATA IMPORT (admin only)
     # ============================================================================
 
-    # Generate Morning Focus (AI daily plan)
-    generateMorningFocus(teamId: ID!): MorningFocus!
+    # Parse an import file and return preview of what will be imported
+    parseImportFile(teamId: ID!, source: String!, fileData: String!): ImportExportPreview!
 
-    # Daily Standup
-    submitStandup(ceremonyId: ID!, responses: JSON!): DailyStandup!
-
-    # Generate Weekly Review
-    generateWeeklyReview(teamId: ID!): WeeklyReview!
-
-    # Nudge Actions
-    dismissNudge(nudgeId: ID!): Boolean!
-    actOnNudge(nudgeId: ID!): Boolean!
-
-    # Generate Task Health (recalculate)
-    refreshTaskHealth(taskId: ID!): TaskHealth!
-    refreshTeamTaskHealth(teamId: ID!): [TaskHealth!]!
-
-    # Generate AI Insights (refresh)
-    refreshTeamInsights(teamId: ID!): TeamInsights!
-
-    # Generate Meeting Prep
-    generateMeetingPrep(teamId: ID!, eventId: ID!): MeetingPrep!
-    markMeetingPrepViewed(prepId: ID!): MeetingPrep!
-
-    # Update Focus Preferences
-    updateFocusPreferences(teamId: ID!, input: UpdateFocusPreferencesInput!): FocusPreferences!
-
-    # Generate Nudges
-    generateNudges(teamId: ID!): [ProactiveNudge!]!
-
-    # ============================================================================
-    # PROJECT MANAGEMENT MUTATIONS (Modular - can be removed)
-    # ============================================================================
-
-    # User Availability
-    updateMyAvailability(teamId: ID!, input: UserAvailabilityInput!): UserAvailability!
-
-    # Time Off
-    createTimeOff(teamId: ID!, input: CreateTimeOffInput!): TimeOff!
-    updateTimeOff(timeOffId: ID!, input: CreateTimeOffInput!): TimeOff!
-    deleteTimeOff(timeOffId: ID!): Boolean!
-    approveTimeOff(timeOffId: ID!): TimeOff!
-    rejectTimeOff(timeOffId: ID!, reason: String): TimeOff!
-
-    # GTD Contexts
-    createTaskContext(teamId: ID!, input: CreateTaskContextInput!): TaskContext!
-    updateTaskContext(contextId: ID!, input: CreateTaskContextInput!): TaskContext!
-    deleteTaskContext(contextId: ID!): Boolean!
-    setTaskContext(taskId: ID!, context: String): Task!
-
-    # Milestones
-    createMilestone(teamId: ID!, input: CreateMilestoneInput!): Milestone!
-    updateMilestone(milestoneId: ID!, input: UpdateMilestoneInput!): Milestone!
-    completeMilestone(milestoneId: ID!): Milestone!
-    deleteMilestone(milestoneId: ID!): Boolean!
-
-    # Project Templates
-    createProjectTemplate(teamId: ID!, input: CreateProjectTemplateInput!): ProjectTemplate!
-    updateProjectTemplate(templateId: ID!, input: CreateProjectTemplateInput!): ProjectTemplate!
-    deleteProjectTemplate(templateId: ID!): Boolean!
-    createProjectFromTemplate(teamId: ID!, templateId: ID!, name: String!): Project!
-
-    # Project Stage
-    updateProjectStage(projectId: ID!, stage: String!): Project!
-
-    # Time Blocks
-    createTimeBlock(teamId: ID!, input: CreateTimeBlockInput!): TimeBlock!
-    updateTimeBlock(blockId: ID!, input: UpdateTimeBlockInput!): TimeBlock!
-    deleteTimeBlock(blockId: ID!): Boolean!
-    startTimeBlock(blockId: ID!): TimeBlock!
-    completeTimeBlock(blockId: ID!, focusScore: Int, notes: String): TimeBlock!
-
-    # Meeting Preferences
-    updateMyMeetingPreferences(input: MeetingPreferencesInput!): MeetingPreferences!
-
-    # Feature Flags (Pro Mode)
-    updateMyFeatureFlags(input: UserFeatureFlagsInput!): UserFeatureFlags!
-    enableProMode: UserFeatureFlags!
-    disableProMode: UserFeatureFlags!
-    setWorkflowPersona(persona: String!): UserFeatureFlags!
-
-    # Task Eisenhower Fields
-    setTaskUrgency(taskId: ID!, isUrgent: Boolean!): Task!
-    setTaskImportance(taskId: ID!, importance: String!): Task!
-
-    # Quick Task (2-minute rule)
-    markAsQuickTask(taskId: ID!, isQuick: Boolean!): Task!
-
-    # Work Breakdown Structure
-    createWBSTask(projectId: ID!, teamId: ID!, input: WBSTaskInput!): Task!
-    updateWBSTask(taskId: ID!, input: WBSTaskInput!): Task!
-
-    # WBS Drafts (Generic Ephemeral Trees)
-    createWBSDraft(teamId: ID!, input: WBSDraftInput!): WBSDraft!
-    updateWBSDraft(draftId: ID!, input: WBSDraftInput!): WBSDraft!
-    deleteWBSDraft(draftId: ID!): Boolean!
-
-    # AI Materialization - Convert WBS draft to real project/tasks
-    materializeWBSDraft(draftId: ID!, teamId: ID!, projectName: String): WBSMaterializationResult!
+    # Execute the import based on channel mappings
+    executeImport(teamId: ID!, source: String!, fileData: String!, mappings: [ChannelMappingInput!]!): ImportResult!
   }
 `;

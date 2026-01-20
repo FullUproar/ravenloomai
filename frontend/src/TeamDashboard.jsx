@@ -2,27 +2,10 @@ import { gql, useQuery, useMutation, useLazyQuery } from '@apollo/client';
 import { useState, useEffect, useRef, Component, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import CalendarView from './CalendarView';
 import { useToast } from './Toast.jsx';
 import AdminDashboard from './pages/AdminDashboard';
-import { useUXPreferences, UXPreferencesProvider } from './contexts/UXPreferencesContext';
-
-// PM Components (modular - can be removed by deleting this import and the components folder)
-import {
-  TeamWorkload,
-  EisenhowerMatrix,
-  TimeBlocks,
-  Milestones,
-  GanttChart,
-  ProModeSettings,
-  PersonaSelector,
-  WorkBreakdownStructure,
-  WBSDraftEditor
-} from './components/pm';
-import './components/pm/PMStyles.css';
-import DigestPage from './components/DigestPage';
+import DataImportPage from './pages/DataImportPage';
 import RavenCopilot from './components/RavenCopilot';
-import GoalTree from './components/GoalTree';
 import { CommandPaletteProvider } from './components/CommandPalette';
 
 // API base URL - uses /api prefix in production, localhost in development
@@ -183,60 +166,6 @@ const GET_TEAM_INVITES = gql`
   }
 `;
 
-const GET_TASKS = gql`
-  query GetTasks($teamId: ID!, $status: String, $assignedTo: String) {
-    getTasks(teamId: $teamId, status: $status, assignedTo: $assignedTo) {
-      id
-      title
-      description
-      status
-      priority
-      assignedTo
-      assignedToUser {
-        id
-        displayName
-        email
-      }
-      dueAt
-      completedAt
-      createdAt
-    }
-  }
-`;
-
-const CREATE_TASK_DIRECT = gql`
-  mutation CreateTask($teamId: ID!, $input: CreateTaskInput!) {
-    createTask(teamId: $teamId, input: $input) {
-      id
-      title
-      status
-      priority
-    }
-  }
-`;
-
-const UPDATE_TASK = gql`
-  mutation UpdateTask($taskId: ID!, $input: UpdateTaskInput!) {
-    updateTask(taskId: $taskId, input: $input) {
-      id
-      title
-      status
-      priority
-      assignedTo
-      dueAt
-    }
-  }
-`;
-
-const COMPLETE_TASK = gql`
-  mutation CompleteTask($taskId: ID!) {
-    completeTask(taskId: $taskId) {
-      id
-      status
-      completedAt
-    }
-  }
-`;
 
 const GET_ALERTS = gql`
   query GetAlerts($teamId: ID!, $status: String) {
@@ -452,22 +381,6 @@ const AM_I_SITE_ADMIN = gql`
   }
 `;
 
-// PM Feature Flags (Pro Mode)
-const GET_MY_FEATURE_FLAGS = gql`
-  query GetMyFeatureFlags {
-    getMyFeatureFlags {
-      proModeEnabled
-      showGanttChart
-      showEisenhowerMatrix
-      showWorkloadHistogram
-      showMilestones
-      showTimeBlocking
-      showContexts
-      showWBS
-      workflowPersona
-    }
-  }
-`;
 
 const GET_SITE_INVITES = gql`
   query GetSiteInvites {
@@ -667,392 +580,17 @@ const ATTACH_TO_MESSAGE = gql`
   }
 `;
 
-const GET_DAILY_DIGEST = gql`
-  query GetDailyDigest($teamId: ID!) {
-    getDailyDigest(teamId: $teamId) {
-      teamId
-      date
-      overdueTasks {
-        id
-        title
-        dueAt
-      }
-      dueTodayTasks {
-        id
-        title
-        dueAt
-      }
-      recentDecisions {
-        id
-        what
-        why
-      }
-      activitySummary
-    }
-  }
-`;
-
-// ============================================================================
-// AI Productivity & Insights Queries
-// ============================================================================
-
-const GET_MY_NUDGES = gql`
-  query GetMyNudges($teamId: ID!) {
-    getMyNudges(teamId: $teamId) {
-      id
-      nudgeType
-      title
-      message
-      priority
-      relatedTaskId
-      relatedEventId
-      suggestedActions {
-        action
-        label
-      }
-      createdAt
-    }
-  }
-`;
-
-const GET_MORNING_FOCUS = gql`
-  query GetMorningFocus($teamId: ID!) {
-    getMorningFocus(teamId: $teamId) {
-      id
-      status
-      aiPlan {
-        greeting
-        topPriority
-        scheduledBlocks {
-          time
-          activity
-          duration
-          type
-        }
-        tasksToComplete
-        warnings
-        tip
-      }
-      aiSummary
-      createdAt
-    }
-  }
-`;
-
-const GENERATE_MORNING_FOCUS = gql`
-  mutation GenerateMorningFocus($teamId: ID!) {
-    generateMorningFocus(teamId: $teamId) {
-      id
-      status
-      aiPlan {
-        greeting
-        topPriority
-        scheduledBlocks {
-          time
-          activity
-          duration
-          type
-        }
-        tasksToComplete
-        warnings
-        tip
-      }
-      aiSummary
-      tasks {
-        id
-        title
-        priority
-        dueAt
-      }
-      events {
-        id
-        title
-        startAt
-        endAt
-      }
-      workload {
-        workloadLevel
-        recommendation
-      }
-    }
-  }
-`;
-
-const GET_TEAM_INSIGHTS = gql`
-  query GetTeamInsights($teamId: ID!) {
-    getTeamInsights(teamId: $teamId) {
-      insights {
-        title
-        description
-        sentiment
-      }
-      recommendations {
-        title
-        action
-      }
-      summary
-      metrics {
-        tasksCompleted
-        overdueTasks
-        atRiskTasks
-        messagesThisWeek
-      }
-    }
-  }
-`;
-
-const DISMISS_NUDGE = gql`
-  mutation DismissNudge($nudgeId: ID!) {
-    dismissNudge(nudgeId: $nudgeId) {
-      success
-    }
-  }
-`;
-
-const GET_MY_WORKLOAD = gql`
-  query GetMyWorkload($teamId: ID!) {
-    getMyWorkload(teamId: $teamId) {
-      tasksDue
-      estimatedTaskHours
-      meetingHours
-      availableHours
-      workloadRatio
-      workloadLevel
-      recommendation
-    }
-  }
-`;
-
 // Team Settings (admin only)
 const GET_TEAM_SETTINGS = gql`
   query GetTeamSettings($teamId: ID!) {
     getTeamSettings(teamId: $teamId) {
       proactiveAI {
         enabled
-        morningFocusEnabled
-        smartNudgesEnabled
-        insightsEnabled
-        meetingPrepEnabled
       }
     }
   }
 `;
 
-const UPDATE_TEAM_SETTINGS = gql`
-  mutation UpdateTeamSettings($teamId: ID!, $input: UpdateTeamSettingsInput!) {
-    updateTeamSettings(teamId: $teamId, input: $input) {
-      proactiveAI {
-        enabled
-        morningFocusEnabled
-        smartNudgesEnabled
-        insightsEnabled
-        meetingPrepEnabled
-      }
-    }
-  }
-`;
-
-// Goals queries
-const GET_GOALS = gql`
-  query GetGoals($teamId: ID!, $status: String) {
-    getGoals(teamId: $teamId, status: $status) {
-      id
-      title
-      description
-      targetDate
-      startDate
-      status
-      progress
-      taskCount
-      completedTaskCount
-      owner {
-        id
-        displayName
-        email
-      }
-      projects {
-        id
-        name
-        status
-        taskCount
-        completedTaskCount
-      }
-    }
-  }
-`;
-
-const CREATE_GOAL = gql`
-  mutation CreateGoal($teamId: ID!, $input: CreateGoalInput!) {
-    createGoal(teamId: $teamId, input: $input) {
-      id
-      title
-      description
-      status
-      progress
-    }
-  }
-`;
-
-const UPDATE_GOAL = gql`
-  mutation UpdateGoal($goalId: ID!, $input: UpdateGoalInput!) {
-    updateGoal(goalId: $goalId, input: $input) {
-      id
-      title
-      status
-      progress
-    }
-  }
-`;
-
-// Projects queries
-const GET_PROJECTS = gql`
-  query GetProjects($teamId: ID!, $goalId: ID) {
-    getProjects(teamId: $teamId, goalId: $goalId) {
-      id
-      name
-      description
-      status
-      color
-      dueDate
-      goalsInherit
-      taskCount
-      completedTaskCount
-      goals {
-        id
-        title
-        status
-      }
-      owner {
-        id
-        displayName
-      }
-    }
-  }
-`;
-
-const CREATE_PROJECT = gql`
-  mutation CreateProject($teamId: ID!, $input: CreateProjectInput!) {
-    createProject(teamId: $teamId, input: $input) {
-      id
-      name
-      description
-      status
-      color
-      goalsInherit
-    }
-  }
-`;
-
-const SET_PROJECT_GOALS = gql`
-  mutation SetProjectGoals($projectId: ID!, $goalIds: [ID!]!) {
-    setProjectGoals(projectId: $projectId, goalIds: $goalIds) {
-      id
-      title
-    }
-  }
-`;
-
-const SET_TASK_GOALS = gql`
-  mutation SetTaskGoals($taskId: ID!, $goalIds: [ID!]!) {
-    setTaskGoals(taskId: $taskId, goalIds: $goalIds) {
-      id
-      title
-    }
-  }
-`;
-
-// Task detail with comments
-const GET_TASK_DETAIL = gql`
-  query GetTask($taskId: ID!) {
-    getTask(taskId: $taskId) {
-      id
-      title
-      description
-      summary
-      definitionOfDone
-      status
-      priority
-      dueAt
-      startDate
-      estimatedHours
-      actualHours
-      tags
-      assignedToUser {
-        id
-        displayName
-        email
-      }
-      createdByUser {
-        id
-        displayName
-      }
-      project {
-        id
-        name
-        color
-        goalsInherit
-      }
-      goals {
-        id
-        title
-        status
-        linkType
-      }
-      directGoals {
-        id
-        title
-        status
-      }
-      comments {
-        id
-        content
-        createdAt
-        user {
-          id
-          displayName
-          email
-        }
-      }
-      activity {
-        id
-        action
-        oldValue
-        newValue
-        createdAt
-        user {
-          id
-          displayName
-        }
-      }
-      createdAt
-      updatedAt
-    }
-  }
-`;
-
-const ADD_TASK_COMMENT = gql`
-  mutation AddTaskComment($taskId: ID!, $input: CreateTaskCommentInput!) {
-    addTaskComment(taskId: $taskId, input: $input) {
-      id
-      content
-      createdAt
-      user {
-        id
-        displayName
-      }
-    }
-  }
-`;
-
-const REOPEN_TASK = gql`
-  mutation ReopenTask($taskId: ID!) {
-    reopenTask(taskId: $taskId) {
-      id
-      status
-      completedAt
-    }
-  }
-`;
 
 // ============================================================================
 // TeamDashboard Component
@@ -1064,32 +602,21 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // UX Preferences (AI-controlled personalization)
-  const uxPrefs = useUXPreferences();
-
   // Keyboard shortcuts modal state
   const [showShortcuts, setShowShortcuts] = useState(false);
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState(null);
 
-  // Determine initial view from URL or default to 'digest'
+  // Determine initial view from URL or default to 'raven'
   const getInitialView = () => {
-    // Digest view (default landing page)
-    if (initialView === 'digest') {
-      return 'digest';
-    }
-    // Standard views
-    if (initialView === 'tasks' || initialView === 'goals' || initialView === 'ask' || initialView === 'learning' || initialView === 'projects' || initialView === 'knowledge' || initialView === 'calendar' || initialView === 'raven') {
-      return initialView;
-    }
-    // PM views (Pro Mode)
-    if (initialView === 'workload' || initialView === 'eisenhower' || initialView === 'timeblocks' || initialView === 'milestones' || initialView === 'gantt') {
+    // Knowledge-focused views
+    if (initialView === 'ask' || initialView === 'learning' || initialView === 'knowledge' || initialView === 'raven') {
       return initialView;
     }
     if (initialView === 'channel' || initialView === 'chat') {
       return 'chat';
     }
-    return 'digest';  // Default to digest
+    return 'raven';  // Default to raven (AI copilot)
   };
 
   // UI state
@@ -1106,6 +633,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   // Site Admin state
   const [showSiteAdminPanel, setShowSiteAdminPanel] = useState(false);
+  // Data Import state
+  const [showDataImport, setShowDataImport] = useState(false);
   const [siteInviteEmail, setSiteInviteEmail] = useState('');
   const [siteInviteSending, setSiteInviteSending] = useState(false);
   // Google Drive state
@@ -1130,18 +659,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const gifSearchTimeoutRef = useRef(null);
 
   const [activeView, setActiveViewState] = useState(getInitialView);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskProjectId, setNewTaskProjectId] = useState('');
-  const [newTaskGoalId, setNewTaskGoalId] = useState('');
-  const [newTaskDueDate, setNewTaskDueDate] = useState('');
-  const [statusPopupTaskId, setStatusPopupTaskId] = useState(null);
-  const [taskFilter, setTaskFilter] = useState('open'); // 'open', 'my', 'all'
-  const [tasksViewMode, setTasksViewMode] = useState('list'); // 'list' or 'matrix'
-  const [goalsViewMode, setGoalsViewMode] = useState('tree'); // 'tree' or 'list'
-  const [selectedGoalId, setSelectedGoalId] = useState(null);
-  const [addingTask, setAddingTask] = useState(false);
-  const [creatingTask, setCreatingTask] = useState(false);
-  const taskInputRef = useRef(null);
   // Q&A state
   const [askQuestion, setAskQuestion] = useState('');
   const [askAnswer, setAskAnswer] = useState(null);
@@ -1194,64 +711,12 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Sidebar tree expansion state
   const [expandedSections, setExpandedSections] = useState({
     channels: true,
-    tasks: false,
-    goals: false,
-    projects: false,
     team: false,
-    knowledge: false,
-    insights: false
+    knowledge: true
   });
 
-  // Helper: check if a nav item is hidden by UX preferences
-  const isNavItemHidden = (itemKey) => uxPrefs.navHidden?.includes(itemKey);
-
-  // Sync expanded sections with UX preferences on load
-  useEffect(() => {
-    if (uxPrefs.navCollapsed) {
-      setExpandedSections(prev => ({
-        ...prev,
-        channels: !uxPrefs.navCollapsed.includes('channels'),
-        tasks: !uxPrefs.navCollapsed.includes('tasks'),
-        goals: !uxPrefs.navCollapsed.includes('goals'),
-        projects: !uxPrefs.navCollapsed.includes('projects'),
-        team: !uxPrefs.navCollapsed.includes('team'),
-        knowledge: !uxPrefs.navCollapsed.includes('knowledge'),
-        insights: !uxPrefs.navCollapsed.includes('insights')
-      }));
-    }
-  }, [uxPrefs.navCollapsed]);
-
-  // Goals state
-  const [showCreateGoal, setShowCreateGoal] = useState(false);
-  const [newGoalTitle, setNewGoalTitle] = useState('');
-  const [newGoalTargetDate, setNewGoalTargetDate] = useState('');
-  const [newGoalParentId, setNewGoalParentId] = useState('');
-  const [creatingGoal, setCreatingGoal] = useState(false);
-  // Task detail panel state
-  const [selectedTaskId, setSelectedTaskId] = useState(null);
-  const [taskComment, setTaskComment] = useState('');
-  const [addingComment, setAddingComment] = useState(false);
-  // Bulk selection state
-  const [bulkSelectedTaskIds, setBulkSelectedTaskIds] = useState(new Set());
-  const [bulkSelectMode, setBulkSelectMode] = useState(false);
-  // Projects state
-  const [showCreateProject, setShowCreateProject] = useState(false);
-  const [projectsViewMode, setProjectsViewMode] = useState('list'); // 'list', 'board', 'gantt', or 'wbs'
-  const [wbsProjectId, setWbsProjectId] = useState(null); // Selected project for WBS view
-  const [wbsMode, setWbsMode] = useState('draft'); // 'draft' for generic WBS editor, 'project' for project-based WBS
-  const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectGoalId, setNewProjectGoalId] = useState('');
-  const [newProjectDueDate, setNewProjectDueDate] = useState('');
-  const [creatingProject, setCreatingProject] = useState(false);
-
-  // AI Productivity & Insights state
-  const [morningFocus, setMorningFocus] = useState(null);
-  const [generatingFocus, setGeneratingFocus] = useState(false);
-  const [showMorningFocus, setShowMorningFocus] = useState(false);
-
-  // Settings modal state (combined Team + Personal)
+  // Settings modal state
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [settingsTab, setSettingsTab] = useState('personal'); // 'personal' | 'team'
 
   // Private Raven chat state
   const [ravenChannel, setRavenChannel] = useState(null);
@@ -1280,16 +745,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     navigate(newPath, { replace: true });
   };
 
-  // Raven command suggestions
+  // Raven command suggestions (knowledge-focused)
   const ravenCommands = [
     { cmd: '@raven remember', desc: 'Save a fact to knowledge base', example: '@raven remember our API rate limit is 100/min' },
-    { cmd: '@raven task', desc: 'Create a new task', example: '@raven task Review PR #123' },
     { cmd: '@raven remind', desc: 'Set a reminder', example: '@raven remind me tomorrow to follow up' },
     { cmd: '@raven discuss', desc: 'Start a facilitated discussion', example: '@raven discuss our Q1 marketing strategy' },
     { cmd: '@raven decide', desc: 'Record a decision', example: '@raven decide We will use PostgreSQL because...' },
     { cmd: '@raven summarize', desc: 'Summarize recent discussion', example: '@raven summarize' },
     { cmd: '@raven search', desc: 'Search knowledge base', example: '@raven search deployment process' },
-    { cmd: '@raven status', desc: 'Get project status', example: '@raven status' },
     { cmd: '@raven help', desc: 'Show available commands', example: '@raven help' },
   ];
 
@@ -1339,28 +802,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   });
   const pendingInvites = invitesData?.getTeamInvites || [];
 
-  // Fetch tasks
-  const taskQueryVars = { teamId };
-  if (taskFilter === 'my') {
-    taskQueryVars.assignedTo = user?.uid;
-  } else if (taskFilter === 'open') {
-    taskQueryVars.status = null; // Get all, filter in UI
-  }
-
-  const { data: tasksData, refetch: refetchTasks } = useQuery(GET_TASKS, {
-    variables: taskQueryVars,
-    fetchPolicy: 'cache-and-network',
-    pollInterval: 10000 // Refresh every 10 seconds
-  });
-
-  const allTasks = tasksData?.getTasks || [];
-  const tasks = taskFilter === 'open'
-    ? allTasks.filter(t => t.status !== 'done')
-    : taskFilter === 'my'
-    ? allTasks.filter(t => t.assignedTo === user?.uid)
-    : allTasks;
-
-  // Fetch pending alerts
+  // Fetch pending alerts (for reminders - will become "recalls")
   const { data: alertsData, refetch: refetchAlerts } = useQuery(GET_ALERTS, {
     variables: { teamId, status: 'pending' },
     fetchPolicy: 'cache-and-network',
@@ -1368,45 +810,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   });
   const pendingAlerts = alertsData?.getAlerts || [];
 
-  // Fetch goals (always fetch for goal selectors throughout app)
-  const { data: goalsData, refetch: refetchGoals } = useQuery(GET_GOALS, {
-    variables: { teamId },
-    fetchPolicy: 'cache-and-network'
-  });
-  const goals = goalsData?.getGoals || [];
-
-  // Fetch projects
-  const { data: projectsData, refetch: refetchProjects } = useQuery(GET_PROJECTS, {
-    variables: { teamId },
-    fetchPolicy: 'cache-and-network'
-  });
-  const projects = projectsData?.getProjects || [];
-
-  // Fetch selected task details
-  const { data: taskDetailData, refetch: refetchTaskDetail } = useQuery(GET_TASK_DETAIL, {
-    variables: { taskId: selectedTaskId },
-    skip: !selectedTaskId,
-    fetchPolicy: 'cache-and-network'
-  });
-  const selectedTask = taskDetailData?.getTask;
-
   // Mutations
   const [sendMessage] = useMutation(SEND_MESSAGE);
   const [createChannel] = useMutation(CREATE_CHANNEL);
   const [markChannelSeen] = useMutation(MARK_CHANNEL_SEEN);
   const [inviteTeamMember] = useMutation(INVITE_TEAM_MEMBER);
-  const [createTaskDirect] = useMutation(CREATE_TASK_DIRECT);
-  const [updateTask] = useMutation(UPDATE_TASK);
-  const [completeTask] = useMutation(COMPLETE_TASK);
-  const [reopenTask] = useMutation(REOPEN_TASK);
   const [snoozeAlert] = useMutation(SNOOZE_ALERT);
   const [cancelAlert] = useMutation(CANCEL_ALERT);
-  const [createGoal] = useMutation(CREATE_GOAL);
-  const [updateGoal] = useMutation(UPDATE_GOAL);
-  const [createProject] = useMutation(CREATE_PROJECT);
-  const [addTaskComment] = useMutation(ADD_TASK_COMMENT);
-  const [setProjectGoals] = useMutation(SET_PROJECT_GOALS);
-  const [setTaskGoals] = useMutation(SET_TASK_GOALS);
   const [executeAskCompany] = useLazyQuery(ASK_COMPANY, {
     fetchPolicy: 'network-only'
   });
@@ -1455,12 +865,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [revokeSiteInvite] = useMutation(REVOKE_SITE_INVITE);
   const siteInvites = siteInvitesData?.getSiteInvites || [];
 
-  // PM Feature Flags (Pro Mode) hooks
-  const { data: featureFlagsData } = useQuery(GET_MY_FEATURE_FLAGS);
-  const featureFlags = featureFlagsData?.getMyFeatureFlags || {};
-  // Use sticky proModeEnabled flag - individual flags only apply when Pro Mode is enabled
-  const isProModeEnabled = featureFlags.proModeEnabled || false;
-
   // Google Drive hooks
   const { data: integrationsData, refetch: refetchIntegrations } = useQuery(GET_MY_INTEGRATIONS);
   const googleIntegration = integrationsData?.getMyIntegrations?.find(i => i.provider === 'google');
@@ -1485,23 +889,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [removeFromKnowledgeBase] = useMutation(REMOVE_FROM_KNOWLEDGE_BASE);
   const [syncKnowledgeBaseSource] = useMutation(SYNC_KNOWLEDGE_BASE_SOURCE);
 
-  // AI Productivity hooks
-  const { data: nudgesData, refetch: refetchNudges } = useQuery(GET_MY_NUDGES, {
-    variables: { teamId },
-    skip: !teamId,
-    pollInterval: 60000 // Refresh every minute
-  });
-  const nudges = nudgesData?.getMyNudges || [];
-  const [generateMorningFocusMutation] = useMutation(GENERATE_MORNING_FOCUS);
-  const [dismissNudgeMutation] = useMutation(DISMISS_NUDGE);
-  const { data: workloadData } = useQuery(GET_MY_WORKLOAD, {
-    variables: { teamId },
-    skip: !teamId
-  });
-  const workload = workloadData?.getMyWorkload;
-
   // Team Settings (admin only - will fail silently for non-admins)
-  const { data: settingsData, refetch: refetchSettings } = useQuery(GET_TEAM_SETTINGS, {
+  const { data: settingsData } = useQuery(GET_TEAM_SETTINGS, {
     variables: { teamId },
     skip: !teamId,
     // Don't show errors in console for non-admin users
@@ -1509,11 +898,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   });
   const teamSettings = settingsData?.getTeamSettings;
   const isAdmin = !!teamSettings; // If we can fetch settings, user is admin
-  const proactiveAIEnabled = teamSettings?.proactiveAI?.enabled !== false;
-
-  const [updateTeamSettingsMutation] = useMutation(UPDATE_TEAM_SETTINGS, {
-    onCompleted: () => refetchSettings()
-  });
 
   // Lazy query for private Raven channel (navigates to raven view)
   const [fetchRavenChannel] = useLazyQuery(GET_MY_RAVEN_CHANNEL, {
@@ -1612,7 +996,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
           setActiveView('chat');
         } else if (e.key === '2') {
           e.preventDefault();
-          setActiveView('tasks');
+          setActiveView('learning');
         } else if (e.key === '3') {
           e.preventDefault();
           setActiveView('ask');
@@ -2168,241 +1552,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     inputRef.current?.focus();
   };
 
-  const handleCreateTask = async (e) => {
-    e?.preventDefault();
-    if (!newTaskTitle.trim() || creatingTask) return;
-
-    setCreatingTask(true);
-    try {
-      await createTaskDirect({
-        variables: {
-          teamId,
-          input: {
-            title: newTaskTitle.trim(),
-            priority: 'medium',
-            channelId: activeChannelId,
-            projectId: newTaskProjectId || null,
-            goalIds: newTaskGoalId ? [newTaskGoalId] : [],
-            dueAt: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null
-          }
-        }
-      });
-
-      setNewTaskTitle('');
-      setNewTaskProjectId('');
-      setNewTaskGoalId('');
-      setNewTaskDueDate('');
-      setAddingTask(false);
-      await refetchTasks();
-    } catch (error) {
-      console.error('Error creating task:', error);
-      toast.error('Failed to create task: ' + error.message);
-    } finally {
-      setCreatingTask(false);
-    }
-  };
-
-  // Focus task input when adding
-  useEffect(() => {
-    if (addingTask && taskInputRef.current) {
-      taskInputRef.current.focus();
-    }
-  }, [addingTask]);
-
-  // Handle task input keyboard
-  const handleTaskInputKeyDown = (e) => {
-    if (e.key === 'Enter' && newTaskTitle.trim()) {
-      handleCreateTask();
-    } else if (e.key === 'Escape') {
-      setNewTaskTitle('');
-      setAddingTask(false);
-    }
-  };
-
-  // Group tasks by status for Asana-like sections
-  const backlogTasks = tasks.filter(t => t.status === 'backlog');
-  const todoTasks = tasks.filter(t => t.status === 'todo');
-  const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
-  const blockedTasks = tasks.filter(t => t.status === 'blocked');
-  const doneTasks = tasks.filter(t => t.status === 'done');
-
-  // Status icons and colors
-  const statusConfig = {
-    backlog: { icon: '📋', label: 'Backlog', color: 'var(--text-muted)' },
-    todo: { icon: '○', label: 'To Do', color: 'var(--text-muted)' },
-    in_progress: { icon: '◐', label: 'In Progress', color: 'var(--cta)' },
-    blocked: { icon: '⛔', label: 'Blocked', color: 'var(--pop)' },
-    done: { icon: '✓', label: 'Done', color: 'var(--success)' }
-  };
-
-  const handleStatusChange = async (taskId, newStatus) => {
-    setStatusPopupTaskId(null);
-    try {
-      if (newStatus === 'done') {
-        await completeTask({ variables: { taskId } });
-      } else {
-        await updateTask({
-          variables: {
-            taskId,
-            input: { status: newStatus }
-          }
-        });
-      }
-      await refetchTasks();
-    } catch (error) {
-      console.error('Error updating task status:', error);
-    }
-  };
-
-  const handleToggleTaskStatus = async (task) => {
-    try {
-      if (task.status === 'done') {
-        // Reopen - set to todo
-        await updateTask({
-          variables: {
-            taskId: task.id,
-            input: { status: 'todo' }
-          }
-        });
-      } else if (task.status === 'todo') {
-        // Start - set to in_progress
-        await updateTask({
-          variables: {
-            taskId: task.id,
-            input: { status: 'in_progress' }
-          }
-        });
-      } else {
-        // Complete
-        await completeTask({
-          variables: { taskId: task.id }
-        });
-      }
-      await refetchTasks();
-    } catch (error) {
-      console.error('Error updating task:', error);
-    }
-  };
-
-  const handleCompleteTask = async (taskId) => {
-    try {
-      await completeTask({
-        variables: { taskId }
-      });
-      await refetchTasks();
-    } catch (error) {
-      console.error('Error completing task:', error);
-    }
-  };
-
-  // Bulk selection handlers
-  const toggleBulkSelect = (taskId) => {
-    setBulkSelectedTaskIds(prev => {
-      const next = new Set(prev);
-      if (next.has(taskId)) {
-        next.delete(taskId);
-      } else {
-        next.add(taskId);
-      }
-      return next;
-    });
-  };
-
-  const selectAllTasks = (taskList) => {
-    setBulkSelectedTaskIds(new Set(taskList.map(t => t.id)));
-  };
-
-  const clearBulkSelection = () => {
-    setBulkSelectedTaskIds(new Set());
-    setBulkSelectMode(false);
-  };
-
-  const handleBulkComplete = async () => {
-    const ids = Array.from(bulkSelectedTaskIds);
-    const previousStates = tasks.filter(t => ids.includes(t.id)).map(t => ({ id: t.id, status: t.status }));
-
-    try {
-      // Complete all selected tasks
-      await Promise.all(ids.map(id => completeTask({ variables: { taskId: id } })));
-      await refetchTasks();
-
-      // Show undo toast
-      toast.withUndo(
-        `Completed ${ids.length} task${ids.length === 1 ? '' : 's'}`,
-        async () => {
-          // Undo - restore previous states
-          await Promise.all(previousStates.map(({ id, status }) =>
-            updateTask({ variables: { taskId: id, input: { status } } })
-          ));
-          await refetchTasks();
-          toast.success('Changes undone');
-        }
-      );
-
-      clearBulkSelection();
-    } catch (error) {
-      console.error('Error bulk completing tasks:', error);
-      toast.error('Failed to complete tasks');
-    }
-  };
-
-  const handleBulkStatusChange = async (newStatus) => {
-    const ids = Array.from(bulkSelectedTaskIds);
-    const previousStates = tasks.filter(t => ids.includes(t.id)).map(t => ({ id: t.id, status: t.status }));
-
-    try {
-      await Promise.all(ids.map(id =>
-        newStatus === 'done'
-          ? completeTask({ variables: { taskId: id } })
-          : updateTask({ variables: { taskId: id, input: { status: newStatus } } })
-      ));
-      await refetchTasks();
-
-      toast.withUndo(
-        `Updated ${ids.length} task${ids.length === 1 ? '' : 's'} to ${statusConfig[newStatus]?.label || newStatus}`,
-        async () => {
-          await Promise.all(previousStates.map(({ id, status }) =>
-            updateTask({ variables: { taskId: id, input: { status } } })
-          ));
-          await refetchTasks();
-          toast.success('Changes undone');
-        }
-      );
-
-      clearBulkSelection();
-    } catch (error) {
-      console.error('Error bulk updating tasks:', error);
-      toast.error('Failed to update tasks');
-    }
-  };
-
-  const handleBulkPriorityChange = async (newPriority) => {
-    const ids = Array.from(bulkSelectedTaskIds);
-    const previousPriorities = tasks.filter(t => ids.includes(t.id)).map(t => ({ id: t.id, priority: t.priority }));
-
-    try {
-      await Promise.all(ids.map(id =>
-        updateTask({ variables: { taskId: id, input: { priority: newPriority } } })
-      ));
-      await refetchTasks();
-
-      toast.withUndo(
-        `Set ${ids.length} task${ids.length === 1 ? '' : 's'} to ${newPriority} priority`,
-        async () => {
-          await Promise.all(previousPriorities.map(({ id, priority }) =>
-            updateTask({ variables: { taskId: id, input: { priority } } })
-          ));
-          await refetchTasks();
-          toast.success('Changes undone');
-        }
-      );
-
-      clearBulkSelection();
-    } catch (error) {
-      console.error('Error bulk updating priorities:', error);
-      toast.error('Failed to update priorities');
-    }
-  };
+  // REMOVED: Task handlers (handleCreateTask, handleStatusChange, handleToggleTaskStatus, etc.)
+  // REMOVED: Task grouping variables (backlogTasks, todoTasks, etc.)
+  // REMOVED: Bulk selection handlers
+  // See git history for original implementation
 
   const handleAskCompany = async (e) => {
     e.preventDefault();
@@ -2910,9 +2063,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   // Handle section item click - expand section and set view
   const handleSectionItemClick = (section, view) => {
     setActiveView(view);
-    if (section === 'goals') {
-      refetchGoals();
-    }
     setSidebarOpen(false); // Close mobile sidebar
   };
 
@@ -2947,10 +2097,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   return (
     <CommandPaletteProvider
       teamId={teamId}
-      tasks={tasks}
       channels={channels}
-      goals={goals}
-      projects={projects}
     >
     <div className={`team-dashboard ${activeView !== 'chat' && activeView !== 'digest' && activeView !== 'raven' ? (copilotCollapsed ? 'has-copilot-collapsed' : 'has-copilot') : ''}`}>
       {/* Mobile sidebar overlay */}
@@ -2967,23 +2114,20 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         </div>
 
         {/* Tree Navigation */}
-        <nav className={`nav-tree persona-${featureFlags.workflowPersona || 'contributor'} ${uxPrefs.animationsEnabled ? 'animations-enabled' : 'animations-disabled'}`}>
-          {/* Raven Command Center (combined Digest + Chat) */}
-          {!isNavItemHidden('raven') && (
-            <div className="nav-section">
-              <button
-                className={`nav-section-header nav-single ${activeView === 'digest' || activeView === 'raven' ? 'active' : ''}`}
-                onClick={() => setActiveView('digest')}
-              >
-                <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-                <span className="nav-icon">🪶</span>
-                <span className="nav-label">Raven</span>
-              </button>
-            </div>
-          )}
+        <nav className="nav-tree">
+          {/* Raven AI Copilot */}
+          <div className="nav-section">
+            <button
+              className={`nav-section-header nav-single ${activeView === 'raven' ? 'active' : ''}`}
+              onClick={() => setActiveView('raven')}
+            >
+              <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
+              <span className="nav-icon">🪶</span>
+              <span className="nav-label">Raven</span>
+            </button>
+          </div>
 
           {/* Channels Section */}
-          {!isNavItemHidden('channels') && (
           <div className={`nav-section ${expandedSections.channels ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'chat' ? 'active' : ''}`}
@@ -3016,249 +2160,23 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <span className="nav-item-icon">+</span>
                   <span className="nav-item-label">New Channel</span>
                 </button>
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Tasks Section */}
-          {!isNavItemHidden('tasks') && (
-          <div className={`nav-section ${expandedSections.tasks ? 'expanded' : ''}`}>
-            <button
-              className={`nav-section-header ${activeView === 'tasks' ? 'active' : ''}`}
-              onClick={() => toggleSection('tasks')}
-            >
-              <span className="nav-expand-icon">{expandedSections.tasks ? '▼' : '▶'}</span>
-              <span className="nav-icon">✓</span>
-              <span className="nav-label">Tasks</span>
-              {tasks.length > 0 && <span className="nav-count">{tasks.length}</span>}
-            </button>
-            {expandedSections.tasks && (
-              <div className="nav-children">
-                <button
-                  className={`nav-item ${activeView === 'tasks' && taskFilter === 'open' ? 'active' : ''}`}
-                  onClick={() => {
-                    handleSectionItemClick('tasks', 'tasks');
-                    setTaskFilter('open');
-                  }}
-                >
-                  <span className="nav-item-icon">○</span>
-                  <span className="nav-item-label">Open Tasks</span>
-                  {allTasks.filter(t => t.status !== 'done').length > 0 && (
-                    <span className="nav-item-count">{allTasks.filter(t => t.status !== 'done').length}</span>
-                  )}
-                </button>
-                <button
-                  className={`nav-item ${activeView === 'tasks' && taskFilter === 'my' ? 'active' : ''}`}
-                  onClick={() => {
-                    handleSectionItemClick('tasks', 'tasks');
-                    setTaskFilter('my');
-                  }}
-                >
-                  <span className="nav-item-icon">👤</span>
-                  <span className="nav-item-label">My Tasks</span>
-                </button>
-                <button
-                  className={`nav-item ${activeView === 'tasks' && taskFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => {
-                    handleSectionItemClick('tasks', 'tasks');
-                    setTaskFilter('all');
-                  }}
-                >
-                  <span className="nav-item-icon">☰</span>
-                  <span className="nav-item-label">All Tasks</span>
-                </button>
-                <button
-                  className="nav-item nav-action"
-                  onClick={() => {
-                    setActiveView('tasks');
-                    setAddingTask(true);
-                    setSidebarOpen(false);
-                  }}
-                >
-                  <span className="nav-item-icon">+</span>
-                  <span className="nav-item-label">New Task</span>
-                </button>
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Goals Section */}
-          {!isNavItemHidden('goals') && (
-          <div className={`nav-section ${expandedSections.goals ? 'expanded' : ''}`}>
-            <button
-              className={`nav-section-header ${activeView === 'goals' ? 'active' : ''}`}
-              onClick={() => toggleSection('goals')}
-            >
-              <span className="nav-expand-icon">{expandedSections.goals ? '▼' : '▶'}</span>
-              <span className="nav-icon">🎯</span>
-              <span className="nav-label">Goals</span>
-              {goals.length > 0 && <span className="nav-count">{goals.length}</span>}
-            </button>
-            {expandedSections.goals && (
-              <div className="nav-children">
-                <button
-                  className={`nav-item ${activeView === 'goals' ? 'active' : ''}`}
-                  onClick={() => handleSectionItemClick('goals', 'goals')}
-                >
-                  <span className="nav-item-icon">📊</span>
-                  <span className="nav-item-label">All Goals</span>
-                </button>
-                <button
-                  className="nav-item nav-action"
-                  onClick={() => {
-                    setActiveView('goals');
-                    setShowCreateGoal(true);
-                    refetchGoals();
-                    setSidebarOpen(false);
-                  }}
-                >
-                  <span className="nav-item-icon">+</span>
-                  <span className="nav-item-label">New Goal</span>
-                </button>
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Projects Section */}
-          {!isNavItemHidden('projects') && (
-          <div className={`nav-section ${expandedSections.projects ? 'expanded' : ''}`}>
-            <button
-              className={`nav-section-header ${activeView === 'projects' ? 'active' : ''}`}
-              onClick={() => toggleSection('projects')}
-            >
-              <span className="nav-expand-icon">{expandedSections.projects ? '▼' : '▶'}</span>
-              <span className="nav-icon">📁</span>
-              <span className="nav-label">Projects</span>
-              {projects.length > 0 && <span className="nav-count">{projects.length}</span>}
-            </button>
-            {expandedSections.projects && (
-              <div className="nav-children">
-                <button
-                  className={`nav-item ${activeView === 'projects' ? 'active' : ''}`}
-                  onClick={() => handleSectionItemClick('projects', 'projects')}
-                >
-                  <span className="nav-item-icon">📊</span>
-                  <span className="nav-item-label">All Projects</span>
-                </button>
-                <button
-                  className="nav-item nav-action"
-                  onClick={() => {
-                    setActiveView('projects');
-                    setShowCreateProject(true);
-                    refetchProjects();
-                    setSidebarOpen(false);
-                  }}
-                >
-                  <span className="nav-item-icon">+</span>
-                  <span className="nav-item-label">New Project</span>
-                </button>
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Calendar */}
-          {!isNavItemHidden('calendar') && (
-            <div className="nav-section">
-              <button
-                className={`nav-section-header nav-single ${activeView === 'calendar' ? 'active' : ''}`}
-                onClick={() => handleSectionItemClick('calendar', 'calendar')}
-              >
-                <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-                <span className="nav-icon">📅</span>
-                <span className="nav-label">Calendar</span>
-              </button>
-            </div>
-          )}
-
-          {/* AI Insights - Morning Focus, Nudges, Workload */}
-          {!isNavItemHidden('insights') && (
-          <div className={`nav-section ${expandedSections.insights ? 'expanded' : ''}`}>
-            <button
-              className={`nav-section-header ${activeView === 'insights' ? 'active' : ''}`}
-              onClick={() => toggleSection('insights')}
-            >
-              <span className="nav-expand-icon">{expandedSections.insights ? '▼' : '▶'}</span>
-              <span className="nav-icon">✨</span>
-              <span className="nav-label">AI Insights</span>
-              {nudges.length > 0 && <span className="nav-badge">{nudges.length}</span>}
-            </button>
-            {expandedSections.insights && (
-              <div className="nav-items">
-                {/* Morning Focus */}
-                <button
-                  className="nav-item"
-                  onClick={async () => {
-                    setGeneratingFocus(true);
-                    try {
-                      const { data } = await generateMorningFocusMutation({ variables: { teamId } });
-                      if (data?.generateMorningFocus) {
-                        setMorningFocus(data.generateMorningFocus);
-                        setShowMorningFocus(true);
-                      }
-                    } catch (err) {
-                      console.error('Failed to generate morning focus:', err);
-                    }
-                    setGeneratingFocus(false);
-                    setSidebarOpen(false);
-                  }}
-                  disabled={generatingFocus}
-                >
-                  <span className="nav-item-icon">{generatingFocus ? '⏳' : '🌅'}</span>
-                  <span className="nav-item-label">{generatingFocus ? 'Generating...' : 'Morning Focus'}</span>
-                </button>
-                {/* My Workload */}
-                <button
-                  className={`nav-item ${activeView === 'insights' ? 'active' : ''}`}
-                  onClick={() => handleSectionItemClick('insights', 'insights')}
-                >
-                  <span className="nav-item-icon">📊</span>
-                  <span className="nav-item-label">My Workload</span>
-                  {workload && (
-                    <span className={`nav-status-dot ${workload.workloadLevel === 'overloaded' ? 'error' : workload.workloadLevel === 'heavy' ? 'warning' : 'connected'}`}></span>
-                  )}
-                </button>
-                {/* Nudges */}
-                {nudges.length > 0 && (
-                  <div className="nav-nudges">
-                    {nudges.slice(0, 3).map((nudge) => (
-                      <div key={nudge.id} className={`nav-nudge nav-nudge-${nudge.priority}`}>
-                        <span className="nudge-icon">
-                          {nudge.nudgeType === 'overdue_task' ? '⚠️' :
-                           nudge.nudgeType === 'upcoming_deadline' ? '⏰' :
-                           nudge.nudgeType === 'stale_task' ? '😴' :
-                           nudge.nudgeType === 'meeting_prep' ? '📋' : '💡'}
-                        </span>
-                        <span className="nudge-text">{nudge.message}</span>
-                        <button
-                          className="nudge-dismiss"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            dismissNudgeMutation({ variables: { nudgeId: nudge.id } })
-                              .then(() => refetchNudges());
-                          }}
-                          title="Dismiss"
-                        >×</button>
-                      </div>
-                    ))}
-                    {nudges.length > 3 && (
-                      <span className="nav-nudges-more">+{nudges.length - 3} more</span>
-                    )}
-                  </div>
+                {isAdmin && (
+                  <button
+                    className="nav-item nav-action"
+                    onClick={() => setShowDataImport(true)}
+                  >
+                    <span className="nav-item-icon">📥</span>
+                    <span className="nav-item-label">Import Data</span>
+                  </button>
                 )}
               </div>
             )}
           </div>
-          )}
 
-          {/* Team - Ask, Workload, Time Blocks, Milestones */}
-          {!isNavItemHidden('team') && (
+          {/* Team - Ask the Team */}
           <div className={`nav-section ${expandedSections.team ? 'expanded' : ''}`}>
             <button
-              className={`nav-section-header ${activeView === 'ask' || activeView === 'workload' || activeView === 'timeblocks' || activeView === 'milestones' ? 'active' : ''}`}
+              className={`nav-section-header ${activeView === 'ask' ? 'active' : ''}`}
               onClick={() => toggleSection('team')}
             >
               <span className="nav-expand-icon">{expandedSections.team ? '▼' : '▶'}</span>
@@ -3275,43 +2193,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   <span className="nav-item-icon">🔍</span>
                   <span className="nav-item-label">Ask the Team</span>
                 </button>
-                {/* Team Workload - Pro Mode */}
-                {isProModeEnabled && featureFlags.showWorkloadHistogram && (
-                  <button
-                    className={`nav-item ${activeView === 'workload' ? 'active' : ''}`}
-                    onClick={() => setActiveView('workload')}
-                  >
-                    <span className="nav-item-icon">📊</span>
-                    <span className="nav-item-label">Workload</span>
-                  </button>
-                )}
-                {/* Time Blocks - Pro Mode */}
-                {isProModeEnabled && featureFlags.showTimeBlocking && (
-                  <button
-                    className={`nav-item ${activeView === 'timeblocks' ? 'active' : ''}`}
-                    onClick={() => setActiveView('timeblocks')}
-                  >
-                    <span className="nav-item-icon">⏱️</span>
-                    <span className="nav-item-label">Time Blocks</span>
-                  </button>
-                )}
-                {/* Milestones - Pro Mode */}
-                {isProModeEnabled && featureFlags.showMilestones && (
-                  <button
-                    className={`nav-item ${activeView === 'milestones' ? 'active' : ''}`}
-                    onClick={() => setActiveView('milestones')}
-                  >
-                    <span className="nav-item-icon">🏁</span>
-                    <span className="nav-item-label">Milestones</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
-          )}
 
           {/* Knowledge - Research, KB, Connections */}
-          {!isNavItemHidden('knowledge') && (
           <div className={`nav-section ${expandedSections.knowledge ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'learning' || activeView === 'knowledge' ? 'active' : ''}`}
@@ -3791,6 +2677,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         <AdminDashboard onClose={() => setShowSiteAdminPanel(false)} />
       )}
 
+      {/* Data Import Page */}
+      {showDataImport && (
+        <DataImportPage teamId={teamId} onClose={() => setShowDataImport(false)} />
+      )}
+
       {/* Google Drive Panel Modal */}
       {showDrivePanel && (
         <div className="modal-overlay" onClick={() => setShowDrivePanel(false)}>
@@ -3945,30 +2836,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       )}
 
       {/* Main Content Area */}
-      {activeView === 'digest' ? (
-        <main className="content-area">
-          <DigestPage
-            teamId={teamId}
-            onNavigateToChannel={(channelId) => {
-              handleSelectChannel(channelId);
-              setActiveView('chat');
-            }}
-            onNavigateToTask={(taskId) => {
-              setSelectedTaskId(taskId);
-              setActiveView('tasks');
-            }}
-            onNavigateToGoal={(goalId) => {
-              setActiveView('goals');
-            }}
-            onNavigateToProject={(projectId) => {
-              setActiveView('projects');
-            }}
-            onNavigateToCalendar={(eventId) => {
-              setActiveView('calendar');
-            }}
-          />
-        </main>
-      ) : activeView === 'chat' ? (
+      {activeView === 'chat' ? (
         <main className="chat-area">
           {/* Channel Header */}
           <header className="chat-header">
@@ -4205,440 +3073,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </button>
             </form>
           </div>
-        </main>
-      ) : activeView === 'tasks' ? (
-        <main className="tasks-area">
-          {/* Tasks Header */}
-          <header className="tasks-header">
-            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
-              <span></span><span></span><span></span>
-            </button>
-            <h3>Tasks</h3>
-            <div className="tasks-filters">
-              <button
-                className={`filter-btn ${taskFilter === 'open' ? 'active' : ''}`}
-                onClick={() => setTaskFilter('open')}
-              >
-                Open ({allTasks.filter(t => t.status !== 'done').length})
-              </button>
-              <button
-                className={`filter-btn ${taskFilter === 'my' ? 'active' : ''}`}
-                onClick={() => setTaskFilter('my')}
-              >
-                My Tasks
-              </button>
-              <button
-                className={`filter-btn ${taskFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setTaskFilter('all')}
-              >
-                All
-              </button>
-            </div>
-            {/* View Mode Toggle - List, Kanban, Matrix */}
-            <div className="view-mode-toggle">
-              <button
-                className={`view-mode-btn ${tasksViewMode === 'list' ? 'active' : ''}`}
-                onClick={() => setTasksViewMode('list')}
-                title="List View"
-              >
-                ☰
-              </button>
-              <button
-                className={`view-mode-btn ${tasksViewMode === 'kanban' ? 'active' : ''}`}
-                onClick={() => setTasksViewMode('kanban')}
-                title="Kanban Board"
-              >
-                ▤
-              </button>
-              {isProModeEnabled && featureFlags.showEisenhowerMatrix && (
-                <button
-                  className={`view-mode-btn ${tasksViewMode === 'matrix' ? 'active' : ''}`}
-                  onClick={() => setTasksViewMode('matrix')}
-                  title="Priority Matrix"
-                >
-                  ⊞
-                </button>
-              )}
-            </div>
-            <div className="user-menu-container">
-              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
-                <span></span><span></span><span></span>
-              </button>
-              {showUserMenu && (
-                <>
-                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
-                  <div className="user-menu-dropdown">
-                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
-                    <a href="/terms" className="user-menu-item">Terms of Service</a>
-                    <a href="/help" className="user-menu-item">Help</a>
-                    {isSiteAdmin && (
-                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
-                    )}
-                    <div className="user-menu-divider"></div>
-                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
-                  </div>
-                </>
-              )}
-            </div>
-          </header>
-
-          {/* Tasks Content - List, Kanban, or Matrix View */}
-          {tasksViewMode === 'matrix' && isProModeEnabled && featureFlags.showEisenhowerMatrix ? (
-            <EisenhowerMatrix
-              teamId={teamId}
-              onClose={() => setTasksViewMode('list')}
-              onTaskClick={(taskId) => setSelectedTaskId(taskId)}
-            />
-          ) : tasksViewMode === 'kanban' ? (
-            <div className="kanban-board">
-              {/* Kanban columns by status */}
-              {['backlog', 'todo', 'in_progress', 'blocked', 'done'].map(status => {
-                const statusTasks = filteredTasks.filter(t => t.status === status);
-                const statusLabels = {
-                  backlog: 'Backlog',
-                  todo: 'To Do',
-                  in_progress: 'In Progress',
-                  blocked: 'Blocked',
-                  done: 'Done'
-                };
-                const statusIcons = {
-                  backlog: '📋',
-                  todo: '○',
-                  in_progress: '◐',
-                  blocked: '⛔',
-                  done: '✓'
-                };
-                return (
-                  <div key={status} className={`kanban-column status-${status}`}>
-                    <div className="kanban-column-header">
-                      <span className="kanban-status-icon">{statusIcons[status]}</span>
-                      <span className="kanban-status-label">{statusLabels[status]}</span>
-                      <span className="kanban-count">{statusTasks.length}</span>
-                    </div>
-                    <div className="kanban-column-tasks">
-                      {statusTasks.map(task => (
-                        <div
-                          key={task.id}
-                          className={`kanban-task priority-${task.priority || 'medium'}`}
-                          onClick={() => setSelectedTaskId(task.id)}
-                        >
-                          <div className="kanban-task-title">{task.title}</div>
-                          <div className="kanban-task-meta">
-                            {task.assignedToUser && (
-                              <span className="kanban-assignee" title={task.assignedToUser.displayName || task.assignedToUser.email}>
-                                {(task.assignedToUser.displayName || task.assignedToUser.email || '?')[0].toUpperCase()}
-                              </span>
-                            )}
-                            {task.dueAt && (
-                              <span className={`kanban-due ${new Date(task.dueAt) < new Date() && task.status !== 'done' ? 'overdue' : ''}`}>
-                                {new Date(task.dueAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {statusTasks.length === 0 && (
-                        <div className="kanban-empty">No tasks</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-          <div className="tasks-container">
-            {/* Inline Add Task */}
-            <div className="task-add-section">
-              {addingTask ? (
-                <div className="task-add-form">
-                  <div className="task-add-input-row">
-                    <span className="task-add-icon">○</span>
-                    <input
-                      ref={taskInputRef}
-                      type="text"
-                      value={newTaskTitle}
-                      onChange={(e) => setNewTaskTitle(e.target.value)}
-                      onKeyDown={handleTaskInputKeyDown}
-                      placeholder="Write a task name..."
-                      className="task-add-input"
-                    />
-                  </div>
-                  <div className="task-add-options">
-                    <select
-                      className="task-add-select"
-                      value={newTaskProjectId}
-                      onChange={(e) => setNewTaskProjectId(e.target.value)}
-                    >
-                      <option value="">No project</option>
-                      {projects.filter(p => p.status === 'active').map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                    <select
-                      className="task-add-select"
-                      value={newTaskGoalId}
-                      onChange={(e) => setNewTaskGoalId(e.target.value)}
-                    >
-                      <option value="">No goal</option>
-                      {goals.filter(g => g.status === 'active').map(g => (
-                        <option key={g.id} value={g.id}>{g.title}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="date"
-                      className="task-add-date"
-                      value={newTaskDueDate}
-                      onChange={(e) => setNewTaskDueDate(e.target.value)}
-                      placeholder="Due date"
-                    />
-                  </div>
-                  <div className="task-add-actions">
-                    <button
-                      className="task-cancel-btn"
-                      onClick={() => { setAddingTask(false); setNewTaskTitle(''); setNewTaskProjectId(''); setNewTaskGoalId(''); setNewTaskDueDate(''); }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="task-add-btn"
-                      onClick={handleCreateTask}
-                      disabled={!newTaskTitle.trim() || creatingTask}
-                    >
-                      {creatingTask ? 'Adding...' : 'Add Task'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button className="task-add-trigger" onClick={() => setAddingTask(true)}>
-                  <span className="task-add-icon">+</span>
-                  <span>Add task...</span>
-                </button>
-              )}
-            </div>
-
-            {tasks.length === 0 && !addingTask ? (
-              <div className="tasks-empty">
-                <div className="tasks-empty-icon">✓</div>
-                <h4>No tasks yet</h4>
-                <p>Add a task above or use <code>@raven task</code> in chat</p>
-                <div className="tasks-empty-suggestions">
-                  <button className="suggestion-btn" onClick={() => setAddingTask(true)}>
-                    Create your first task
-                  </button>
-                  <button className="suggestion-btn" onClick={() => { setActiveView('chat'); setMessageInput('@raven task '); }}>
-                    Ask Raven to create a task
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="tasks-sections">
-                {/* Bulk Actions Bar */}
-                {bulkSelectedTaskIds.size > 0 && (
-                  <div className="bulk-actions-bar">
-                    <span className="bulk-count">{bulkSelectedTaskIds.size} selected</span>
-                    <div className="bulk-actions">
-                      <button className="bulk-action-btn" onClick={handleBulkComplete} title="Complete selected">
-                        ✓ Complete
-                      </button>
-                      <button className="bulk-action-btn" onClick={() => handleBulkStatusChange('in_progress')}>
-                        ▶ In Progress
-                      </button>
-                      <button className="bulk-action-btn" onClick={() => handleBulkStatusChange('todo')}>
-                        ○ To Do
-                      </button>
-                      <select
-                        className="bulk-priority-select"
-                        onChange={(e) => e.target.value && handleBulkPriorityChange(e.target.value)}
-                        defaultValue=""
-                      >
-                        <option value="" disabled>Priority...</option>
-                        <option value="critical">Critical</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                      </select>
-                    </div>
-                    <button className="bulk-clear-btn" onClick={clearBulkSelection}>
-                      × Clear
-                    </button>
-                  </div>
-                )}
-
-                {/* Bulk Select Toggle */}
-                <div className="bulk-select-toggle">
-                  <label className="toggle-label">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelectMode}
-                      onChange={(e) => {
-                        setBulkSelectMode(e.target.checked);
-                        if (!e.target.checked) clearBulkSelection();
-                      }}
-                    />
-                    <span>Select multiple</span>
-                  </label>
-                  {bulkSelectMode && tasks.length > 0 && (
-                    <button
-                      className="select-all-btn"
-                      onClick={() => selectAllTasks(tasks)}
-                    >
-                      Select all ({tasks.length})
-                    </button>
-                  )}
-                </div>
-
-                {/* Task Item Renderer */}
-                {(() => {
-                  const renderTaskItem = (task) => (
-                    <div
-                      key={task.id}
-                      className={`task-item ${task.status} priority-${task.priority || 'medium'} ${selectedTaskId === task.id ? 'selected' : ''} ${bulkSelectedTaskIds.has(task.id) ? 'bulk-selected' : ''}`}
-                      onClick={() => bulkSelectMode ? toggleBulkSelect(task.id) : setSelectedTaskId(task.id)}
-                    >
-                      {bulkSelectMode && (
-                        <input
-                          type="checkbox"
-                          className="task-checkbox"
-                          checked={bulkSelectedTaskIds.has(task.id)}
-                          onChange={() => toggleBulkSelect(task.id)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      )}
-                      <div className="task-content">
-                        <span className="task-title">{task.title}</span>
-                        <div className="task-meta">
-                          {task.priority && task.priority !== 'medium' && (
-                            <span className={`task-priority priority-${task.priority}`}>
-                              {task.priority}
-                            </span>
-                          )}
-                          {task.project && (
-                            <span className="task-project">{task.project.name}</span>
-                          )}
-                          {task.assignedToUser && (
-                            <span className="task-assignee">
-                              {task.assignedToUser.displayName || task.assignedToUser.email}
-                            </span>
-                          )}
-                          {task.dueAt && (
-                            <span className={`task-due ${new Date(task.dueAt) < new Date() ? 'overdue' : ''}`}>
-                              {new Date(task.dueAt).toLocaleDateString()}
-                            </span>
-                          )}
-                          {task.status === 'done' && task.completedAt && (
-                            <span className="task-completed-at">
-                              Completed {new Date(task.completedAt).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="task-status-wrapper">
-                        <button
-                          className={`task-status-icon ${task.status}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setStatusPopupTaskId(statusPopupTaskId === task.id ? null : task.id);
-                          }}
-                          title={statusConfig[task.status]?.label || task.status}
-                        >
-                          {statusConfig[task.status]?.icon || '○'}
-                        </button>
-                        {statusPopupTaskId === task.id && (
-                          <div className="status-popup" onClick={(e) => e.stopPropagation()}>
-                            {Object.entries(statusConfig).map(([status, config]) => (
-                              <button
-                                key={status}
-                                className={`status-option ${task.status === status ? 'active' : ''}`}
-                                onClick={() => handleStatusChange(task.id, status)}
-                              >
-                                <span className="status-option-icon" style={{ color: config.color }}>{config.icon}</span>
-                                <span className="status-option-label">{config.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-
-                  return (
-                    <>
-                      {/* Blocked Section */}
-                      {blockedTasks.length > 0 && (
-                        <div className="task-section">
-                          <div className="task-section-header">
-                            <span className="section-indicator blocked"></span>
-                            <span className="section-title">Blocked</span>
-                            <span className="section-count">{blockedTasks.length}</span>
-                          </div>
-                          <div className="tasks-list">
-                            {blockedTasks.map(renderTaskItem)}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* In Progress Section */}
-                      {inProgressTasks.length > 0 && (
-                        <div className="task-section">
-                          <div className="task-section-header">
-                            <span className="section-indicator in-progress"></span>
-                            <span className="section-title">In Progress</span>
-                            <span className="section-count">{inProgressTasks.length}</span>
-                          </div>
-                          <div className="tasks-list">
-                            {inProgressTasks.map(renderTaskItem)}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* To Do Section */}
-                      {todoTasks.length > 0 && (
-                        <div className="task-section">
-                          <div className="task-section-header">
-                            <span className="section-indicator todo"></span>
-                            <span className="section-title">To Do</span>
-                            <span className="section-count">{todoTasks.length}</span>
-                          </div>
-                          <div className="tasks-list">
-                            {todoTasks.map(renderTaskItem)}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Backlog Section */}
-                      {backlogTasks.length > 0 && (
-                        <div className="task-section">
-                          <div className="task-section-header">
-                            <span className="section-indicator backlog"></span>
-                            <span className="section-title">Backlog</span>
-                            <span className="section-count">{backlogTasks.length}</span>
-                          </div>
-                          <div className="tasks-list">
-                            {backlogTasks.map(renderTaskItem)}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Completed Section (only in "all" filter) */}
-                      {taskFilter === 'all' && doneTasks.length > 0 && (
-                        <div className="task-section completed-section">
-                          <div className="task-section-header">
-                            <span className="section-indicator done"></span>
-                            <span className="section-title">Completed</span>
-                            <span className="section-count">{doneTasks.length}</span>
-                          </div>
-                          <div className="tasks-list">
-                            {doneTasks.map(renderTaskItem)}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-          )}
         </main>
       ) : activeView === 'ask' ? (
         <main className="ask-area">
@@ -5183,37 +3617,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </button>
             </form>
           </div>
-        </main>
-      ) : activeView === 'calendar' ? (
-        <main className="calendar-area">
-          <header className="calendar-header-bar">
-            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
-              <span></span><span></span><span></span>
-            </button>
-            <h3>Calendar</h3>
-            <div className="header-spacer"></div>
-            <div className="user-menu-container">
-              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
-                <span></span><span></span><span></span>
-              </button>
-              {showUserMenu && (
-                <>
-                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
-                  <div className="user-menu-dropdown">
-                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
-                    <a href="/terms" className="user-menu-item">Terms of Service</a>
-                    <a href="/help" className="user-menu-item">Help</a>
-                    {isSiteAdmin && (
-                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
-                    )}
-                    <div className="user-menu-divider"></div>
-                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
-                  </div>
-                </>
-              )}
-            </div>
-          </header>
-          <CalendarView teamId={teamId} />
         </main>
       ) : activeView === 'knowledge' ? (
         <main className="knowledge-area">
@@ -5860,1076 +4263,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             )}
           </div>
         </main>
-      ) : activeView === 'goals' ? (
-        <main className="goals-area">
-          {/* Goals Header */}
-          <header className="goals-header">
-            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
-              <span></span><span></span><span></span>
-            </button>
-            <h3>Goals</h3>
-            <button className="btn-primary btn-small" onClick={() => setShowCreateGoal(true)}>
-              + New Goal
-            </button>
-            {/* View Mode Toggle */}
-            <div className="view-mode-toggle">
-              <button
-                className={`view-mode-btn ${goalsViewMode === 'tree' ? 'active' : ''}`}
-                onClick={() => setGoalsViewMode('tree')}
-                title="Tree View"
-              >
-                🌳
-              </button>
-              <button
-                className={`view-mode-btn ${goalsViewMode === 'list' ? 'active' : ''}`}
-                onClick={() => setGoalsViewMode('list')}
-                title="List View"
-              >
-                ☰
-              </button>
-            </div>
-            <div className="header-spacer"></div>
-            <div className="user-menu-container">
-              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
-                <span></span><span></span><span></span>
-              </button>
-              {showUserMenu && (
-                <>
-                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
-                  <div className="user-menu-dropdown">
-                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
-                    <a href="/terms" className="user-menu-item">Terms of Service</a>
-                    <a href="/help" className="user-menu-item">Help</a>
-                    {isSiteAdmin && (
-                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
-                    )}
-                    <div className="user-menu-divider"></div>
-                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
-                  </div>
-                </>
-              )}
-            </div>
-          </header>
-
-          <div className="goals-content">
-            {/* Create Goal Modal */}
-            {showCreateGoal && (
-              <div className="modal-overlay" onClick={() => { setShowCreateGoal(false); setNewGoalParentId(''); }}>
-                <div className="modal" onClick={(e) => e.stopPropagation()}>
-                  <h3>{newGoalParentId ? 'Create Sub-Goal' : 'Create Goal'}</h3>
-                  {newGoalParentId && (
-                    <div className="parent-goal-indicator">
-                      <span>Parent: </span>
-                      <strong>{goals.find(g => g.id === newGoalParentId)?.title || 'Unknown'}</strong>
-                    </div>
-                  )}
-                  <form onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!newGoalTitle.trim() || creatingGoal) return;
-                    setCreatingGoal(true);
-                    try {
-                      await createGoal({
-                        variables: {
-                          teamId,
-                          input: {
-                            title: newGoalTitle.trim(),
-                            targetDate: newGoalTargetDate ? new Date(newGoalTargetDate + 'T00:00:00').toISOString() : null,
-                            parentGoalId: newGoalParentId || null
-                          }
-                        }
-                      });
-                      setNewGoalTitle('');
-                      setNewGoalTargetDate('');
-                      setNewGoalParentId('');
-                      setShowCreateGoal(false);
-                      refetchGoals();
-                    } catch (err) {
-                      toast.error('Failed to create goal: ' + err.message);
-                    } finally {
-                      setCreatingGoal(false);
-                    }
-                  }}>
-                    <input
-                      type="text"
-                      className="input-field"
-                      placeholder={newGoalParentId ? "Sub-goal title" : "Goal title (e.g., Launch Q1 product line)"}
-                      value={newGoalTitle}
-                      onChange={(e) => setNewGoalTitle(e.target.value)}
-                      autoFocus
-                    />
-                    <input
-                      type="date"
-                      className="input-field"
-                      style={{ marginTop: '0.75rem' }}
-                      value={newGoalTargetDate}
-                      onChange={(e) => setNewGoalTargetDate(e.target.value)}
-                    />
-                    {!newGoalParentId && (
-                      <select
-                        className="input-field"
-                        style={{ marginTop: '0.75rem' }}
-                        value={newGoalParentId}
-                        onChange={(e) => setNewGoalParentId(e.target.value)}
-                      >
-                        <option value="">Top-level goal (no parent)</option>
-                        {goals.map(g => (
-                          <option key={g.id} value={g.id}>{g.title}</option>
-                        ))}
-                      </select>
-                    )}
-                    <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => { setShowCreateGoal(false); setNewGoalParentId(''); }} disabled={creatingGoal}>
-                        Cancel
-                      </button>
-                      <button type="submit" className="btn-primary" disabled={!newGoalTitle.trim() || creatingGoal}>
-                        {creatingGoal ? 'Creating...' : (newGoalParentId ? 'Create Sub-Goal' : 'Create Goal')}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* Create Project Modal */}
-            {showCreateProject && (
-              <div className="modal-overlay" onClick={() => setShowCreateProject(false)}>
-                <div className="modal" onClick={(e) => e.stopPropagation()}>
-                  <h3>Create Project</h3>
-                  <form onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!newProjectName.trim() || creatingProject) return;
-                    setCreatingProject(true);
-                    try {
-                      await createProject({
-                        variables: {
-                          teamId,
-                          input: {
-                            name: newProjectName.trim(),
-                            goalIds: newProjectGoalId ? [newProjectGoalId] : [],
-                            dueDate: newProjectDueDate ? new Date(newProjectDueDate).toISOString() : null
-                          }
-                        }
-                      });
-                      setNewProjectName('');
-                      setNewProjectGoalId('');
-                      setNewProjectDueDate('');
-                      setShowCreateProject(false);
-                      refetchProjects();
-                      refetchGoals();
-                    } catch (err) {
-                      toast.error('Failed to create project: ' + err.message);
-                    } finally {
-                      setCreatingProject(false);
-                    }
-                  }}>
-                    <input
-                      type="text"
-                      className="input-field"
-                      placeholder="Project name"
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
-                      autoFocus
-                    />
-                    <input
-                      type="date"
-                      className="input-field"
-                      style={{ marginTop: '0.75rem' }}
-                      placeholder="Due date (optional)"
-                      value={newProjectDueDate}
-                      onChange={(e) => setNewProjectDueDate(e.target.value)}
-                    />
-                    <select
-                      className="input-field"
-                      style={{ marginTop: '0.75rem' }}
-                      value={newProjectGoalId}
-                      onChange={(e) => setNewProjectGoalId(e.target.value)}
-                    >
-                      <option value="">No goal (standalone)</option>
-                      {goals.map(g => (
-                        <option key={g.id} value={g.id}>{g.title}</option>
-                      ))}
-                    </select>
-                    <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => setShowCreateProject(false)} disabled={creatingProject}>
-                        Cancel
-                      </button>
-                      <button type="submit" className="btn-primary" disabled={!newProjectName.trim() || creatingProject}>
-                        {creatingProject ? 'Creating...' : 'Create Project'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* Goals View - Tree or List */}
-            {goalsViewMode === 'tree' ? (
-              <GoalTree
-                goals={goals}
-                onSelect={(goal) => setSelectedGoalId(goal?.id)}
-                onAddChild={(parentId) => {
-                  // Pre-fill parent goal when creating child
-                  setNewGoalTitle('');
-                  setNewGoalTargetDate('');
-                  setNewGoalParentId(parentId);
-                  setShowCreateGoal(true);
-                }}
-                onAddRoot={() => {
-                  setNewGoalParentId('');
-                  setShowCreateGoal(true);
-                }}
-                selectedGoalId={selectedGoalId}
-              />
-            ) : goals.length === 0 ? (
-              <div className="goals-empty">
-                <div className="goals-empty-icon">🎯</div>
-                <h4>No goals yet</h4>
-                <p>Goals help you track high-level objectives. Projects and tasks roll up to goals.</p>
-                <button className="btn-primary" onClick={() => setShowCreateGoal(true)}>
-                  Create Your First Goal
-                </button>
-              </div>
-            ) : (
-              <div className="goals-list">
-                {goals.map(goal => (
-                  <div key={goal.id} className={`goal-card ${goal.status}`}>
-                    <div className="goal-header">
-                      <div className="goal-status-badge">{goal.status}</div>
-                      <h4 className="goal-title">{goal.title}</h4>
-                      {goal.targetDate && (
-                        <span className="goal-target">
-                          Target: {new Date(goal.targetDate).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-
-                    {goal.description && (
-                      <p className="goal-description">{goal.description}</p>
-                    )}
-
-                    {/* Progress Bar */}
-                    <div className="goal-progress">
-                      <div className="progress-bar">
-                        <div className="progress-fill" style={{ width: `${goal.progress}%` }}></div>
-                      </div>
-                      <span className="progress-text">{goal.progress}%</span>
-                    </div>
-
-                    {/* Linked Projects */}
-                    <div className="goal-projects">
-                      <div className="projects-header">
-                        <span className="projects-label">Projects ({goal.projects?.length || 0})</span>
-                        <button
-                          className="btn-link"
-                          onClick={() => {
-                            setNewProjectGoalId(goal.id);
-                            setShowCreateProject(true);
-                          }}
-                        >
-                          + Add Project
-                        </button>
-                      </div>
-                      {goal.projects?.length > 0 && (
-                        <div className="projects-list-compact">
-                          {goal.projects.map(proj => (
-                            <div key={proj.id} className="project-chip">
-                              <span className="project-name">{proj.name}</span>
-                              <span className="project-progress">
-                                {proj.completedTaskCount}/{proj.taskCount} tasks
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Goal Actions */}
-                    <div className="goal-actions">
-                      {goal.status === 'active' && (
-                        <>
-                          <button
-                            className="btn-small btn-success"
-                            onClick={async () => {
-                              await updateGoal({ variables: { goalId: goal.id, input: { status: 'achieved' } } });
-                              refetchGoals();
-                            }}
-                          >
-                            ✓ Mark Achieved
-                          </button>
-                          <button
-                            className="btn-small btn-secondary"
-                            onClick={async () => {
-                              await updateGoal({ variables: { goalId: goal.id, input: { status: 'paused' } } });
-                              refetchGoals();
-                            }}
-                          >
-                            Pause
-                          </button>
-                        </>
-                      )}
-                      {goal.status === 'paused' && (
-                        <button
-                          className="btn-small btn-primary"
-                          onClick={async () => {
-                            await updateGoal({ variables: { goalId: goal.id, input: { status: 'active' } } });
-                            refetchGoals();
-                          }}
-                        >
-                          Resume
-                        </button>
-                      )}
-                      {goal.status === 'achieved' && (
-                        <span className="achieved-badge">🏆 Achieved!</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="goals-footer">
-              <button className="btn-secondary" onClick={() => setShowCreateProject(true)}>
-                + New Project
-              </button>
-            </div>
-          </div>
-        </main>
-      ) : activeView === 'projects' ? (
-        <main className="projects-area">
-          {/* Projects Header */}
-          <header className="projects-header">
-            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
-              <span></span><span></span><span></span>
-            </button>
-            <h3>Projects</h3>
-            <button className="btn-primary btn-small" onClick={() => setShowCreateProject(true)}>
-              + New Project
-            </button>
-            {/* View Mode Toggle - List/Board/Gantt/WBS (Pro Mode) */}
-            {isProModeEnabled && (featureFlags.showGanttChart || featureFlags.showWBS) && (
-              <div className="view-mode-toggle">
-                <button
-                  className={`view-mode-btn ${projectsViewMode === 'list' ? 'active' : ''}`}
-                  onClick={() => setProjectsViewMode('list')}
-                  title="List View"
-                >
-                  ☰
-                </button>
-                <button
-                  className={`view-mode-btn ${projectsViewMode === 'board' ? 'active' : ''}`}
-                  onClick={() => setProjectsViewMode('board')}
-                  title="Board View"
-                >
-                  ⊞
-                </button>
-                {featureFlags.showGanttChart && (
-                  <button
-                    className={`view-mode-btn ${projectsViewMode === 'gantt' ? 'active' : ''}`}
-                    onClick={() => setProjectsViewMode('gantt')}
-                    title="Timeline/Gantt"
-                  >
-                    ▤
-                  </button>
-                )}
-                {featureFlags.showWBS && (
-                  <button
-                    className={`view-mode-btn ${projectsViewMode === 'wbs' ? 'active' : ''}`}
-                    onClick={() => setProjectsViewMode('wbs')}
-                    title="Work Breakdown Structure"
-                  >
-                    🌳
-                  </button>
-                )}
-              </div>
-            )}
-            <div className="header-spacer"></div>
-            <div className="user-menu-container">
-              <button className="user-menu-btn" onClick={() => setShowUserMenu(!showUserMenu)} aria-label="User menu">
-                <span></span><span></span><span></span>
-              </button>
-              {showUserMenu && (
-                <>
-                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
-                  <div className="user-menu-dropdown">
-                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
-                    <a href="/terms" className="user-menu-item">Terms of Service</a>
-                    <a href="/help" className="user-menu-item">Help</a>
-                    {isSiteAdmin && (
-                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
-                    )}
-                    <div className="user-menu-divider"></div>
-                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
-                  </div>
-                </>
-              )}
-            </div>
-          </header>
-
-          {/* Projects Content - List, Board, Gantt, or WBS View */}
-          {projectsViewMode === 'gantt' && isProModeEnabled && featureFlags.showGanttChart ? (
-            <GanttChart
-              teamId={teamId}
-              onClose={() => setProjectsViewMode('list')}
-              onTaskClick={(taskId) => setSelectedTaskId(taskId)}
-            />
-          ) : projectsViewMode === 'wbs' && isProModeEnabled && featureFlags.showWBS ? (
-            <div className="wbs-view-container">
-              {/* WBS Mode Toggle - Draft Editor vs Project View */}
-              <div className="wbs-mode-toggle">
-                <button
-                  className={`wbs-mode-btn ${wbsMode === 'draft' ? 'active' : ''}`}
-                  onClick={() => setWbsMode('draft')}
-                >
-                  🤖 Draft Editor
-                </button>
-                <button
-                  className={`wbs-mode-btn ${wbsMode === 'project' ? 'active' : ''}`}
-                  onClick={() => setWbsMode('project')}
-                >
-                  📋 Project View
-                </button>
-              </div>
-
-              {wbsMode === 'draft' ? (
-                <WBSDraftEditor
-                  teamId={teamId}
-                  onClose={() => setProjectsViewMode('list')}
-                  onMaterialized={(result) => {
-                    toast.success(`Created project "${result.project.name}" with ${result.tasksCreated} tasks`);
-                    refetchProjects();
-                  }}
-                />
-              ) : (
-                <>
-                  {/* Project selector for Project WBS View */}
-                  <div className="wbs-project-selector">
-                    <label>Select Project:</label>
-                    <select
-                      className="input-field"
-                      value={wbsProjectId || ''}
-                      onChange={(e) => setWbsProjectId(e.target.value || null)}
-                    >
-                      <option value="">-- Select a project --</option>
-                      {projects.map(project => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {wbsProjectId ? (
-                    <WorkBreakdownStructure
-                      projectId={wbsProjectId}
-                      teamId={teamId}
-                      onClose={() => setProjectsViewMode('list')}
-                      onTaskClick={(taskId) => setSelectedTaskId(taskId)}
-                    />
-                  ) : (
-                    <div className="wbs-empty-state">
-                      <div className="wbs-empty-icon">🌳</div>
-                      <h4>Work Breakdown Structure</h4>
-                      <p>Select a project above to view its hierarchical breakdown</p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-          <div className="projects-content">
-            {/* Create Project Modal */}
-            {showCreateProject && (
-              <div className="modal-overlay" onClick={() => setShowCreateProject(false)}>
-                <div className="modal" onClick={(e) => e.stopPropagation()}>
-                  <h3>Create Project</h3>
-                  <form onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!newProjectName.trim() || creatingProject) return;
-                    setCreatingProject(true);
-                    try {
-                      await createProject({
-                        variables: {
-                          teamId,
-                          input: {
-                            name: newProjectName.trim(),
-                            goalIds: newProjectGoalId ? [newProjectGoalId] : [],
-                            dueDate: newProjectDueDate ? new Date(newProjectDueDate).toISOString() : null
-                          }
-                        }
-                      });
-                      setNewProjectName('');
-                      setNewProjectGoalId('');
-                      setNewProjectDueDate('');
-                      setShowCreateProject(false);
-                      refetchProjects();
-                    } catch (err) {
-                      toast.error('Failed to create project: ' + err.message);
-                    } finally {
-                      setCreatingProject(false);
-                    }
-                  }}>
-                    <input
-                      type="text"
-                      className="input-field"
-                      placeholder="Project name"
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
-                      autoFocus
-                    />
-                    <input
-                      type="date"
-                      className="input-field"
-                      style={{ marginTop: '0.75rem' }}
-                      placeholder="Due date (optional)"
-                      value={newProjectDueDate}
-                      onChange={(e) => setNewProjectDueDate(e.target.value)}
-                    />
-                    <select
-                      className="input-field"
-                      style={{ marginTop: '0.75rem' }}
-                      value={newProjectGoalId}
-                      onChange={(e) => setNewProjectGoalId(e.target.value)}
-                    >
-                      <option value="">No goal (standalone)</option>
-                      {goals.map(g => (
-                        <option key={g.id} value={g.id}>{g.title}</option>
-                      ))}
-                    </select>
-                    <div className="form-actions">
-                      <button type="button" className="btn-secondary" onClick={() => setShowCreateProject(false)} disabled={creatingProject}>
-                        Cancel
-                      </button>
-                      <button type="submit" className="btn-primary" disabled={!newProjectName.trim() || creatingProject}>
-                        {creatingProject ? 'Creating...' : 'Create Project'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* Projects List */}
-            {projects.length === 0 ? (
-              <div className="projects-empty">
-                <div className="projects-empty-icon">📁</div>
-                <h4>No projects yet</h4>
-                <p>Projects help you organize tasks and track progress toward goals.</p>
-                <button className="btn-primary" onClick={() => setShowCreateProject(true)}>
-                  Create Your First Project
-                </button>
-              </div>
-            ) : (
-              <div className="all-projects-grid">
-                {projects.map(proj => (
-                  <div key={proj.id} className={`project-card-full ${proj.status}`} style={{ borderLeftColor: proj.color || '#5D4B8C' }}>
-                    <div className="project-card-header">
-                      <h4>{proj.name}</h4>
-                      <span className={`project-status-badge ${proj.status}`}>{proj.status}</span>
-                    </div>
-                    {proj.description && (
-                      <p className="project-description">{proj.description}</p>
-                    )}
-                    <div className="project-stats">
-                      <div className="stat">
-                        <span className="stat-value">{proj.taskCount || 0}</span>
-                        <span className="stat-label">Tasks</span>
-                      </div>
-                      <div className="stat">
-                        <span className="stat-value">{proj.completedTaskCount || 0}</span>
-                        <span className="stat-label">Done</span>
-                      </div>
-                      {proj.dueDate && (
-                        <div className="stat">
-                          <span className="stat-value">{new Date(proj.dueDate).toLocaleDateString()}</span>
-                          <span className="stat-label">Due</span>
-                        </div>
-                      )}
-                    </div>
-                    {proj.goals?.length > 0 && (
-                      <div className="project-goals">
-                        <span className="goals-label">Goals:</span>
-                        {proj.goals.map(g => (
-                          <span key={g.id} className="goal-tag">{g.title}</span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="project-progress-bar">
-                      <div
-                        className="progress-fill"
-                        style={{ width: `${proj.taskCount ? (proj.completedTaskCount / proj.taskCount) * 100 : 0}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          )}
-        </main>
-      ) : activeView === 'insights' ? (
-        <main className="main-content insights-view">
-          <header className="view-header">
-            <h2>📊 My Workload & Insights</h2>
-          </header>
-
-          <div className="insights-content">
-            {/* Workload Overview */}
-            {workload && (
-              <div className={`insights-card workload-card workload-${workload.workloadLevel}`}>
-                <h3>This Week's Workload</h3>
-                <div className="workload-stats">
-                  <div className="stat">
-                    <span className="stat-value">{workload.tasksDue}</span>
-                    <span className="stat-label">Tasks Due</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-value">{workload.estimatedTaskHours}h</span>
-                    <span className="stat-label">Est. Work</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-value">{workload.meetingHours}h</span>
-                    <span className="stat-label">Meetings</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-value">{workload.availableHours}h</span>
-                    <span className="stat-label">Available</span>
-                  </div>
-                </div>
-                <div className="workload-indicator">
-                  <span className={`workload-badge ${workload.workloadLevel}`}>
-                    {workload.workloadLevel === 'overloaded' ? '🔴' :
-                     workload.workloadLevel === 'heavy' ? '🟡' :
-                     workload.workloadLevel === 'light' ? '🔵' : '🟢'} {workload.workloadLevel}
-                  </span>
-                </div>
-                <p className="workload-recommendation">{workload.recommendation}</p>
-              </div>
-            )}
-
-            {/* Nudges Section */}
-            <div className="insights-card nudges-card">
-              <h3>🔔 Attention Needed</h3>
-              {nudges.length > 0 ? (
-                <div className="nudges-list">
-                  {nudges.map((nudge) => (
-                    <div key={nudge.id} className={`nudge-item nudge-${nudge.priority}`}>
-                      <span className="nudge-type-icon">
-                        {nudge.nudgeType === 'overdue_task' ? '⚠️' :
-                         nudge.nudgeType === 'upcoming_deadline' ? '⏰' :
-                         nudge.nudgeType === 'stale_task' ? '😴' :
-                         nudge.nudgeType === 'meeting_prep' ? '📋' : '💡'}
-                      </span>
-                      <div className="nudge-content">
-                        <strong>{nudge.title}</strong>
-                        <p>{nudge.message}</p>
-                        {nudge.suggestedActions && (
-                          <div className="nudge-actions">
-                            {nudge.suggestedActions.slice(0, 2).map((action, i) => (
-                              <button key={i} className="btn-small">{action.label}</button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        className="nudge-dismiss-btn"
-                        onClick={() => {
-                          dismissNudgeMutation({ variables: { nudgeId: nudge.id } })
-                            .then(() => refetchNudges());
-                        }}
-                      >×</button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="no-nudges">✨ All clear! No attention items right now.</p>
-              )}
-            </div>
-
-            {/* Quick Actions */}
-            <div className="insights-card actions-card">
-              <h3>⚡ Quick Actions</h3>
-              <div className="quick-actions">
-                <button
-                  className="quick-action-btn"
-                  onClick={async () => {
-                    setGeneratingFocus(true);
-                    try {
-                      const { data } = await generateMorningFocusMutation({ variables: { teamId } });
-                      if (data?.generateMorningFocus) {
-                        setMorningFocus(data.generateMorningFocus);
-                        setShowMorningFocus(true);
-                      }
-                    } catch (err) {
-                      console.error('Failed to generate morning focus:', err);
-                    }
-                    setGeneratingFocus(false);
-                  }}
-                  disabled={generatingFocus}
-                >
-                  <span className="action-icon">{generatingFocus ? '⏳' : '🌅'}</span>
-                  <span>{generatingFocus ? 'Generating...' : 'Generate Morning Focus'}</span>
-                </button>
-                <button
-                  className="quick-action-btn"
-                  onClick={() => setActiveView('tasks')}
-                >
-                  <span className="action-icon">📋</span>
-                  <span>View Tasks</span>
-                </button>
-                <button
-                  className="quick-action-btn"
-                  onClick={() => setActiveView('calendar')}
-                >
-                  <span className="action-icon">📅</span>
-                  <span>View Calendar</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </main>
-      ) : activeView === 'workload' ? (
-        <TeamWorkload
-          teamId={teamId}
-          onClose={() => setSidebarOpen(true)}
-        />
-      ) : activeView === 'eisenhower' ? (
-        <EisenhowerMatrix
-          teamId={teamId}
-          onClose={() => setSidebarOpen(true)}
-          onTaskClick={(taskId) => setSelectedTaskId(taskId)}
-        />
-      ) : activeView === 'gantt' ? (
-        <GanttChart
-          teamId={teamId}
-          onClose={() => setSidebarOpen(true)}
-          onTaskClick={(taskId) => setSelectedTaskId(taskId)}
-        />
-      ) : activeView === 'timeblocks' ? (
-        <TimeBlocks
-          teamId={teamId}
-          onClose={() => setSidebarOpen(true)}
-        />
-      ) : activeView === 'milestones' ? (
-        <Milestones
-          teamId={teamId}
-          onClose={() => setSidebarOpen(true)}
-        />
       ) : null}
 
-      {/* Task Detail Panel (Slide-over) */}
-      {selectedTaskId && selectedTask && (
-        <div className="task-detail-overlay" onClick={() => setSelectedTaskId(null)}>
-          <div className="task-detail-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="task-detail-header">
-              <button className="close-btn" onClick={() => setSelectedTaskId(null)}>×</button>
-              <div className={`task-status-badge ${selectedTask.status}`}>{selectedTask.status.replace('_', ' ')}</div>
-              <h3>{selectedTask.title}</h3>
-            </div>
-
-            <div className="task-detail-body">
-              {/* Task Properties */}
-              <div className="task-properties">
-                <div className="property-row">
-                  <span className="property-label">Status</span>
-                  <select
-                    className="property-value"
-                    value={selectedTask.status}
-                    onChange={async (e) => {
-                      const newStatus = e.target.value;
-                      if (newStatus === 'done') {
-                        await completeTask({ variables: { taskId: selectedTaskId } });
-                      } else {
-                        await updateTask({ variables: { taskId: selectedTaskId, input: { status: newStatus } } });
-                      }
-                      refetchTaskDetail();
-                      refetchTasks();
-                    }}
-                  >
-                    <option value="backlog">Backlog</option>
-                    <option value="todo">To Do</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="done">Done</option>
-                  </select>
-                </div>
-
-                <div className="property-row">
-                  <span className="property-label">Priority</span>
-                  <select
-                    className="property-value"
-                    value={selectedTask.priority}
-                    onChange={async (e) => {
-                      await updateTask({ variables: { taskId: selectedTaskId, input: { priority: e.target.value } } });
-                      refetchTaskDetail();
-                      refetchTasks();
-                    }}
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </div>
-
-                <div className="property-row">
-                  <span className="property-label">Assignee</span>
-                  <span className="property-value">
-                    {selectedTask.assignedToUser?.displayName || selectedTask.assignedToUser?.email || 'Unassigned'}
-                  </span>
-                </div>
-
-                <div className="property-row">
-                  <span className="property-label">Due Date</span>
-                  <input
-                    type="date"
-                    className="property-value"
-                    value={selectedTask.dueAt ? new Date(selectedTask.dueAt).toISOString().split('T')[0] : ''}
-                    onChange={async (e) => {
-                      await updateTask({
-                        variables: {
-                          taskId: selectedTaskId,
-                          input: { dueAt: e.target.value ? new Date(e.target.value).toISOString() : null }
-                        }
-                      });
-                      refetchTaskDetail();
-                      refetchTasks();
-                    }}
-                  />
-                </div>
-
-                {selectedTask.project && (
-                  <div className="property-row">
-                    <span className="property-label">Project</span>
-                    <span className="property-value project-badge" style={{ borderColor: selectedTask.project.color }}>
-                      {selectedTask.project.name}
-                    </span>
-                  </div>
-                )}
-
-                {/* Goals */}
-                <div className="property-row property-row-goals">
-                  <span className="property-label">Goals</span>
-                  <div className="goals-tags-container">
-                    {/* Show effective goals (inherited + direct) */}
-                    {selectedTask.goals?.length > 0 ? (
-                      <div className="goals-tags">
-                        {selectedTask.goals.map(goal => (
-                          <span
-                            key={goal.id}
-                            className={`goal-tag ${goal.linkType}`}
-                            title={goal.linkType === 'inherited' ? 'Inherited from project' : 'Direct link'}
-                          >
-                            {goal.title}
-                            {goal.linkType === 'inherited' && <span className="inherited-indicator">↓</span>}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="no-goals-text">No goals linked</span>
-                    )}
-
-                    {/* Goal selector for direct links */}
-                    <select
-                      className="goal-selector"
-                      value=""
-                      onChange={async (e) => {
-                        if (!e.target.value) return;
-                        const currentDirectIds = selectedTask.directGoals?.map(g => g.id) || [];
-                        const newGoalIds = [...currentDirectIds, e.target.value];
-                        await setTaskGoals({
-                          variables: { taskId: selectedTaskId, goalIds: newGoalIds }
-                        });
-                        refetchTaskDetail();
-                        refetchGoals();
-                      }}
-                    >
-                      <option value="">+ Add goal...</option>
-                      {goals
-                        .filter(g => g.status === 'active')
-                        .filter(g => !selectedTask.directGoals?.some(dg => dg.id === g.id))
-                        .map(goal => (
-                          <option key={goal.id} value={goal.id}>{goal.title}</option>
-                        ))
-                      }
-                    </select>
-
-                    {/* Remove direct goal buttons */}
-                    {selectedTask.directGoals?.length > 0 && (
-                      <div className="direct-goals-remove">
-                        {selectedTask.directGoals.map(goal => (
-                          <button
-                            key={goal.id}
-                            className="remove-goal-btn"
-                            title={`Remove ${goal.title}`}
-                            onClick={async () => {
-                              const newGoalIds = selectedTask.directGoals
-                                .filter(g => g.id !== goal.id)
-                                .map(g => g.id);
-                              await setTaskGoals({
-                                variables: { taskId: selectedTaskId, goalIds: newGoalIds }
-                              });
-                              refetchTaskDetail();
-                              refetchGoals();
-                            }}
-                          >
-                            × {goal.title}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Summary */}
-              <div className="task-summary-section">
-                <h4>Summary</h4>
-                <textarea
-                  className="task-summary-input"
-                  placeholder="Brief summary or objective of this task..."
-                  value={selectedTask.summary || ''}
-                  onChange={(e) => {
-                    // Update local state immediately for responsiveness
-                    // The actual save happens on blur
-                  }}
-                  onBlur={async (e) => {
-                    const newValue = e.target.value.trim();
-                    if (newValue !== (selectedTask.summary || '')) {
-                      await updateTask({
-                        variables: { taskId: selectedTaskId, input: { summary: newValue || null } }
-                      });
-                      refetchTaskDetail();
-                    }
-                  }}
-                  rows={2}
-                />
-              </div>
-
-              {/* Definition of Done */}
-              <div className="task-dod-section">
-                <h4>Definition of Done</h4>
-                <textarea
-                  className="task-dod-input"
-                  placeholder="Criteria that must be met for this task to be complete..."
-                  value={selectedTask.definitionOfDone || ''}
-                  onChange={(e) => {
-                    // Update local state immediately for responsiveness
-                  }}
-                  onBlur={async (e) => {
-                    const newValue = e.target.value.trim();
-                    if (newValue !== (selectedTask.definitionOfDone || '')) {
-                      await updateTask({
-                        variables: { taskId: selectedTaskId, input: { definitionOfDone: newValue || null } }
-                      });
-                      refetchTaskDetail();
-                    }
-                  }}
-                  rows={3}
-                />
-              </div>
-
-              {/* Description */}
-              {selectedTask.description && (
-                <div className="task-description-section">
-                  <h4>Description</h4>
-                  <p>{selectedTask.description}</p>
-                </div>
-              )}
-
-              {/* Comments */}
-              <div className="task-comments-section">
-                <h4>Comments ({selectedTask.comments?.length || 0})</h4>
-
-                {selectedTask.comments?.length > 0 ? (
-                  <div className="comments-list">
-                    {selectedTask.comments.map(comment => (
-                      <div key={comment.id} className="comment-item">
-                        <div className="comment-header">
-                          <span className="comment-author">
-                            {comment.user?.displayName || comment.user?.email || 'Unknown'}
-                          </span>
-                          <span className="comment-time">
-                            {new Date(comment.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                        <p className="comment-content">{comment.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="no-comments">No comments yet</p>
-                )}
-
-                {/* Add Comment Form */}
-                <form
-                  className="add-comment-form"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!taskComment.trim() || addingComment) return;
-                    setAddingComment(true);
-                    try {
-                      await addTaskComment({
-                        variables: {
-                          taskId: selectedTaskId,
-                          input: { content: taskComment.trim() }
-                        }
-                      });
-                      setTaskComment('');
-                      refetchTaskDetail();
-                    } catch (err) {
-                      toast.error('Failed to add comment: ' + err.message);
-                    } finally {
-                      setAddingComment(false);
-                    }
-                  }}
-                >
-                  <textarea
-                    className="comment-input"
-                    placeholder="Add a comment..."
-                    value={taskComment}
-                    onChange={(e) => setTaskComment(e.target.value)}
-                    rows={2}
-                  />
-                  <button type="submit" className="btn-primary btn-small" disabled={!taskComment.trim() || addingComment}>
-                    {addingComment ? 'Adding...' : 'Comment'}
-                  </button>
-                </form>
-              </div>
-
-              {/* Activity Log */}
-              {selectedTask.activity?.length > 0 && (
-                <div className="task-activity-section">
-                  <h4>Activity</h4>
-                  <div className="activity-list">
-                    {selectedTask.activity.slice(0, 10).map(act => (
-                      <div key={act.id} className="activity-item">
-                        <span className="activity-user">{act.user?.displayName || 'System'}</span>
-                        <span className="activity-action">
-                          {act.action === 'status_changed' && `changed status from ${act.oldValue} to ${act.newValue}`}
-                          {act.action === 'created' && 'created this task'}
-                          {act.action === 'assigned' && `assigned to ${act.newValue}`}
-                          {act.action === 'commented' && 'added a comment'}
-                          {act.action === 'due_date_set' && `set due date to ${act.newValue}`}
-                        </span>
-                        <span className="activity-time">
-                          {new Date(act.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="task-detail-footer">
-              <span className="task-created">
-                Created {new Date(selectedTask.createdAt).toLocaleDateString()}
-                {selectedTask.createdByUser && ` by ${selectedTask.createdByUser.displayName}`}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* PM Views removed - see git history */}
       {/* Keyboard Shortcuts Modal */}
       {showShortcuts && (
         <div className="shortcuts-modal-overlay" onClick={() => setShowShortcuts(false)}>
@@ -6948,7 +4284,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 <span className="shortcut-keys"><kbd className="kbd">Alt</kbd><kbd className="kbd">1</kbd></span>
               </div>
               <div className="shortcut-row">
-                <span className="shortcut-description">Go to Tasks</span>
+                <span className="shortcut-description">Go to Research</span>
                 <span className="shortcut-keys"><kbd className="kbd">Alt</kbd><kbd className="kbd">2</kbd></span>
               </div>
               <div className="shortcut-row">
@@ -7029,13 +4365,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   );
 }
 
-// Wrap with ErrorBoundary and UXPreferencesProvider to catch render errors
+// Wrap with ErrorBoundary to catch render errors
 function TeamDashboardWithErrorBoundary(props) {
   return (
     <ErrorBoundary>
-      <UXPreferencesProvider teamId={props.teamId}>
-        <TeamDashboard {...props} />
-      </UXPreferencesProvider>
+      <TeamDashboard {...props} />
     </ErrorBoundary>
   );
 }
