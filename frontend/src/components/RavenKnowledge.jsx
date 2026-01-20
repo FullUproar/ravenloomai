@@ -104,6 +104,18 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     inputRef.current?.focus();
   }, []);
 
+  // Reset when scope changes (prevent cross-scope data blending)
+  useEffect(() => {
+    setInput('');
+    setMode('idle');
+    setAskResult(null);
+    setRememberPreview(null);
+    setRememberResult(null);
+    setSkipConflictIds([]);
+    setError(null);
+    inputRef.current?.focus();
+  }, [scopeId]);
+
   // Reset to idle state
   const reset = () => {
     setInput('');
