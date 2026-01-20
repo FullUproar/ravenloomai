@@ -416,10 +416,10 @@ const REVOKE_SITE_INVITE = gql`
   }
 `;
 
-// Google Drive Integration queries
+// Google Drive Integration queries (team-level)
 const GET_MY_INTEGRATIONS = gql`
-  query GetMyIntegrations {
-    getMyIntegrations {
+  query GetMyIntegrations($teamId: ID!) {
+    getMyIntegrations(teamId: $teamId) {
       id
       provider
       providerEmail
@@ -430,8 +430,8 @@ const GET_MY_INTEGRATIONS = gql`
 `;
 
 const GET_DRIVE_FILES = gql`
-  query GetDriveFiles($folderId: String, $pageSize: Int) {
-    getDriveFiles(folderId: $folderId, pageSize: $pageSize) {
+  query GetDriveFiles($teamId: ID!, $folderId: String, $pageSize: Int) {
+    getDriveFiles(teamId: $teamId, folderId: $folderId, pageSize: $pageSize) {
       files {
         id
         name
@@ -446,8 +446,8 @@ const GET_DRIVE_FILES = gql`
 `;
 
 const GET_DRIVE_FILE_CONTENT = gql`
-  query GetDriveFileContent($fileId: String!) {
-    getDriveFileContent(fileId: $fileId) {
+  query GetDriveFileContent($teamId: ID!, $fileId: String!) {
+    getDriveFileContent(teamId: $teamId, fileId: $fileId) {
       id
       name
       mimeType
@@ -1156,8 +1156,11 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const [revokeSiteInvite] = useMutation(REVOKE_SITE_INVITE);
   const siteInvites = siteInvitesData?.getSiteInvites || [];
 
-  // Google Drive hooks
-  const { data: integrationsData, refetch: refetchIntegrations } = useQuery(GET_MY_INTEGRATIONS);
+  // Google Drive hooks (team-level)
+  const { data: integrationsData, refetch: refetchIntegrations } = useQuery(GET_MY_INTEGRATIONS, {
+    variables: { teamId },
+    skip: !teamId
+  });
   const googleIntegration = integrationsData?.getMyIntegrations?.find(i => i.provider === 'google');
   const [fetchDriveFiles, { data: driveFilesData, loading: driveLoading }] = useLazyQuery(GET_DRIVE_FILES);
   const driveFiles = driveFilesData?.getDriveFiles?.files || [];
@@ -1480,14 +1483,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     }
   };
 
-  // Google Drive handlers
+  // Google Drive handlers (team-level integration)
   const handleConnectGoogleDrive = async () => {
     if (connectingDrive) return;
     setConnectingDrive(true);
     try {
-      // Pass origin so callback knows where to redirect back
+      // Pass userId, teamId, and origin so callback knows context
       const origin = encodeURIComponent(window.location.origin);
-      const response = await fetch(`${API_BASE_URL}/oauth/google/start?userId=${user.uid}&origin=${origin}`);
+      const response = await fetch(`${API_BASE_URL}/oauth/google/start?userId=${user.uid}&teamId=${teamId}&origin=${origin}`);
       const data = await response.json();
       if (data.authUrl) {
         window.location.href = data.authUrl;
@@ -1504,7 +1507,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   const handleOpenDrivePanel = () => {
     setShowDrivePanel(true);
     if (googleIntegration) {
-      fetchDriveFiles({ variables: { folderId: 'root', pageSize: 20 } });
+      fetchDriveFiles({ variables: { teamId, folderId: 'root', pageSize: 20 } });
     }
   };
 
@@ -1512,7 +1515,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     if (file.mimeType === 'application/vnd.google-apps.folder') {
       setDriveFolderId(file.id);
       setDriveFolderStack([...driveFolderStack, { id: file.id, name: file.name }]);
-      fetchDriveFiles({ variables: { folderId: file.id, pageSize: 20 } });
+      fetchDriveFiles({ variables: { teamId, folderId: file.id, pageSize: 20 } });
     }
   };
 
@@ -1520,7 +1523,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     const folder = driveFolderStack[index];
     setDriveFolderId(folder.id);
     setDriveFolderStack(driveFolderStack.slice(0, index + 1));
-    fetchDriveFiles({ variables: { folderId: folder.id, pageSize: 20 } });
+    fetchDriveFiles({ variables: { teamId, folderId: folder.id, pageSize: 20 } });
   };
 
   const handleDisconnectGoogleDrive = async () => {
@@ -2416,7 +2419,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               onClick={() => setActiveView('raven')}
             >
               <span className="nav-expand-icon" style={{ visibility: 'hidden' }}>▶</span>
-              <span className="nav-icon">🪶</span>
               <span className="nav-label">Raven</span>
             </button>
           </div>
@@ -2428,7 +2430,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               onClick={() => toggleSection('scopes')}
             >
               <span className="nav-expand-icon">{expandedSections.scopes !== false ? '▼' : '▶'}</span>
-              <span className="nav-icon">🎯</span>
               <span className="nav-label">Scopes</span>
               {teamScope?.children?.length > 0 && <span className="nav-count">{teamScope.children.length}</span>}
             </button>
@@ -2437,21 +2438,24 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 {/* Team Scope (root) */}
                 {teamScope && (
                   <button
-                    className={`nav-item ${activeScope?.id === teamScope.id && activeView === 'scope' ? 'active' : ''}`}
+                    className={`nav-item scope-level-0 ${activeScope?.id === teamScope.id && activeView === 'scope' ? 'active' : ''}`}
                     onClick={() => handleSelectScope(teamScope)}
                   >
-                    <span className="nav-item-icon">🏢</span>
+                    <span className="scope-tree-line"></span>
                     <span className="nav-item-label">{teamScope.name || 'Team'}</span>
                   </button>
                 )}
 
                 {/* Project Scopes (children of team scope) */}
-                {teamScope?.children?.map((projectScope) => (
+                {teamScope?.children?.map((projectScope, idx) => (
                   <div key={projectScope.id} className="nav-scope-group">
                     <button
-                      className={`nav-item ${activeScope?.id === projectScope.id && activeView === 'scope' ? 'active' : ''}`}
+                      className={`nav-item scope-level-1 ${activeScope?.id === projectScope.id && activeView === 'scope' ? 'active' : ''}`}
                       onClick={() => handleSelectScope(projectScope)}
                     >
+                      <span className="scope-tree-line">
+                        {idx === teamScope.children.length - 1 ? '└' : '├'}
+                      </span>
                       {projectScope.children?.length > 0 && (
                         <span
                           className="nav-scope-expand"
@@ -2463,18 +2467,20 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                           {expandedScopes[projectScope.id] ? '▼' : '▶'}
                         </span>
                       )}
-                      <span className="nav-item-icon">📁</span>
                       <span className="nav-item-label">{projectScope.name}</span>
                     </button>
 
                     {/* Sub-project scopes */}
-                    {expandedScopes[projectScope.id] && projectScope.children?.map((subScope) => (
+                    {expandedScopes[projectScope.id] && projectScope.children?.map((subScope, subIdx) => (
                       <button
                         key={subScope.id}
-                        className={`nav-item nav-item-nested ${activeScope?.id === subScope.id && activeView === 'scope' ? 'active' : ''}`}
+                        className={`nav-item scope-level-2 ${activeScope?.id === subScope.id && activeView === 'scope' ? 'active' : ''}`}
                         onClick={() => handleSelectScope(subScope)}
                       >
-                        <span className="nav-item-icon">📄</span>
+                        <span className="scope-tree-line scope-tree-nested">
+                          {idx === teamScope.children.length - 1 ? ' ' : '│'}
+                          {subIdx === projectScope.children.length - 1 ? '└' : '├'}
+                        </span>
                         <span className="nav-item-label">{subScope.name}</span>
                       </button>
                     ))}
@@ -2489,8 +2495,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     setShowCreateScope(true);
                   }}
                 >
-                  <span className="nav-item-icon">+</span>
-                  <span className="nav-item-label">New Scope</span>
+                  <span className="nav-item-label">+ New Scope</span>
                 </button>
 
                 {/* Private Mode Toggle */}
@@ -2500,55 +2505,8 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     checked={includePrivate}
                     onChange={(e) => setIncludePrivate(e.target.checked)}
                   />
-                  <span className="nav-item-icon">🔒</span>
                   <span className="nav-item-label">Private Mode</span>
                 </label>
-              </div>
-            )}
-          </div>
-
-          {/* Channels Section (Legacy - keeping for backwards compatibility) */}
-          <div className={`nav-section ${expandedSections.channels ? 'expanded' : ''}`}>
-            <button
-              className={`nav-section-header ${activeView === 'chat' ? 'active' : ''}`}
-              onClick={() => toggleSection('channels')}
-            >
-              <span className="nav-expand-icon">{expandedSections.channels ? '▼' : '▶'}</span>
-              <span className="nav-icon">💬</span>
-              <span className="nav-label">Channels</span>
-              {channels.length > 0 && <span className="nav-count">{channels.length}</span>}
-            </button>
-            {expandedSections.channels && (
-              <div className="nav-children">
-                {channels.map((channel) => (
-                  <button
-                    key={channel.id}
-                    className={`nav-item ${channel.id === activeChannelId && activeView === 'chat' ? 'active' : ''}`}
-                    onClick={() => {
-                      handleSelectChannel(channel.id);
-                      setActiveView('chat');
-                    }}
-                  >
-                    <span className="nav-item-icon">#</span>
-                    <span className="nav-item-label">{channel.name}</span>
-                  </button>
-                ))}
-                <button
-                  className="nav-item nav-action"
-                  onClick={() => setShowCreateChannel(true)}
-                >
-                  <span className="nav-item-icon">+</span>
-                  <span className="nav-item-label">New Channel</span>
-                </button>
-                {isAdmin && (
-                  <button
-                    className="nav-item nav-action"
-                    onClick={() => setShowDataImport(true)}
-                  >
-                    <span className="nav-item-icon">📥</span>
-                    <span className="nav-item-label">Import Data</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -2560,7 +2518,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               onClick={() => toggleSection('team')}
             >
               <span className="nav-expand-icon">{expandedSections.team ? '▼' : '▶'}</span>
-              <span className="nav-icon">👥</span>
               <span className="nav-label">Team</span>
             </button>
             {expandedSections.team && (
@@ -2570,7 +2527,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   className={`nav-item ${activeView === 'ask' ? 'active' : ''}`}
                   onClick={() => handleSectionItemClick('ask', 'ask')}
                 >
-                  <span className="nav-item-icon">🔍</span>
                   <span className="nav-item-label">Ask the Team</span>
                 </button>
               </div>
@@ -2584,7 +2540,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               onClick={() => toggleSection('knowledge')}
             >
               <span className="nav-expand-icon">{expandedSections.knowledge ? '▼' : '▶'}</span>
-              <span className="nav-icon">🧠</span>
               <span className="nav-label">Knowledge</span>
               {(losAvailable && learningObjectives.filter(lo => lo.status === 'active').length > 0) && (
                 <span className="nav-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
@@ -2597,7 +2552,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   className={`nav-item ${activeView === 'learning' ? 'active' : ''}`}
                   onClick={() => handleSectionItemClick('learning', 'learning')}
                 >
-                  <span className="nav-item-icon">📚</span>
                   <span className="nav-item-label">Research</span>
                   {losAvailable && learningObjectives.filter(lo => lo.status === 'active').length > 0 && (
                     <span className="nav-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
@@ -2608,7 +2562,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   className={`nav-item ${activeView === 'knowledge' ? 'active' : ''}`}
                   onClick={() => handleSectionItemClick('knowledge', 'knowledge')}
                 >
-                  <span className="nav-item-icon">📖</span>
                   <span className="nav-item-label">Knowledge Base</span>
                   {kbSources.length > 0 && <span className="nav-count">{kbSources.length}</span>}
                 </button>
@@ -2618,10 +2571,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   onClick={handleOpenDrivePanel}
                   title="Connect data sources"
                 >
-                  <span className="nav-item-icon">🔗</span>
                   <span className="nav-item-label">Connections</span>
                   {googleIntegration && <span className="nav-status-dot connected"></span>}
                 </button>
+                {/* Data Import (admin only) */}
+                {isAdmin && (
+                  <button
+                    className="nav-item nav-action"
+                    onClick={() => setShowDataImport(true)}
+                  >
+                    <span className="nav-item-label">Import Data</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -2629,7 +2590,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
           {/* Alerts indicator */}
           {pendingAlerts.length > 0 && (
             <div className="nav-alerts">
-              <span className="nav-alerts-icon">🔔</span>
               <span className="nav-alerts-text">{pendingAlerts.length} pending reminder{pendingAlerts.length !== 1 ? 's' : ''}</span>
             </div>
           )}
@@ -2680,7 +2640,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               onClick={() => setShowSettingsModal(true)}
               title="Settings"
             >
-              ⚙️
+              Settings
             </button>
           </div>
         </div>
@@ -2861,7 +2821,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         <div className="modal-overlay" onClick={() => setShowSettingsModal(false)}>
           <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>⚙️ Settings</h3>
+              <h3>Settings</h3>
               <button className="modal-close" onClick={() => setShowSettingsModal(false)}>×</button>
             </div>
 

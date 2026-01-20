@@ -276,10 +276,11 @@ const resolvers = {
       return TeamService.getAllTeams();
     },
 
-    // Integrations
-    getMyIntegrations: async (_, __, { userId }) => {
+    // Integrations (team-level)
+    getMyIntegrations: async (_, { teamId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      const google = await GoogleDriveService.getIntegration(userId);
+      if (!teamId) throw new Error('Team ID required');
+      const google = await GoogleDriveService.getIntegration(teamId);
       const integrations = [];
       if (google) {
         integrations.push({
@@ -293,9 +294,10 @@ const resolvers = {
       return integrations;
     },
 
-    getDriveFiles: async (_, { folderId, pageSize, pageToken }, { userId }) => {
+    getDriveFiles: async (_, { teamId, folderId, pageSize, pageToken }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      const result = await GoogleDriveService.listFiles(userId, {
+      if (!teamId) throw new Error('Team ID required');
+      const result = await GoogleDriveService.listFiles(teamId, {
         folderId: folderId || 'root',
         pageSize: pageSize || 20,
         pageToken
@@ -306,10 +308,11 @@ const resolvers = {
       };
     },
 
-    getDriveFileContent: async (_, { fileId }, { userId }) => {
+    getDriveFileContent: async (_, { teamId, fileId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      const metadata = await GoogleDriveService.getFileMetadata(userId, fileId);
-      const content = await GoogleDriveService.getFileContent(userId, fileId, metadata.mimeType);
+      if (!teamId) throw new Error('Team ID required');
+      const metadata = await GoogleDriveService.getFileMetadata(teamId, fileId);
+      const content = await GoogleDriveService.getFileContent(teamId, fileId, metadata.mimeType);
       return {
         id: metadata.id,
         name: metadata.name,

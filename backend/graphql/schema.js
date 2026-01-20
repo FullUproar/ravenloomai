@@ -771,10 +771,10 @@ export default gql`
     getAccessCodes: [AccessCode!]!  # Admin only
     getAccessCodeUses(codeId: ID!): [AccessCodeUse!]!  # Admin only
 
-    # Integrations (Google Drive, etc.)
-    getMyIntegrations: [Integration!]!
-    getDriveFiles(folderId: String, pageSize: Int, pageToken: String): DriveFilesResult!
-    getDriveFileContent(fileId: String!): DriveFileContent!
+    # Integrations (Google Drive, etc.) - team-level
+    getMyIntegrations(teamId: ID!): [Integration!]!
+    getDriveFiles(teamId: ID!, folderId: String, pageSize: Int, pageToken: String): DriveFilesResult!
+    getDriveFileContent(teamId: ID!, fileId: String!): DriveFileContent!
     getGooglePickerConfig: GooglePickerConfig!
 
     # Knowledge Base

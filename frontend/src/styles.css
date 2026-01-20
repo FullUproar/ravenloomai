@@ -882,6 +882,35 @@ button:active:not(:disabled),
   font-size: 0.75rem;
 }
 
+/* Scope tree hierarchy styles */
+.scope-tree-line {
+  font-family: monospace;
+  color: var(--text-muted);
+  opacity: 0.5;
+  margin-right: 0.25rem;
+  white-space: pre;
+  font-size: 0.75rem;
+  min-width: 12px;
+}
+
+.scope-tree-nested {
+  letter-spacing: -2px;
+}
+
+.scope-level-0 {
+  padding-left: 1.5rem;
+  font-weight: 500;
+}
+
+.scope-level-1 {
+  padding-left: 1.5rem;
+}
+
+.scope-level-2 {
+  padding-left: 1.5rem;
+  font-size: 0.8125rem;
+}
+
 /* Toggle switch in navigation */
 .nav-item.nav-toggle {
   display: flex;

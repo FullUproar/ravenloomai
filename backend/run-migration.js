@@ -19,9 +19,12 @@ const __dirname = path.dirname(__filename);
 // Load environment variables
 dotenv.config();
 
-// Create database connection
+// Create database connection (same priority as db.js)
+const connectionString = process.env.DB_POSTGRES_URL || process.env.POSTGRES_URL || process.env.DATABASE_URL;
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
+  ssl: { rejectUnauthorized: false }
 });
 
 async function runMigration(migrationFile) {

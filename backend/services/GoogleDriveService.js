@@ -22,8 +22,11 @@ const SCOPES = [
 
 /**
  * Get the OAuth authorization URL for Google
+ * @param {string} userId - The user initiating the connection
+ * @param {string} teamId - The team to connect the integration to
+ * @param {object} state - Additional state to pass through OAuth flow
  */
-export function getAuthUrl(userId, state = {}) {
+export function getAuthUrl(userId, teamId, state = {}) {
   if (!GOOGLE_CLIENT_ID) {
     throw new Error('Google OAuth not configured. Set GOOGLE_CLIENT_ID in environment.');
   }
@@ -35,7 +38,7 @@ export function getAuthUrl(userId, state = {}) {
     scope: SCOPES.join(' '),
     access_type: 'offline',
     prompt: 'consent',
-    state: JSON.stringify({ userId, ...state })
+    state: JSON.stringify({ userId, teamId, ...state })
   });
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -112,15 +115,19 @@ export async function getGoogleUserInfo(accessToken) {
 }
 
 /**
- * Save or update integration tokens
+ * Save or update integration tokens (team-level)
+ * @param {string} userId - The user connecting the integration
+ * @param {string} teamId - The team to connect to
+ * @param {object} tokens - OAuth tokens
+ * @param {object} userInfo - Google user info
  */
-export async function saveIntegration(userId, tokens, userInfo) {
+export async function saveIntegration(userId, teamId, tokens, userInfo) {
   const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
 
   const result = await db.query(
-    `INSERT INTO user_integrations (user_id, provider, access_token, refresh_token, token_expires_at, scope, provider_user_id, provider_email)
-     VALUES ($1, 'google', $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (user_id, provider) DO UPDATE SET
+    `INSERT INTO user_integrations (user_id, team_id, provider, access_token, refresh_token, token_expires_at, scope, provider_user_id, provider_email)
+     VALUES ($1, $2, 'google', $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (user_id, team_id, provider) DO UPDATE SET
        access_token = EXCLUDED.access_token,
        refresh_token = COALESCE(EXCLUDED.refresh_token, user_integrations.refresh_token),
        token_expires_at = EXCLUDED.token_expires_at,
@@ -130,40 +137,43 @@ export async function saveIntegration(userId, tokens, userInfo) {
        is_active = TRUE,
        updated_at = NOW()
      RETURNING *`,
-    [userId, tokens.access_token, tokens.refresh_token, expiresAt, tokens.scope, userInfo.id, userInfo.email]
+    [userId, teamId, tokens.access_token, tokens.refresh_token, expiresAt, tokens.scope, userInfo.id, userInfo.email]
   );
 
   return mapIntegration(result.rows[0]);
 }
 
 /**
- * Get user's Google integration
+ * Get team's Google integration (by any user who connected it)
+ * @param {string} teamId - The team ID
  */
-export async function getIntegration(userId) {
+export async function getIntegration(teamId) {
   const result = await db.query(
-    `SELECT * FROM user_integrations WHERE user_id = $1 AND provider = 'google' AND is_active = TRUE`,
-    [userId]
+    `SELECT * FROM user_integrations WHERE team_id = $1 AND provider = 'google' AND is_active = TRUE LIMIT 1`,
+    [teamId]
   );
   return result.rows[0] ? mapIntegration(result.rows[0]) : null;
 }
 
 /**
- * Disconnect Google integration
+ * Disconnect Google integration for a team
+ * @param {string} teamId - The team ID
  */
-export async function disconnectIntegration(userId) {
+export async function disconnectIntegration(teamId) {
   await db.query(
     `UPDATE user_integrations SET is_active = FALSE, access_token = NULL, updated_at = NOW()
-     WHERE user_id = $1 AND provider = 'google'`,
-    [userId]
+     WHERE team_id = $1 AND provider = 'google'`,
+    [teamId]
   );
   return true;
 }
 
 /**
- * Get valid access token, refreshing if needed
+ * Get valid access token for a team, refreshing if needed
+ * @param {string} teamId - The team ID
  */
-export async function getValidAccessToken(userId) {
-  const integration = await getIntegration(userId);
+export async function getValidAccessToken(teamId) {
+  const integration = await getIntegration(teamId);
   if (!integration) {
     throw new Error('Google Drive not connected');
   }
@@ -188,8 +198,8 @@ export async function getValidAccessToken(userId) {
   const expiresAtNew = new Date(Date.now() + (tokens.expires_in * 1000));
   await db.query(
     `UPDATE user_integrations SET access_token = $1, token_expires_at = $2, updated_at = NOW()
-     WHERE user_id = $3 AND provider = 'google'`,
-    [tokens.access_token, expiresAtNew, userId]
+     WHERE team_id = $3 AND provider = 'google'`,
+    [tokens.access_token, expiresAtNew, teamId]
   );
 
   return tokens.access_token;
@@ -197,9 +207,10 @@ export async function getValidAccessToken(userId) {
 
 /**
  * List files from Google Drive
+ * @param {string} teamId - The team ID (integrations are team-level)
  */
-export async function listFiles(userId, { folderId = 'root', pageSize = 20, pageToken = null } = {}) {
-  const accessToken = await getValidAccessToken(userId);
+export async function listFiles(teamId, { folderId = 'root', pageSize = 20, pageToken = null } = {}) {
+  const accessToken = await getValidAccessToken(teamId);
 
   const params = new URLSearchParams({
     pageSize: pageSize.toString(),
@@ -228,9 +239,10 @@ export async function listFiles(userId, { folderId = 'root', pageSize = 20, page
 
 /**
  * Get file content (for docs, sheets, slides)
+ * @param {string} teamId - The team ID (integrations are team-level)
  */
-export async function getFileContent(userId, fileId, mimeType) {
-  const accessToken = await getValidAccessToken(userId);
+export async function getFileContent(teamId, fileId, mimeType) {
+  const accessToken = await getValidAccessToken(teamId);
 
   // Determine export format based on mime type
   let exportMimeType;
@@ -264,9 +276,10 @@ export async function getFileContent(userId, fileId, mimeType) {
 
 /**
  * Get file metadata
+ * @param {string} teamId - The team ID (integrations are team-level)
  */
-export async function getFileMetadata(userId, fileId) {
-  const accessToken = await getValidAccessToken(userId);
+export async function getFileMetadata(teamId, fileId) {
+  const accessToken = await getValidAccessToken(teamId);
 
   const params = new URLSearchParams({
     fields: 'id,name,mimeType,modifiedTime,size,webViewLink',

@@ -75,15 +75,20 @@ app.get('/health', (req, res) => {
 
 import GoogleDriveService from './services/GoogleDriveService.js';
 
-// Start Google OAuth flow
+// Start Google OAuth flow (team-level integration)
 app.get('/oauth/google/start', (req, res) => {
   const userId = req.headers['x-user-id'] || req.query.userId;
+  const teamId = req.headers['x-team-id'] || req.query.teamId;
+
   if (!userId) {
     return res.status(401).json({ error: 'User ID required' });
   }
+  if (!teamId) {
+    return res.status(400).json({ error: 'Team ID required' });
+  }
 
   try {
-    const authUrl = GoogleDriveService.getAuthUrl(userId);
+    const authUrl = GoogleDriveService.getAuthUrl(userId, teamId);
     res.json({ authUrl });
   } catch (error) {
     console.error('OAuth start error:', error);
@@ -101,10 +106,13 @@ app.get('/oauth/google/callback', async (req, res) => {
 
   try {
     const stateData = JSON.parse(state || '{}');
-    const userId = stateData.userId;
+    const { userId, teamId } = stateData;
 
     if (!userId) {
       throw new Error('No user ID in state');
+    }
+    if (!teamId) {
+      throw new Error('No team ID in state');
     }
 
     // Exchange code for tokens
@@ -113,11 +121,11 @@ app.get('/oauth/google/callback', async (req, res) => {
     // Get user info
     const userInfo = await GoogleDriveService.getGoogleUserInfo(tokens.access_token);
 
-    // Save integration
-    await GoogleDriveService.saveIntegration(userId, tokens, userInfo);
+    // Save integration (team-level)
+    await GoogleDriveService.saveIntegration(userId, teamId, tokens, userInfo);
 
-    // Redirect back to frontend
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/integrations?success=google`);
+    // Redirect back to frontend with team context
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/integrations?success=google&teamId=${teamId}`);
   } catch (error) {
     console.error('OAuth callback error:', error);
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/integrations?error=${encodeURIComponent(error.message)}`);
