@@ -478,17 +478,6 @@ const resolvers = {
       return ChannelService.deleteChannel(channelId);
     },
 
-    // AI Focus
-    setChannelAIFocus: async (_, { channelId, goalId, projectId, taskId }, { userId }) => {
-      if (!userId) throw new Error('Not authenticated');
-      return ChannelService.setChannelAIFocus(channelId, { goalId, projectId, taskId });
-    },
-
-    clearChannelAIFocus: async (_, { channelId }, { userId }) => {
-      if (!userId) throw new Error('Not authenticated');
-      return ChannelService.clearChannelAIFocus(channelId);
-    },
-
     // Threads
     createThread: async (_, { channelId, input }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
