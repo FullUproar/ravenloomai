@@ -1019,6 +1019,14 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   });
   const scopeMessages = scopeMessagesData?.getScopeMessages || [];
 
+  // Default to team scope on load
+  useEffect(() => {
+    if (teamScope && !activeScope && activeView !== 'raven') {
+      setActiveScope(teamScope);
+      setActiveView('scope');
+    }
+  }, [teamScope, activeScope, activeView]);
+
   // Scope mutations
   const [createScopeMutation] = useMutation(CREATE_SCOPE);
   const [sendScopeMessageMutation] = useMutation(SEND_SCOPE_MESSAGE);
@@ -2495,16 +2503,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 >
                   <span className="nav-item-label">+ New Scope</span>
                 </button>
-
-                {/* Private Mode Toggle */}
-                <label className="nav-item nav-toggle">
-                  <input
-                    type="checkbox"
-                    checked={includePrivate}
-                    onChange={(e) => setIncludePrivate(e.target.checked)}
-                  />
-                  <span className="nav-item-label">Private Mode</span>
-                </label>
               </div>
             )}
           </div>
@@ -3326,24 +3324,21 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 </div>
               )}
               <h3>
-                {activeScopeDetails?.type === 'team' ? '🏢' : '📁'} {activeScopeDetails?.name || activeScope?.name || 'Select a scope'}
-                {includePrivate && <span className="header-badge-private">Private</span>}
+                {activeScopeDetails?.name || activeScope?.name || 'Knowledge'}
               </h3>
               {activeScopeDetails?.description && (
                 <p className="channel-description">{activeScopeDetails.description}</p>
               )}
             </div>
+            {/* Private/Public Toggle - clean pill style */}
+            <button
+              className={`scope-privacy-toggle ${includePrivate ? 'private' : 'public'}`}
+              onClick={() => setIncludePrivate(!includePrivate)}
+              title={includePrivate ? 'Switch to public knowledge' : 'Switch to private notes'}
+            >
+              {includePrivate ? 'Private' : 'Public'}
+            </button>
             <div className="header-spacer"></div>
-            <div className="scope-mode-toggle">
-              <label className="toggle-label">
-                <input
-                  type="checkbox"
-                  checked={includePrivate}
-                  onChange={(e) => setIncludePrivate(e.target.checked)}
-                />
-                <span className="toggle-text">{includePrivate ? '🔒 Private' : '🌐 Public'}</span>
-              </label>
-            </div>
             <div className="user-menu-container">
               <button
                 className="user-menu-btn"

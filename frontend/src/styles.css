@@ -1036,30 +1036,34 @@ button:active:not(:disabled),
   gap: 0.5rem;
 }
 
-/* Scope mode toggle in header */
-.scope-mode-toggle {
-  display: flex;
-  align-items: center;
+/* Scope Privacy Toggle - Clean pill button */
+.scope-privacy-toggle {
+  padding: 0.375rem 0.875rem;
+  border-radius: 16px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
   margin-right: 1rem;
 }
 
-.scope-mode-toggle .toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--text-muted);
+.scope-privacy-toggle.public {
+  background: var(--bg-tertiary, #f1f3f4);
+  color: var(--text-secondary, #5f6368);
 }
 
-.scope-mode-toggle input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary);
+.scope-privacy-toggle.public:hover {
+  background: var(--bg-hover, #e8eaed);
 }
 
-.scope-mode-toggle .toggle-text {
-  white-space: nowrap;
+.scope-privacy-toggle.private {
+  background: rgba(156, 39, 176, 0.15);
+  color: #9c27b0;
+}
+
+.scope-privacy-toggle.private:hover {
+  background: rgba(156, 39, 176, 0.25);
 }
 
 /* Scope chat styles */
