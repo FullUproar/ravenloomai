@@ -2254,7 +2254,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </div>
             )}
           </div>
-          )}
 
           {/* Alerts indicator */}
           {pendingAlerts.length > 0 && (
