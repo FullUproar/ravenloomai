@@ -22,7 +22,8 @@ import GifService from '../../services/GifService.js';
 import KnowledgeBaseService from '../../services/KnowledgeBaseService.js';
 import { graphRAGSearch, getGraphStats } from '../../services/KnowledgeGraphService.js';
 import * as RateLimiterService from '../../services/RateLimiterService.js';
-import * as SlackImportService from '../../services/SlackImportService.js';
+// SlackImportService temporarily disabled - needs adm-zip dependency
+// import * as SlackImportService from '../../services/SlackImportService.js';
 
 const resolvers = {
   JSON: GraphQLJSON,
@@ -779,14 +780,8 @@ const resolvers = {
       // Decode base64 file data
       const buffer = Buffer.from(fileData, 'base64');
 
-      if (source === 'slack') {
-        const preview = await SlackImportService.parseExport(buffer);
-        // Remove internal data before returning
-        const { _internal, ...publicPreview } = preview;
-        return publicPreview;
-      }
-
-      throw new Error(`Import source "${source}" is not yet supported`);
+      // Slack import temporarily disabled
+      throw new Error('Data import is temporarily disabled');
     },
 
     executeImport: async (_, { teamId, source, fileData, mappings }, { userId }) => {
@@ -801,11 +796,8 @@ const resolvers = {
       // Decode base64 file data
       const buffer = Buffer.from(fileData, 'base64');
 
-      if (source === 'slack') {
-        return SlackImportService.executeImport(teamId, buffer, mappings, userId);
-      }
-
-      throw new Error(`Import source "${source}" is not yet supported`);
+      // Slack import temporarily disabled
+      throw new Error('Data import is temporarily disabled');
     }
   },
 
