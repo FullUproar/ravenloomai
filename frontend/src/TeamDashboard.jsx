@@ -597,6 +597,148 @@ const UPDATE_TEAM_SETTINGS = gql`
   }
 `;
 
+// ============================================================================
+// SCOPE GraphQL Operations
+// ============================================================================
+
+const GET_TEAM_SCOPE = gql`
+  query GetTeamScope($teamId: ID!) {
+    getTeamScope(teamId: $teamId) {
+      id
+      teamId
+      parentScopeId
+      type
+      name
+      description
+      summary
+      children {
+        id
+        name
+        type
+        description
+        children {
+          id
+          name
+          type
+        }
+      }
+    }
+  }
+`;
+
+const GET_SCOPE_TREE = gql`
+  query GetScopeTree($teamId: ID!) {
+    getScopeTree(teamId: $teamId) {
+      id
+      teamId
+      parentScopeId
+      type
+      name
+      description
+      summary
+      children {
+        id
+        name
+        type
+        description
+      }
+    }
+  }
+`;
+
+const GET_SCOPE = gql`
+  query GetScope($scopeId: ID!) {
+    getScope(scopeId: $scopeId) {
+      id
+      teamId
+      parentScopeId
+      type
+      name
+      description
+      summary
+      path {
+        id
+        name
+        type
+      }
+      children {
+        id
+        name
+        type
+      }
+    }
+  }
+`;
+
+const GET_SCOPE_MESSAGES = gql`
+  query GetScopeMessages($scopeId: ID!, $includePrivate: Boolean, $limit: Int) {
+    getScopeMessages(scopeId: $scopeId, includePrivate: $includePrivate, limit: $limit) {
+      id
+      scopeId
+      userId
+      user {
+        id
+        email
+        displayName
+      }
+      content
+      isAi
+      referencedFacts
+      replyToMessageId
+      createdAt
+    }
+  }
+`;
+
+const GET_MY_PRIVATE_SCOPE = gql`
+  query GetMyPrivateScope($teamId: ID!, $coupledScopeId: ID!) {
+    getMyPrivateScope(teamId: $teamId, coupledScopeId: $coupledScopeId) {
+      id
+      type
+      name
+      coupledScopeId
+    }
+  }
+`;
+
+const CREATE_SCOPE = gql`
+  mutation CreateScope($teamId: ID!, $input: CreateScopeInput!) {
+    createScope(teamId: $teamId, input: $input) {
+      id
+      name
+      type
+      description
+      parentScopeId
+    }
+  }
+`;
+
+const SEND_SCOPE_MESSAGE = gql`
+  mutation SendScopeMessage($scopeId: ID!, $includePrivate: Boolean, $input: SendScopeMessageInput!) {
+    sendScopeMessage(scopeId: $scopeId, includePrivate: $includePrivate, input: $input) {
+      message {
+        id
+        content
+        isAi
+        createdAt
+        user {
+          id
+          displayName
+        }
+      }
+      factsCreated {
+        id
+        content
+        category
+      }
+      alertsCreated {
+        id
+        message
+        triggerAt
+      }
+    }
+  }
+`;
 
 // ============================================================================
 // TeamDashboard Component
@@ -621,6 +763,10 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     }
     if (initialView === 'channel' || initialView === 'chat') {
       return 'chat';
+    }
+    // Scope-based views
+    if (initialView === 'scope') {
+      return 'scope';
     }
     return 'raven';  // Default to raven (AI copilot)
   };
@@ -732,6 +878,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     (initialView === 'channel' || initialView === 'chat') ? initialItemId : null
   );
 
+  // Scope-based architecture state
+  const [activeScope, setActiveScope] = useState(null); // Current scope being viewed
+  const [includePrivate, setIncludePrivate] = useState(false); // Toggle for private mode in scopes
+  const [expandedScopes, setExpandedScopes] = useState({}); // Track which scopes are expanded in nav
+  const [showCreateScope, setShowCreateScope] = useState(false); // Modal for creating new scope
+  const [newScopeName, setNewScopeName] = useState('');
+  const [newScopeDescription, setNewScopeDescription] = useState('');
+  const [newScopeParentId, setNewScopeParentId] = useState(null);
+  const [creatingScopeLoading, setCreatingScopeLoading] = useState(false);
+  const [scopeMessageInput, setScopeMessageInput] = useState('');
+  const [scopeIsSending, setScopeIsSending] = useState(false);
+
   // Wrapper to update URL when view changes
   const setActiveView = (view, itemId = null) => {
     setActiveViewState(view);
@@ -740,7 +898,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
     let newPath = `/team/${teamId}`;
     if (view === 'chat' && itemId) {
       newPath = `/team/${teamId}/channel/${itemId}`;
-    } else if (view !== 'chat') {
+    } else if (view === 'scope' && itemId) {
+      newPath = `/team/${teamId}/scope/${itemId}`;
+    } else if (view !== 'chat' && view !== 'scope') {
       newPath = `/team/${teamId}/${view}`;
       if (itemId) {
         newPath += `/${itemId}`;
@@ -749,6 +909,21 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
 
     // Update URL without full navigation
     navigate(newPath, { replace: true });
+  };
+
+  // Handle selecting a scope from navigation
+  const handleSelectScope = (scope) => {
+    setActiveScope(scope);
+    setActiveView('scope', scope.id);
+    setSidebarOpen(false);
+  };
+
+  // Toggle scope expansion in navigation tree
+  const toggleScopeExpansion = (scopeId) => {
+    setExpandedScopes(prev => ({
+      ...prev,
+      [scopeId]: !prev[scopeId]
+    }));
   };
 
   // Raven command suggestions (knowledge-focused)
@@ -800,6 +975,116 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   });
 
   const messages = messagesData?.getMessages || [];
+
+  // ============================================================================
+  // Scope Queries & Mutations
+  // ============================================================================
+
+  // Fetch team's root scope and scope tree
+  const { data: teamScopeData, loading: teamScopeLoading, refetch: refetchTeamScope } = useQuery(GET_TEAM_SCOPE, {
+    variables: { teamId },
+    skip: !teamId,
+    fetchPolicy: 'cache-and-network',
+    onError: (err) => console.log('Team scope query error:', err.message)
+  });
+  const teamScope = teamScopeData?.getTeamScope;
+
+  // Fetch scope tree for navigation
+  const { data: scopeTreeData, refetch: refetchScopeTree } = useQuery(GET_SCOPE_TREE, {
+    variables: { teamId },
+    skip: !teamId,
+    fetchPolicy: 'cache-and-network'
+  });
+  const scopeTree = scopeTreeData?.getScopeTree || [];
+
+  // Fetch active scope details
+  const { data: activeScopeData, loading: activeScopeLoading, refetch: refetchActiveScope } = useQuery(GET_SCOPE, {
+    variables: { scopeId: activeScope?.id },
+    skip: !activeScope?.id,
+    fetchPolicy: 'cache-and-network'
+  });
+  const activeScopeDetails = activeScopeData?.getScope;
+
+  // Fetch scope messages
+  const { data: scopeMessagesData, loading: scopeMessagesLoading, refetch: refetchScopeMessages } = useQuery(GET_SCOPE_MESSAGES, {
+    variables: {
+      scopeId: activeScope?.id,
+      includePrivate: includePrivate,
+      limit: 50
+    },
+    skip: !activeScope?.id || activeView !== 'scope',
+    fetchPolicy: 'cache-and-network',
+    pollInterval: 3000 // Poll every 3 seconds for new messages
+  });
+  const scopeMessages = scopeMessagesData?.getScopeMessages || [];
+
+  // Scope mutations
+  const [createScopeMutation] = useMutation(CREATE_SCOPE);
+  const [sendScopeMessageMutation] = useMutation(SEND_SCOPE_MESSAGE);
+
+  // Handler for creating a new scope
+  const handleCreateScope = async (e) => {
+    e.preventDefault();
+    if (!newScopeName.trim() || creatingScopeLoading) return;
+
+    setCreatingScopeLoading(true);
+    try {
+      const { data } = await createScopeMutation({
+        variables: {
+          teamId,
+          input: {
+            parentScopeId: newScopeParentId || teamScope?.id,
+            name: newScopeName.trim(),
+            description: newScopeDescription.trim() || null
+          }
+        }
+      });
+
+      setShowCreateScope(false);
+      setNewScopeName('');
+      setNewScopeDescription('');
+      setNewScopeParentId(null);
+      await refetchScopeTree();
+      await refetchTeamScope();
+
+      // Navigate to the new scope
+      if (data?.createScope) {
+        handleSelectScope(data.createScope);
+      }
+    } catch (error) {
+      console.error('Error creating scope:', error);
+      toast.error('Failed to create scope: ' + error.message);
+    } finally {
+      setCreatingScopeLoading(false);
+    }
+  };
+
+  // Handler for sending a message in scope
+  const handleSendScopeMessage = async (e) => {
+    e.preventDefault();
+    if (!scopeMessageInput.trim() || scopeIsSending || !activeScope?.id) return;
+
+    const content = scopeMessageInput.trim();
+    setScopeMessageInput('');
+    setScopeIsSending(true);
+
+    try {
+      await sendScopeMessageMutation({
+        variables: {
+          scopeId: activeScope.id,
+          includePrivate: includePrivate,
+          input: { content }
+        }
+      });
+      await refetchScopeMessages();
+    } catch (error) {
+      console.error('Error sending scope message:', error);
+      setScopeMessageInput(content); // Restore on error
+      toast.error('Failed to send message: ' + error.message);
+    } finally {
+      setScopeIsSending(false);
+    }
+  };
 
   // Fetch team invites
   const { data: invitesData, refetch: refetchInvites } = useQuery(GET_TEAM_INVITES, {
@@ -2108,7 +2393,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       teamId={teamId}
       channels={channels}
     >
-    <div className={`team-dashboard ${activeView !== 'chat' && activeView !== 'digest' && activeView !== 'raven' ? (copilotCollapsed ? 'has-copilot-collapsed' : 'has-copilot') : ''}`}>
+    <div className={`team-dashboard ${activeView !== 'chat' && activeView !== 'digest' && activeView !== 'raven' && activeView !== 'scope' ? (copilotCollapsed ? 'has-copilot-collapsed' : 'has-copilot') : ''}`}>
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
@@ -2136,7 +2421,93 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
             </button>
           </div>
 
-          {/* Channels Section */}
+          {/* Scopes Section - Hierarchical Knowledge Boundaries */}
+          <div className={`nav-section ${expandedSections.scopes !== false ? 'expanded' : ''}`}>
+            <button
+              className={`nav-section-header ${activeView === 'scope' ? 'active' : ''}`}
+              onClick={() => toggleSection('scopes')}
+            >
+              <span className="nav-expand-icon">{expandedSections.scopes !== false ? '▼' : '▶'}</span>
+              <span className="nav-icon">🎯</span>
+              <span className="nav-label">Scopes</span>
+              {teamScope?.children?.length > 0 && <span className="nav-count">{teamScope.children.length}</span>}
+            </button>
+            {expandedSections.scopes !== false && (
+              <div className="nav-children">
+                {/* Team Scope (root) */}
+                {teamScope && (
+                  <button
+                    className={`nav-item ${activeScope?.id === teamScope.id && activeView === 'scope' ? 'active' : ''}`}
+                    onClick={() => handleSelectScope(teamScope)}
+                  >
+                    <span className="nav-item-icon">🏢</span>
+                    <span className="nav-item-label">{teamScope.name || 'Team'}</span>
+                  </button>
+                )}
+
+                {/* Project Scopes (children of team scope) */}
+                {teamScope?.children?.map((projectScope) => (
+                  <div key={projectScope.id} className="nav-scope-group">
+                    <button
+                      className={`nav-item ${activeScope?.id === projectScope.id && activeView === 'scope' ? 'active' : ''}`}
+                      onClick={() => handleSelectScope(projectScope)}
+                    >
+                      {projectScope.children?.length > 0 && (
+                        <span
+                          className="nav-scope-expand"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleScopeExpansion(projectScope.id);
+                          }}
+                        >
+                          {expandedScopes[projectScope.id] ? '▼' : '▶'}
+                        </span>
+                      )}
+                      <span className="nav-item-icon">📁</span>
+                      <span className="nav-item-label">{projectScope.name}</span>
+                    </button>
+
+                    {/* Sub-project scopes */}
+                    {expandedScopes[projectScope.id] && projectScope.children?.map((subScope) => (
+                      <button
+                        key={subScope.id}
+                        className={`nav-item nav-item-nested ${activeScope?.id === subScope.id && activeView === 'scope' ? 'active' : ''}`}
+                        onClick={() => handleSelectScope(subScope)}
+                      >
+                        <span className="nav-item-icon">📄</span>
+                        <span className="nav-item-label">{subScope.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+
+                {/* Create New Scope */}
+                <button
+                  className="nav-item nav-action"
+                  onClick={() => {
+                    setNewScopeParentId(teamScope?.id);
+                    setShowCreateScope(true);
+                  }}
+                >
+                  <span className="nav-item-icon">+</span>
+                  <span className="nav-item-label">New Scope</span>
+                </button>
+
+                {/* Private Mode Toggle */}
+                <label className="nav-item nav-toggle">
+                  <input
+                    type="checkbox"
+                    checked={includePrivate}
+                    onChange={(e) => setIncludePrivate(e.target.checked)}
+                  />
+                  <span className="nav-item-icon">🔒</span>
+                  <span className="nav-item-label">Private Mode</span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          {/* Channels Section (Legacy - keeping for backwards compatibility) */}
           <div className={`nav-section ${expandedSections.channels ? 'expanded' : ''}`}>
             <button
               className={`nav-section-header ${activeView === 'chat' ? 'active' : ''}`}
@@ -2342,6 +2713,67 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                   }}
                   className="btn-secondary"
                   disabled={creatingChannel}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Scope Modal */}
+      {showCreateScope && (
+        <div className="modal-overlay" onClick={() => setShowCreateScope(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Create New Scope</h3>
+            <p className="modal-subtitle">Scopes are knowledge boundaries for projects or topics</p>
+            <form onSubmit={handleCreateScope}>
+              <input
+                type="text"
+                value={newScopeName}
+                onChange={(e) => setNewScopeName(e.target.value)}
+                placeholder="Scope name (e.g., Q1 Marketing Campaign)"
+                autoFocus
+                className="input-field"
+              />
+              <textarea
+                value={newScopeDescription}
+                onChange={(e) => setNewScopeDescription(e.target.value)}
+                placeholder="Description (optional)"
+                className="input-field"
+                rows={2}
+                style={{ marginTop: '0.75rem' }}
+              />
+              {teamScope?.children?.length > 0 && (
+                <div className="parent-scope-select" style={{ marginTop: '0.75rem' }}>
+                  <label className="form-label">Parent Scope:</label>
+                  <select
+                    value={newScopeParentId || teamScope?.id || ''}
+                    onChange={(e) => setNewScopeParentId(e.target.value)}
+                    className="input-field"
+                  >
+                    <option value={teamScope?.id}>{teamScope?.name || 'Team'} (root)</option>
+                    {teamScope?.children?.map((child) => (
+                      <option key={child.id} value={child.id}>{child.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="form-actions">
+                <button type="submit" className="btn-primary" disabled={!newScopeName.trim() || creatingScopeLoading}>
+                  {creatingScopeLoading ? 'Creating...' : 'Create Scope'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateScope(false);
+                    setNewScopeName('');
+                    setNewScopeDescription('');
+                    setNewScopeParentId(null);
+                  }}
+                  className="btn-secondary"
+                  disabled={creatingScopeLoading}
                 >
                   Cancel
                 </button>
@@ -2904,6 +3336,168 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 className="send-btn"
               >
                 {isSending || imageUploading ? '...' : 'Send'}
+              </button>
+            </form>
+          </div>
+        </main>
+      ) : activeView === 'scope' ? (
+        /* ================================================================
+           SCOPE VIEW - Hierarchical Knowledge Boundaries
+           ================================================================ */
+        <main className="chat-area scope-chat">
+          {/* Scope Header */}
+          <header className="chat-header">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              <span></span><span></span><span></span>
+            </button>
+            <div className="scope-header-content">
+              {/* Breadcrumb path */}
+              {activeScopeDetails?.path && activeScopeDetails.path.length > 1 && (
+                <div className="scope-breadcrumb">
+                  {activeScopeDetails.path.map((pathScope, idx) => (
+                    <span key={pathScope.id}>
+                      {idx > 0 && <span className="breadcrumb-sep">/</span>}
+                      <button
+                        className="breadcrumb-link"
+                        onClick={() => handleSelectScope(pathScope)}
+                      >
+                        {pathScope.name}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <h3>
+                {activeScopeDetails?.type === 'team' ? '🏢' : '📁'} {activeScopeDetails?.name || activeScope?.name || 'Select a scope'}
+                {includePrivate && <span className="header-badge-private">Private</span>}
+              </h3>
+              {activeScopeDetails?.description && (
+                <p className="channel-description">{activeScopeDetails.description}</p>
+              )}
+            </div>
+            <div className="header-spacer"></div>
+            <div className="scope-mode-toggle">
+              <label className="toggle-label">
+                <input
+                  type="checkbox"
+                  checked={includePrivate}
+                  onChange={(e) => setIncludePrivate(e.target.checked)}
+                />
+                <span className="toggle-text">{includePrivate ? '🔒 Private' : '🌐 Public'}</span>
+              </label>
+            </div>
+            <div className="user-menu-container">
+              <button
+                className="user-menu-btn"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                aria-label="User menu"
+              >
+                <span></span><span></span><span></span>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div className="user-menu-overlay" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-menu-dropdown">
+                    <a href="/privacy" className="user-menu-item">Privacy Policy</a>
+                    <a href="/terms" className="user-menu-item">Terms of Service</a>
+                    <a href="/help" className="user-menu-item">Help</a>
+                    {isSiteAdmin && (
+                      <button onClick={() => { setShowUserMenu(false); handleOpenSiteAdmin(); }} className="user-menu-item">Admin</button>
+                    )}
+                    <div className="user-menu-divider"></div>
+                    <button onClick={onSignOut} className="user-menu-item user-menu-signout">Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </header>
+
+          {/* Scope Messages */}
+          <div className="messages-container">
+            {scopeMessagesLoading && scopeMessages.length === 0 ? (
+              <div className="messages-loading">Loading messages...</div>
+            ) : scopeMessages.length === 0 ? (
+              <div className="messages-empty">
+                <div className="empty-icon">🎯</div>
+                <h4>No messages in this scope yet</h4>
+                <p>Start a conversation about {activeScopeDetails?.name || 'this topic'}</p>
+                {includePrivate && (
+                  <p className="text-muted" style={{ marginTop: '8px', fontSize: '13px' }}>
+                    Private mode: Only you can see these messages
+                  </p>
+                )}
+                <div className="empty-suggestions">
+                  <button className="suggestion-btn" onClick={() => setScopeMessageInput('@raven remember ')}>
+                    @raven remember...
+                  </button>
+                  <button className="suggestion-btn" onClick={() => setScopeMessageInput('@raven what do you know about this?')}>
+                    Ask Raven about this scope
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="messages-list">
+                {scopeMessages.map((message, index) => {
+                  const prevMessage = scopeMessages[index - 1];
+                  const isGrouped = prevMessage &&
+                    !message.isAi && !prevMessage.isAi &&
+                    message.user?.id === prevMessage.user?.id &&
+                    (new Date(message.createdAt) - new Date(prevMessage.createdAt)) < 5 * 60 * 1000;
+
+                  const isAiGrouped = prevMessage &&
+                    message.isAi && prevMessage.isAi &&
+                    (new Date(message.createdAt) - new Date(prevMessage.createdAt)) < 60 * 1000;
+
+                  const shouldShowHeader = !isGrouped && !isAiGrouped;
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`message ${message.isAi ? 'ai-message' : 'user-message'} ${!shouldShowHeader ? 'grouped' : ''}`}
+                    >
+                      {shouldShowHeader && (
+                        <div className="message-header">
+                          <span className="message-avatar">
+                            {message.isAi ? '🪶' : (message.user?.displayName || message.user?.email || 'U')[0].toUpperCase()}
+                          </span>
+                          <span className="message-author">
+                            {message.isAi ? 'Raven' : (message.user?.displayName || message.user?.email || 'User')}
+                          </span>
+                          <span className="message-time">
+                            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      )}
+                      <div className={`message-body ${!shouldShowHeader ? 'no-header' : ''}`}>
+                        <div className="message-content">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+
+          {/* Scope Message Input */}
+          <div className="message-input-area">
+            <form onSubmit={handleSendScopeMessage} className="message-form">
+              <input
+                type="text"
+                value={scopeMessageInput}
+                onChange={(e) => setScopeMessageInput(e.target.value)}
+                placeholder={`Message ${activeScopeDetails?.name || 'scope'}... ${includePrivate ? '(private)' : ''}`}
+                disabled={scopeIsSending || !activeScope?.id}
+                className="message-input"
+              />
+              <button
+                type="submit"
+                disabled={scopeIsSending || !scopeMessageInput.trim() || !activeScope?.id}
+                className="send-btn"
+              >
+                {scopeIsSending ? '...' : 'Send'}
               </button>
             </form>
           </div>
@@ -4183,7 +4777,7 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
       )}
 
       {/* Raven Copilot - persistent AI assistant side panel */}
-      {activeView !== 'chat' && activeView !== 'digest' && activeView !== 'raven' && ravenChannel && (
+      {activeView !== 'chat' && activeView !== 'digest' && activeView !== 'raven' && activeView !== 'scope' && ravenChannel && (
         <RavenCopilot
           teamId={teamId}
           ravenChannelId={ravenChannel.id}

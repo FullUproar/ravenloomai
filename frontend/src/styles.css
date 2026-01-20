@@ -848,6 +848,132 @@ button:active:not(:disabled),
 }
 
 /* ============================================================================
+   Scope Navigation Styles
+   ============================================================================ */
+
+.nav-scope-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-scope-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: transform 0.1s;
+  margin-right: 0.25rem;
+}
+
+.nav-scope-expand:hover {
+  color: var(--text);
+}
+
+.nav-item-nested {
+  padding-left: 3.5rem;
+  font-size: 0.8125rem;
+}
+
+.nav-item-nested .nav-item-icon {
+  font-size: 0.75rem;
+}
+
+/* Toggle switch in navigation */
+.nav-item.nav-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem 1rem 0.5rem 2.5rem;
+}
+
+.nav-item.nav-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* Scope breadcrumb in header */
+.scope-breadcrumb {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.scope-breadcrumb .breadcrumb-sep {
+  margin: 0 0.375rem;
+  opacity: 0.5;
+}
+
+.scope-breadcrumb .breadcrumb-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+}
+
+.scope-breadcrumb .breadcrumb-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+/* Scope header content */
+.scope-header-content {
+  flex: 1;
+}
+
+.scope-header-content h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Scope mode toggle in header */
+.scope-mode-toggle {
+  display: flex;
+  align-items: center;
+  margin-right: 1rem;
+}
+
+.scope-mode-toggle .toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.scope-mode-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.scope-mode-toggle .toggle-text {
+  white-space: nowrap;
+}
+
+/* Scope chat styles */
+.scope-chat {
+  /* Inherits from .chat-area */
+}
+
+/* Modal subtitle */
+.modal-subtitle {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: -0.5rem 0 1rem 0;
+}
+
+/* ============================================================================
    Sidebar Footer - Redesigned
    ============================================================================ */
 
