@@ -584,9 +584,15 @@ const ATTACH_TO_MESSAGE = gql`
 const GET_TEAM_SETTINGS = gql`
   query GetTeamSettings($teamId: ID!) {
     getTeamSettings(teamId: $teamId) {
-      proactiveAI {
-        enabled
-      }
+      aiEnabled
+    }
+  }
+`;
+
+const UPDATE_TEAM_SETTINGS = gql`
+  mutation UpdateTeamSettings($teamId: ID!, $input: UpdateTeamSettingsInput!) {
+    updateTeamSettings(teamId: $teamId, input: $input) {
+      aiEnabled
     }
   }
 `;
@@ -898,6 +904,9 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
   });
   const teamSettings = settingsData?.getTeamSettings;
   const isAdmin = !!teamSettings; // If we can fetch settings, user is admin
+  const [updateTeamSettingsMutation] = useMutation(UPDATE_TEAM_SETTINGS, {
+    refetchQueries: [{ query: GET_TEAM_SETTINGS, variables: { teamId } }]
+  });
 
   // Lazy query for private Raven channel (navigates to raven view)
   const [fetchRavenChannel] = useLazyQuery(GET_MY_RAVEN_CHANNEL, {
@@ -2416,100 +2425,6 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
         </div>
       )}
 
-      {/* Morning Focus Modal */}
-      {showMorningFocus && morningFocus && (
-        <div className="modal-overlay" onClick={() => setShowMorningFocus(false)}>
-          <div className="modal morning-focus-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="morning-focus-header">
-              <h3>🌅 Morning Focus</h3>
-              <button className="modal-close" onClick={() => setShowMorningFocus(false)}>×</button>
-            </div>
-
-            {morningFocus.aiPlan ? (
-              <div className="morning-focus-content">
-                {/* Greeting */}
-                <div className="focus-greeting">
-                  {morningFocus.aiPlan.greeting}
-                </div>
-
-                {/* Top Priority */}
-                <div className="focus-section focus-priority">
-                  <h4>🎯 Top Priority</h4>
-                  <p className="focus-top-priority">{morningFocus.aiPlan.topPriority}</p>
-                </div>
-
-                {/* Scheduled Blocks */}
-                {morningFocus.aiPlan.scheduledBlocks?.length > 0 && (
-                  <div className="focus-section">
-                    <h4>📅 Today's Schedule</h4>
-                    <div className="focus-schedule">
-                      {morningFocus.aiPlan.scheduledBlocks.map((block, i) => (
-                        <div key={i} className={`schedule-block schedule-${block.type}`}>
-                          <span className="block-time">{block.time}</span>
-                          <span className="block-activity">{block.activity}</span>
-                          <span className="block-duration">{block.duration}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Tasks to Complete */}
-                {morningFocus.aiPlan.tasksToComplete?.length > 0 && (
-                  <div className="focus-section">
-                    <h4>✅ Tasks to Complete</h4>
-                    <ul className="focus-tasks">
-                      {morningFocus.aiPlan.tasksToComplete.map((task, i) => (
-                        <li key={i}>{task}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Warnings */}
-                {morningFocus.aiPlan.warnings?.length > 0 && (
-                  <div className="focus-section focus-warnings">
-                    <h4>⚠️ Heads Up</h4>
-                    <ul>
-                      {morningFocus.aiPlan.warnings.map((warning, i) => (
-                        <li key={i}>{warning}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Tip */}
-                {morningFocus.aiPlan.tip && (
-                  <div className="focus-section focus-tip">
-                    <h4>💡 Pro Tip</h4>
-                    <p>{morningFocus.aiPlan.tip}</p>
-                  </div>
-                )}
-
-                {/* Workload indicator */}
-                {morningFocus.workload && (
-                  <div className={`focus-workload focus-workload-${morningFocus.workload.workloadLevel}`}>
-                    <span className="workload-label">Workload:</span>
-                    <span className="workload-level">{morningFocus.workload.workloadLevel}</span>
-                    <p className="workload-rec">{morningFocus.workload.recommendation}</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="morning-focus-content">
-                <p className="focus-error">Unable to generate focus plan. Try again later.</p>
-              </div>
-            )}
-
-            <div className="morning-focus-footer">
-              <button className="btn-primary" onClick={() => setShowMorningFocus(false)}>
-                Let's Go! 🚀
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Settings Modal (Combined Personal + Team) */}
       {showSettingsModal && (
         <div className="modal-overlay" onClick={() => setShowSettingsModal(false)}>
@@ -2551,110 +2466,30 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               {/* Team Settings Tab (admin only) */}
               {settingsTab === 'team' && isAdmin && teamSettings && (
                 <div className="settings-section">
-                  <h4>Proactive AI Features</h4>
+                  <h4>AI Features</h4>
                   <p className="settings-description">
-                    Control AI-powered productivity features for your team.
+                    Control AI-powered features for your team.
                   </p>
 
                   <div className="settings-toggles">
                     <label className="toggle-row">
                       <input
                         type="checkbox"
-                        checked={teamSettings.proactiveAI.enabled}
+                        checked={teamSettings.aiEnabled}
                         onChange={(e) => {
                           updateTeamSettingsMutation({
                             variables: {
                               teamId,
-                              input: { proactiveAI: { enabled: e.target.checked } }
+                              input: { aiEnabled: e.target.checked }
                             }
                           });
                         }}
                       />
                       <span className="toggle-label">
-                        <strong>Enable Proactive AI</strong>
-                        <span className="toggle-hint">Master toggle for all AI features</span>
+                        <strong>Enable AI Features</strong>
+                        <span className="toggle-hint">Enable @raven commands and AI assistance</span>
                       </span>
                     </label>
-
-                    {teamSettings.proactiveAI.enabled && (
-                      <>
-                        <label className="toggle-row toggle-indent">
-                          <input
-                            type="checkbox"
-                            checked={teamSettings.proactiveAI.morningFocusEnabled}
-                            onChange={(e) => {
-                              updateTeamSettingsMutation({
-                                variables: {
-                                  teamId,
-                                  input: { proactiveAI: { morningFocusEnabled: e.target.checked } }
-                                }
-                              });
-                            }}
-                          />
-                          <span className="toggle-label">
-                            <strong>Morning Focus</strong>
-                            <span className="toggle-hint">AI-generated daily plans</span>
-                          </span>
-                        </label>
-
-                        <label className="toggle-row toggle-indent">
-                          <input
-                            type="checkbox"
-                            checked={teamSettings.proactiveAI.smartNudgesEnabled}
-                            onChange={(e) => {
-                              updateTeamSettingsMutation({
-                                variables: {
-                                  teamId,
-                                  input: { proactiveAI: { smartNudgesEnabled: e.target.checked } }
-                                }
-                              });
-                            }}
-                          />
-                          <span className="toggle-label">
-                            <strong>Smart Nudges</strong>
-                            <span className="toggle-hint">Reminders for overdue/stale tasks</span>
-                          </span>
-                        </label>
-
-                        <label className="toggle-row toggle-indent">
-                          <input
-                            type="checkbox"
-                            checked={teamSettings.proactiveAI.insightsEnabled}
-                            onChange={(e) => {
-                              updateTeamSettingsMutation({
-                                variables: {
-                                  teamId,
-                                  input: { proactiveAI: { insightsEnabled: e.target.checked } }
-                                }
-                              });
-                            }}
-                          />
-                          <span className="toggle-label">
-                            <strong>AI Insights</strong>
-                            <span className="toggle-hint">Productivity analytics and recommendations</span>
-                          </span>
-                        </label>
-
-                        <label className="toggle-row toggle-indent">
-                          <input
-                            type="checkbox"
-                            checked={teamSettings.proactiveAI.meetingPrepEnabled}
-                            onChange={(e) => {
-                              updateTeamSettingsMutation({
-                                variables: {
-                                  teamId,
-                                  input: { proactiveAI: { meetingPrepEnabled: e.target.checked } }
-                                }
-                              });
-                            }}
-                          />
-                          <span className="toggle-label">
-                            <strong>Meeting Prep</strong>
-                            <span className="toggle-hint">Auto-generated context before meetings</span>
-                          </span>
-                        </label>
-                      </>
-                    )}
                   </div>
                 </div>
               )}
