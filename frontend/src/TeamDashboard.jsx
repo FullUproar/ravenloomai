@@ -3330,14 +3330,19 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 <p className="channel-description">{activeScopeDetails.description}</p>
               )}
             </div>
-            {/* Private/Public Toggle - clean pill style */}
-            <button
-              className={`scope-privacy-toggle ${includePrivate ? 'private' : 'public'}`}
-              onClick={() => setIncludePrivate(!includePrivate)}
-              title={includePrivate ? 'Switch to public knowledge' : 'Switch to private notes'}
-            >
-              {includePrivate ? 'Private' : 'Public'}
-            </button>
+            {/* Private/Public Toggle - clean pill style with helper */}
+            <div className="scope-privacy-container">
+              <button
+                className={`scope-privacy-toggle ${includePrivate ? 'private' : 'public'}`}
+                onClick={() => setIncludePrivate(!includePrivate)}
+                title={includePrivate ? 'Switch to public knowledge' : 'Switch to private notes'}
+              >
+                {includePrivate ? 'Private' : 'Public'}
+              </button>
+              <span className="scope-privacy-hint">
+                {includePrivate ? 'Only you can see' : 'Click for private notes'}
+              </span>
+            </div>
             <div className="header-spacer"></div>
             <div className="user-menu-container">
               <button

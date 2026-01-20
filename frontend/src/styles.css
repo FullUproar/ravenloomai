@@ -1036,7 +1036,14 @@ button:active:not(:disabled),
   gap: 0.5rem;
 }
 
-/* Scope Privacy Toggle - Clean pill button */
+/* Scope Privacy Toggle - Clean pill button with helper */
+.scope-privacy-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 1rem;
+}
+
 .scope-privacy-toggle {
   padding: 0.375rem 0.875rem;
   border-radius: 16px;
@@ -1045,7 +1052,13 @@ button:active:not(:disabled),
   border: none;
   cursor: pointer;
   transition: all 0.2s;
-  margin-right: 1rem;
+}
+
+.scope-privacy-hint {
+  font-size: 0.6875rem;
+  color: var(--text-muted, #888);
+  margin-top: 0.25rem;
+  white-space: nowrap;
 }
 
 .scope-privacy-toggle.public {
