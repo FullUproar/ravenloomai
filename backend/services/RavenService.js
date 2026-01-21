@@ -302,7 +302,8 @@ async function extractFactsFromStatement(statement) {
       attribute: fact.attribute || null,
       value: fact.value || null,
       category: fact.category || 'general',
-      confidenceScore: fact.confidence || 0.8
+      confidenceScore: fact.confidence || 0.8,
+      contextTags: fact.contextTags || []
     }));
   } catch (error) {
     console.error('[extractFactsFromStatement] AI extraction failed, using raw statement:', error.message);
@@ -314,7 +315,8 @@ async function extractFactsFromStatement(statement) {
       attribute: null,
       value: null,
       category: 'general',
-      confidenceScore: 0.7
+      confidenceScore: 0.7,
+      contextTags: []
     }];
   }
 }
@@ -432,7 +434,7 @@ function levenshteinSimilarity(a, b) {
  * Create a fact with source attribution
  */
 async function createFactWithAttribution(teamId, scopeId, factData) {
-  const { content, entityType, entityName, attribute, value, category, confidenceScore, sourceQuote, sourceUrl, sourceType, createdBy } = factData;
+  const { content, entityType, entityName, attribute, value, category, confidenceScore, sourceQuote, sourceUrl, sourceType, createdBy, contextTags = [] } = factData;
 
   // Generate embedding
   let embedding = null;
@@ -444,8 +446,8 @@ async function createFactWithAttribution(teamId, scopeId, factData) {
 
   const result = await db.query(
     `INSERT INTO facts (team_id, scope_id, content, entity_type, entity_name, attribute, value, category,
-                       confidence_score, source_type, source_quote, source_url, created_by, embedding)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                       confidence_score, source_type, source_quote, source_url, created_by, embedding, context_tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING *`,
     [
       teamId,
@@ -461,7 +463,8 @@ async function createFactWithAttribution(teamId, scopeId, factData) {
       sourceQuote,
       sourceUrl,
       createdBy,
-      embedding ? `[${embedding.join(',')}]` : null
+      embedding ? `[${embedding.join(',')}]` : null,
+      JSON.stringify(contextTags)
     ]
   );
 
@@ -492,6 +495,7 @@ function mapFact(row) {
     validFrom: row.valid_from,
     validUntil: row.valid_until,
     supersededBy: row.superseded_by,
+    contextTags: row.context_tags || [],
     metadata: row.metadata,
     createdAt: row.created_at,
     updatedAt: row.updated_at

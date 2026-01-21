@@ -316,6 +316,7 @@ function mapFact(row) {
     validFrom: row.valid_from,
     validUntil: row.valid_until,
     supersededBy: row.superseded_by,
+    contextTags: row.context_tags || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

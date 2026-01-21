@@ -144,6 +144,7 @@ export default gql`
     value: String
     category: String
     confidenceScore: Float
+    contextTags: [String!]  # Context scoping inferred from statement
   }
 
   # Potential conflict with existing knowledge
@@ -477,6 +478,7 @@ export default gql`
     validFrom: DateTime!
     validUntil: DateTime
     supersededBy: ID
+    contextTags: [String!]  # Context scoping: ["project:alpha", "california", "usa"]
     metadata: JSON
     createdAt: DateTime!
     updatedAt: DateTime!

@@ -1147,11 +1147,20 @@ Return a JSON object with:
       "statement": "The atomic fact statement",
       "category": "product|company|process|people|decision|general",
       "entities": ["Entity1", "Entity2"],
-      "confidence": 0.0-1.0
+      "confidence": 0.0-1.0,
+      "contextTags": ["tag1", "tag2"]
     }
   ],
   "sourceQuestion": "The original question if this is a Q&A" (optional)
 }
+
+Context tags are temporal or conditional qualifiers on when a fact applies:
+- Temporal: "after:2025-01-01", "before:2026-Q2", "during:project-alpha"
+- Conditional: "when:budget-approved", "if:headcount-increases"
+- NEVER use context tags for geographic/organizational scope (that belongs in the entity name)
+- Most facts have NO context tags (empty array) - only add if explicitly stated
+- Example: "Starting Q2, we'll use Jira" → contextTags: ["after:2026-Q2"]
+- Example: "California office uses Slack" → contextTags: [] (California is in the entity, not context)
 
 Extract ALL distinct facts from the text. Aim for 3-10 facts depending on content richness.
 Return ONLY valid JSON.`
@@ -1189,7 +1198,8 @@ Return ONLY valid JSON.`
         statement: f.statement,
         category: f.category || 'general',
         entities: f.entities || [],
-        confidence: f.confidence || 0.7
+        confidence: f.confidence || 0.7,
+        contextTags: f.contextTags || []
       }));
   } catch (error) {
     console.error('Atomic fact extraction error:', error);
@@ -1198,7 +1208,8 @@ Return ONLY valid JSON.`
       statement: text.substring(0, 500),
       category: 'general',
       entities: [],
-      confidence: 0.5
+      confidence: 0.5,
+      contextTags: []
     }];
   }
 }
