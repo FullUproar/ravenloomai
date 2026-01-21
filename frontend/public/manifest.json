@@ -1,7 +1,7 @@
 {
-  "name": "RavenLoom - AI Project Management",
+  "name": "RavenLoom - AI Knowledge Engine",
   "short_name": "RavenLoom",
-  "description": "PM in a box. Just add any human. AI-powered project management with personalized AI coaches.",
+  "description": "Your team's AI-powered knowledge engine. Ask questions, remember insights, build collective intelligence.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0D0D0D",
@@ -25,9 +25,9 @@
   "screenshots": [],
   "shortcuts": [
     {
-      "name": "View Projects",
-      "short_name": "Projects",
-      "description": "View all your projects",
+      "name": "Ask Raven",
+      "short_name": "Ask",
+      "description": "Ask your team's knowledge base",
       "url": "/",
       "icons": [
         {

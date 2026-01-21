@@ -5,10 +5,11 @@ const config: CapacitorConfig = {
   appName: 'RavenLoom',
   webDir: 'dist',
   server: {
-    androidScheme: 'http',
-    // For local development on emulator, use 10.0.2.2 (emulator's special localhost IP)
-    url: 'http://10.0.2.2:5173',
-    cleartext: true,
+    androidScheme: 'https',
+    // Production: uses built assets from webDir
+    // For local dev, uncomment the following:
+    // url: 'http://10.0.2.2:5173',
+    // cleartext: true,
   },
   plugins: {
     PushNotifications: {

@@ -60,7 +60,7 @@ function ProModeSettingsMock({
         <div className="pro-mode-label">
           <div className="pro-mode-title">Pro Mode</div>
           <div className="pro-mode-subtitle">
-            Enable advanced project management features
+            Enable advanced features
           </div>
         </div>
         <div className="pro-mode-switch" data-testid="pro-mode-switch" />
@@ -180,7 +180,7 @@ describe('ProModeSettings', () => {
       );
 
       expect(screen.getByText('Pro Mode')).toBeInTheDocument();
-      expect(screen.getByText('Enable advanced project management features')).toBeInTheDocument();
+      expect(screen.getByText('Enable advanced features')).toBeInTheDocument();
     });
 
     it('should call onToggleProMode when toggle clicked', () => {

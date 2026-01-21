@@ -1,7 +1,7 @@
 /**
- * PM Service Unit Tests
+ * PM Service Unit Tests (Legacy - to be removed in refactor)
  *
- * Tests for the Project Management feature functionality including:
+ * Tests for legacy PM feature functionality including:
  * - WBS Drafts CRUD operations
  * - Feature Flags management
  * - Eisenhower Matrix operations
