@@ -26,20 +26,17 @@
   <body>
     <div id="root"></div>
 
-    <!-- Immediately unregister service worker before anything else -->
+    <!-- Register service worker for PWA install prompt and push notifications -->
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-          for (const registration of registrations) {
-            registration.unregister().then(() => {
-              console.log('Service worker unregistered, reloading...');
-              // Reload once after unregistering to clear the cache
-              if (!sessionStorage.getItem('sw_unregistered')) {
-                sessionStorage.setItem('sw_unregistered', 'true');
-                window.location.reload();
-              }
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('Service worker registered:', registration.scope);
+            })
+            .catch(error => {
+              console.log('Service worker registration failed:', error);
             });
-          }
         });
       }
     </script>
