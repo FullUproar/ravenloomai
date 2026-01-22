@@ -17,16 +17,13 @@ import {
 } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
 
-// Detect if running in Capacitor native app or emulator
-const isNativeApp = window.location.protocol === 'capacitor:' ||
-                    window.location.protocol === 'ionic:' ||
-                    window.location.hostname === '10.0.2.2';
-
 // API URI configuration
-const apiUri = isNativeApp
-  ? 'http://10.0.2.2:4000/graphql'
-  : import.meta.env.PROD
-    ? '/api/graphql'
+// In production, always use relative /api/graphql
+// In development, check for Capacitor native app or local dev server
+const apiUri = import.meta.env.PROD
+  ? '/api/graphql'
+  : (window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:')
+    ? 'http://10.0.2.2:4000/graphql'
     : 'http://localhost:4000/graphql';
 
 console.log('🪶 RavenLoom API URI:', apiUri);
