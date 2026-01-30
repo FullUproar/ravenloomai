@@ -6,6 +6,7 @@ import InviteAccept from './InviteAccept.jsx';
 import HelpPage from './HelpPage.jsx';
 import PrivacyPolicy from './PrivacyPolicy.jsx';
 import TermsOfService from './TermsOfService.jsx';
+import OraclePage from './pages/OraclePage.jsx';
 import { ToastProvider } from './Toast.jsx';
 import './styles.css';
 
@@ -68,6 +69,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <ApolloProvider client={client}>
         <ToastProvider>
           <Routes>
+            <Route path="/oracle" element={<OraclePage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
