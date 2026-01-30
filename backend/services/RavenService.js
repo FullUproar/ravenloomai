@@ -643,33 +643,58 @@ async function fetchUrlContent(url) {
     // Convert to export URL for plain text
     const docId = gdocsMatch[1];
     const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
-    const response = await fetch(exportUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Google Doc: ${response.statusText}`);
+    try {
+      const response = await fetch(exportUrl);
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Google Doc is not publicly accessible. Please set sharing to "Anyone with the link" and try again.');
+        }
+        throw new Error(`Failed to fetch Google Doc: ${response.statusText}`);
+      }
+      const text = await response.text();
+      // Check if we got an HTML login page instead of the document
+      if (text.includes('accounts.google.com') || text.includes('Sign in - Google')) {
+        throw new Error('Google Doc is not publicly accessible. Please set sharing to "Anyone with the link" and try again.');
+      }
+      return text;
+    } catch (err) {
+      if (err.message.includes('not publicly accessible')) {
+        throw err;
+      }
+      throw new Error(`Failed to fetch Google Doc: ${err.message}`);
     }
-    return await response.text();
   }
 
   // For other URLs, fetch as-is
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch URL: ${response.statusText}`);
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('URL requires authentication. Please make sure the content is publicly accessible.');
+      }
+      throw new Error(`Failed to fetch URL (${response.status}): ${response.statusText}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('text/html')) {
+      // Basic HTML to text conversion
+      const html = await response.text();
+      // Strip HTML tags (basic approach)
+      return html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                 .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                 .replace(/<[^>]+>/g, ' ')
+                 .replace(/\s+/g, ' ')
+                 .trim();
+    }
+
+    return await response.text();
+  } catch (err) {
+    if (err.message.includes('not publicly accessible') || err.message.includes('requires authentication')) {
+      throw err;
+    }
+    throw new Error(`Failed to fetch URL: ${err.message}`);
   }
-
-  const contentType = response.headers.get('content-type') || '';
-
-  if (contentType.includes('text/html')) {
-    // Basic HTML to text conversion
-    const html = await response.text();
-    // Strip HTML tags (basic approach)
-    return html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-               .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-               .replace(/<[^>]+>/g, ' ')
-               .replace(/\s+/g, ' ')
-               .trim();
-  }
-
-  return await response.text();
 }
 
 export default {
