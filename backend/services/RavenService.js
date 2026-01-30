@@ -16,6 +16,7 @@ import * as KnowledgeService from './KnowledgeService.js';
 import * as ScopeService from './ScopeService.js';
 import { graphRAGSearch, processDocument } from './KnowledgeGraphService.js';
 import KnowledgeBaseService from './KnowledgeBaseService.js';
+import * as GoogleDriveService from './GoogleDriveService.js';
 import crypto from 'crypto';
 
 // Generate UUID using Node.js crypto
@@ -546,7 +547,7 @@ export async function processDocumentContent(teamId, userId, { title, content, u
   if (url && !content) {
     try {
       console.log(`[RavenService.processDocumentContent] Fetching content from URL: ${url}`);
-      documentContent = await fetchUrlContent(url);
+      documentContent = await fetchUrlContent(url, teamId);
     } catch (err) {
       console.error(`[RavenService.processDocumentContent] URL fetch failed:`, err.message);
       return {
@@ -636,29 +637,56 @@ export async function processDocumentContent(teamId, userId, { title, content, u
 /**
  * Fetch content from a URL (supports Google Docs, web pages, etc.)
  */
-async function fetchUrlContent(url) {
+async function fetchUrlContent(url, teamId = null) {
   // Check if it's a Google Docs URL
   const gdocsMatch = url.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/);
   if (gdocsMatch) {
-    // Convert to export URL for plain text
     const docId = gdocsMatch[1];
+
+    // First, try to use team's Google OAuth if available
+    if (teamId) {
+      try {
+        const integration = await GoogleDriveService.getIntegration(teamId);
+        if (integration) {
+          console.log(`[fetchUrlContent] Using Google OAuth for team ${teamId}`);
+          const content = await GoogleDriveService.getFileContent(
+            teamId,
+            docId,
+            'application/vnd.google-apps.document'
+          );
+          console.log(`[fetchUrlContent] Successfully fetched private doc via OAuth`);
+          return content;
+        }
+      } catch (oauthErr) {
+        console.log(`[fetchUrlContent] OAuth fetch failed: ${oauthErr.message}, trying public access`);
+        // Fall through to public access attempt
+      }
+    }
+
+    // Fall back to public access
     const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
     try {
       const response = await fetch(exportUrl);
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
-          throw new Error('Google Doc is not publicly accessible. Please set sharing to "Anyone with the link" and try again.');
+          const connectMsg = teamId
+            ? 'Connect Google Drive in Settings to access private docs, or set sharing to "Anyone with the link".'
+            : 'Google Doc is not publicly accessible. Please set sharing to "Anyone with the link" and try again.';
+          throw new Error(connectMsg);
         }
         throw new Error(`Failed to fetch Google Doc: ${response.statusText}`);
       }
       const text = await response.text();
       // Check if we got an HTML login page instead of the document
       if (text.includes('accounts.google.com') || text.includes('Sign in - Google')) {
-        throw new Error('Google Doc is not publicly accessible. Please set sharing to "Anyone with the link" and try again.');
+        const connectMsg = teamId
+          ? 'Connect Google Drive in Settings to access private docs, or set sharing to "Anyone with the link".'
+          : 'Google Doc is not publicly accessible. Please set sharing to "Anyone with the link" and try again.';
+        throw new Error(connectMsg);
       }
       return text;
     } catch (err) {
-      if (err.message.includes('not publicly accessible')) {
+      if (err.message.includes('not publicly accessible') || err.message.includes('Connect Google Drive')) {
         throw err;
       }
       throw new Error(`Failed to fetch Google Doc: ${err.message}`);
