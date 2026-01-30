@@ -29,7 +29,14 @@ const GET_TEAM_SCOPE = gql`
 `;
 
 export default function OraclePage() {
-  const { data: teamsData, loading: teamsLoading, error: teamsError } = useQuery(GET_MY_TEAMS);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Check if user appears to be logged in (has userId in localStorage)
+  const hasStoredUserId = !!localStorage.getItem('userId');
+
+  const { data: teamsData, loading: teamsLoading, error: teamsError, refetch: refetchTeams } = useQuery(GET_MY_TEAMS, {
+    fetchPolicy: 'network-only' // Always fetch fresh to avoid stale cache issues
+  });
   const [selectedTeam, setSelectedTeam] = useState(null);
 
   // Get team scope once we have a team
@@ -50,9 +57,22 @@ export default function OraclePage() {
     }
   }, [teamsData, selectedTeam]);
 
+  // Retry logic: if we have a stored userId but query failed/empty, retry a few times
+  useEffect(() => {
+    if (hasStoredUserId && !teamsLoading && (!teamsData?.getMyTeams?.length || teamsError) && retryCount < 3) {
+      const timer = setTimeout(() => {
+        console.log(`[OraclePage] Retrying teams query (attempt ${retryCount + 1})...`);
+        setRetryCount(c => c + 1);
+        refetchTeams();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [hasStoredUserId, teamsLoading, teamsData, teamsError, retryCount, refetchTeams]);
+
   const loading = teamsLoading || scopeLoading;
 
-  if (loading) {
+  // Still loading or retrying
+  if (loading || (hasStoredUserId && retryCount < 3 && !teamsData?.getMyTeams?.length)) {
     return (
       <div className="oracle-loading">
         <div className="oracle-loading-spinner" />
@@ -60,7 +80,8 @@ export default function OraclePage() {
     );
   }
 
-  if (teamsError || !teamsData?.getMyTeams?.length) {
+  // Only show sign in error if there's genuinely no user
+  if (!hasStoredUserId || teamsError || !teamsData?.getMyTeams?.length) {
     return (
       <div className="oracle-error">
         <p>Please sign in to access the Oracle.</p>

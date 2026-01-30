@@ -956,6 +956,11 @@ const resolvers = {
     cancelRemember: async (_, { previewId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return RavenService.cancelRemember(previewId);
+    },
+
+    processDocumentContent: async (_, { teamId, title, content, url }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return RavenService.processDocumentContent(teamId, userId, { title, content, url });
     }
   },
 

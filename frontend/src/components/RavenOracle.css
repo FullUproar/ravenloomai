@@ -574,3 +574,272 @@
 .raven-oracle.explore-mode .oracle-input-area::before {
   display: none;
 }
+
+/* Upload button */
+.oracle-upload-btn {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  background: rgba(30, 30, 35, 0.9);
+  border: 1px solid rgba(147, 130, 195, 0.4);
+  border-radius: 50%;
+  color: rgba(200, 180, 255, 0.9);
+  font-size: 1.75rem;
+  font-weight: 300;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+}
+
+.oracle-upload-btn:hover {
+  background: rgba(147, 130, 195, 0.3);
+  border-color: rgba(147, 130, 195, 0.6);
+  transform: scale(1.05);
+}
+
+.oracle-upload-btn span {
+  line-height: 1;
+  margin-top: -2px;
+}
+
+/* Upload modal */
+.upload-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+}
+
+.upload-modal {
+  background: rgba(25, 25, 30, 0.98);
+  border: 1px solid rgba(147, 130, 195, 0.4);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.upload-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(147, 130, 195, 0.2);
+}
+
+.upload-modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.upload-modal-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 1.75rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.upload-modal-close:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.upload-modal-close:disabled {
+  cursor: not-allowed;
+}
+
+.upload-modal-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.upload-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.upload-field label {
+  font-size: 0.875rem;
+  color: rgba(200, 180, 255, 0.9);
+  font-weight: 500;
+}
+
+.upload-field input,
+.upload-field textarea {
+  background: rgba(20, 20, 25, 0.9);
+  border: 1px solid rgba(147, 130, 195, 0.3);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  padding: 0.875rem 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.upload-field input:focus,
+.upload-field textarea:focus {
+  border-color: rgba(147, 130, 195, 0.6);
+}
+
+.upload-field input::placeholder,
+.upload-field textarea::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.upload-field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.upload-field input:disabled,
+.upload-field textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.upload-hint {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+}
+
+/* Upload tabs */
+.upload-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+
+.upload-tab {
+  flex: 1;
+  background: rgba(147, 130, 195, 0.1);
+  border: 1px solid rgba(147, 130, 195, 0.2);
+  border-radius: 8px;
+  color: rgba(200, 180, 255, 0.7);
+  padding: 0.625rem 0.5rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-tab:hover {
+  background: rgba(147, 130, 195, 0.2);
+  border-color: rgba(147, 130, 195, 0.4);
+}
+
+.upload-tab.active {
+  background: rgba(147, 130, 195, 0.3);
+  border-color: rgba(147, 130, 195, 0.5);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Upload modal footer */
+.upload-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem 1.5rem;
+}
+
+.upload-cancel {
+  background: transparent;
+  border: 1px solid rgba(147, 130, 195, 0.3);
+  color: rgba(200, 180, 255, 0.8);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-cancel:hover:not(:disabled) {
+  background: rgba(147, 130, 195, 0.1);
+  border-color: rgba(147, 130, 195, 0.5);
+}
+
+.upload-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.upload-submit {
+  background: linear-gradient(135deg, rgba(147, 130, 195, 0.8), rgba(93, 75, 140, 0.9));
+  border: 1px solid rgba(147, 130, 195, 0.5);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(147, 130, 195, 0.3);
+}
+
+.upload-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Mobile adjustments for upload button */
+@media (max-width: 768px) {
+  .oracle-upload-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    font-size: 1.5rem;
+  }
+
+  .upload-modal {
+    max-height: 85vh;
+  }
+
+  .upload-modal-header {
+    padding: 1rem 1.25rem;
+  }
+
+  .upload-modal-body {
+    padding: 1.25rem;
+  }
+
+  .upload-modal-footer {
+    padding: 0.75rem 1.25rem 1.25rem;
+  }
+
+  .upload-tab {
+    font-size: 0.75rem;
+    padding: 0.5rem 0.25rem;
+  }
+}
+
+@media (max-width: 375px) {
+  .oracle-upload-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    font-size: 1.375rem;
+  }
+}

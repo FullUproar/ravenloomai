@@ -14,7 +14,7 @@ import db from '../db.js';
 import * as AIService from './AIService.js';
 import * as KnowledgeService from './KnowledgeService.js';
 import * as ScopeService from './ScopeService.js';
-import { graphRAGSearch } from './KnowledgeGraphService.js';
+import { graphRAGSearch, processDocument } from './KnowledgeGraphService.js';
 import KnowledgeBaseService from './KnowledgeBaseService.js';
 import crypto from 'crypto';
 
@@ -528,10 +528,155 @@ function cleanupOldPreviews() {
   }
 }
 
+// ============================================================================
+// DOCUMENT PROCESSING
+// ============================================================================
+
+/**
+ * Process document content into the knowledge graph
+ * Supports raw text content or URLs (Google Docs, web pages)
+ */
+export async function processDocumentContent(teamId, userId, { title, content, url }) {
+  console.log(`[RavenService.processDocumentContent] Processing "${title}"`);
+
+  let documentContent = content;
+  let factsExtracted = 0;
+
+  // If URL provided, fetch content
+  if (url && !content) {
+    try {
+      console.log(`[RavenService.processDocumentContent] Fetching content from URL: ${url}`);
+      documentContent = await fetchUrlContent(url);
+    } catch (err) {
+      console.error(`[RavenService.processDocumentContent] URL fetch failed:`, err.message);
+      return {
+        success: false,
+        title,
+        nodesCreated: 0,
+        edgesCreated: 0,
+        chunksCreated: 0,
+        factsExtracted: 0,
+        message: `Failed to fetch content from URL: ${err.message}`
+      };
+    }
+  }
+
+  if (!documentContent) {
+    return {
+      success: false,
+      title,
+      nodesCreated: 0,
+      edgesCreated: 0,
+      chunksCreated: 0,
+      factsExtracted: 0,
+      message: 'No content provided'
+    };
+  }
+
+  console.log(`[RavenService.processDocumentContent] Content length: ${documentContent.length} chars`);
+
+  try {
+    // Process into knowledge graph (entities, relationships, chunks)
+    const graphResult = await processDocument(teamId, {
+      id: crypto.randomUUID(),
+      title,
+      content: documentContent
+    }, { sourceType: 'document', sourceUrl: url });
+
+    console.log(`[RavenService.processDocumentContent] Graph result: ${graphResult.nodes} nodes, ${graphResult.edges} edges, ${graphResult.chunks} chunks`);
+
+    // Also extract atomic facts for the fact-based knowledge store
+    try {
+      const atomicFacts = await AIService.extractAtomicFacts(documentContent, { question: null });
+      console.log(`[RavenService.processDocumentContent] Extracted ${atomicFacts.length} atomic facts`);
+
+      // Store each fact
+      for (const fact of atomicFacts.slice(0, 50)) { // Limit to 50 facts per document
+        try {
+          await KnowledgeService.createFact(teamId, {
+            content: fact.statement,
+            category: fact.category || 'general',
+            sourceType: 'document',
+            createdBy: userId,
+            metadata: { documentTitle: title, sourceUrl: url }
+          });
+          factsExtracted++;
+        } catch (err) {
+          console.error(`[RavenService.processDocumentContent] Fact creation error:`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error(`[RavenService.processDocumentContent] Fact extraction error:`, err.message);
+    }
+
+    return {
+      success: true,
+      title,
+      nodesCreated: graphResult.nodes || 0,
+      edgesCreated: graphResult.edges || 0,
+      chunksCreated: graphResult.chunks || 0,
+      factsExtracted,
+      message: `Processed "${title}" - ${graphResult.nodes || 0} entities, ${factsExtracted} facts extracted`
+    };
+
+  } catch (err) {
+    console.error(`[RavenService.processDocumentContent] Processing error:`, err);
+    return {
+      success: false,
+      title,
+      nodesCreated: 0,
+      edgesCreated: 0,
+      chunksCreated: 0,
+      factsExtracted: 0,
+      message: err.message
+    };
+  }
+}
+
+/**
+ * Fetch content from a URL (supports Google Docs, web pages, etc.)
+ */
+async function fetchUrlContent(url) {
+  // Check if it's a Google Docs URL
+  const gdocsMatch = url.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/);
+  if (gdocsMatch) {
+    // Convert to export URL for plain text
+    const docId = gdocsMatch[1];
+    const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+    const response = await fetch(exportUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Google Doc: ${response.statusText}`);
+    }
+    return await response.text();
+  }
+
+  // For other URLs, fetch as-is
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch URL: ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('text/html')) {
+    // Basic HTML to text conversion
+    const html = await response.text();
+    // Strip HTML tags (basic approach)
+    return html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+               .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+               .replace(/<[^>]+>/g, ' ')
+               .replace(/\s+/g, ' ')
+               .trim();
+  }
+
+  return await response.text();
+}
+
 export default {
   ask,
   previewRemember,
   confirmRemember,
   cancelRemember,
-  getFactAttribution
+  getFactAttribution,
+  processDocumentContent
 };

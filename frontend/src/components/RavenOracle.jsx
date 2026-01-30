@@ -69,6 +69,20 @@ const CONFIRM_REMEMBER = gql`
   }
 `;
 
+const PROCESS_DOCUMENT = gql`
+  mutation ProcessDocument($teamId: ID!, $title: String!, $content: String, $url: String) {
+    processDocumentContent(teamId: $teamId, title: $title, content: $content, url: $url) {
+      success
+      title
+      nodesCreated
+      edgesCreated
+      chunksCreated
+      factsExtracted
+      message
+    }
+  }
+`;
+
 // Category colors for visual grouping
 const CATEGORY_COLORS = {
   general: { r: 147, g: 130, b: 195 },      // Purple (default)
@@ -447,12 +461,18 @@ export default function RavenOracle({ scopeId, teamId }) {
   const [highlightIds, setHighlightIds] = useState([]);
   const [selectedFact, setSelectedFact] = useState(null);
   const [exploreMode, setExploreMode] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadUrl, setUploadUrl] = useState('');
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadContent, setUploadContent] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const addParticlesRef = useRef(null);
   const conversationEndRef = useRef(null);
 
   // Fetch existing facts to populate constellation
-  const { data: factsData } = useQuery(GET_FACTS, {
+  const { data: factsData, refetch: refetchFacts } = useQuery(GET_FACTS, {
     variables: { teamId, limit: 500 },
     fetchPolicy: 'cache-and-network'
   });
@@ -470,6 +490,7 @@ export default function RavenOracle({ scopeId, teamId }) {
   const [askRaven] = useLazyQuery(ASK_RAVEN, { fetchPolicy: 'network-only' });
   const [previewRemember] = useMutation(PREVIEW_REMEMBER);
   const [confirmRemember] = useMutation(CONFIRM_REMEMBER);
+  const [processDocument] = useMutation(PROCESS_DOCUMENT);
 
   // Auto-scroll conversation
   useEffect(() => {
@@ -608,6 +629,70 @@ export default function RavenOracle({ scopeId, teamId }) {
     }, 100);
   };
 
+  // Handle file upload
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setUploadTitle(file.name.replace(/\.[^.]+$/, ''));
+      setUploadContent(event.target.result);
+      setUploadUrl('');
+      setShowUploadModal(true);
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
+  };
+
+  // Process document upload
+  const handleUploadSubmit = async () => {
+    if (!uploadTitle.trim() || (!uploadContent.trim() && !uploadUrl.trim())) return;
+
+    setIsUploading(true);
+    try {
+      const { data } = await processDocument({
+        variables: {
+          teamId,
+          title: uploadTitle.trim(),
+          content: uploadContent.trim() || null,
+          url: uploadUrl.trim() || null
+        }
+      });
+
+      if (data?.processDocumentContent) {
+        const result = data.processDocumentContent;
+        setConversation(prev => [...prev, {
+          type: 'raven',
+          intent: 'document',
+          content: result.success
+            ? `**Processed "${result.title}"**\n\n${result.factsExtracted} facts extracted, ${result.nodesCreated} entities identified.`
+            : `Failed to process document: ${result.message}`,
+          timestamp: new Date()
+        }]);
+
+        if (result.success) {
+          // Refresh facts to show new particles
+          refetchFacts();
+        }
+      }
+    } catch (error) {
+      console.error('Document upload error:', error);
+      setConversation(prev => [...prev, {
+        type: 'raven',
+        intent: 'error',
+        content: `Failed to process document: ${error.message}`,
+        timestamp: new Date()
+      }]);
+    }
+
+    setIsUploading(false);
+    setShowUploadModal(false);
+    setUploadTitle('');
+    setUploadContent('');
+    setUploadUrl('');
+  };
+
   return (
     <div className={`raven-oracle ${exploreMode ? 'explore-mode' : ''}`}>
       <ConstellationCanvas
@@ -697,6 +782,25 @@ export default function RavenOracle({ scopeId, teamId }) {
 
         {/* Input area */}
         <form className="oracle-input-area" onSubmit={handleSubmit}>
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md,.pdf,.doc,.docx"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
+
+          {/* Upload button */}
+          <button
+            type="button"
+            className="oracle-upload-btn"
+            onClick={() => setShowUploadModal(true)}
+            title="Add documents or links"
+          >
+            <span>+</span>
+          </button>
+
           <input
             ref={inputRef}
             type="text"
@@ -715,6 +819,105 @@ export default function RavenOracle({ scopeId, teamId }) {
           </button>
         </form>
       </div>
+
+      {/* Upload modal */}
+      {showUploadModal && (
+        <div className="upload-modal-overlay" onClick={() => !isUploading && setShowUploadModal(false)}>
+          <div className="upload-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="upload-modal-header">
+              <h3>Add Knowledge</h3>
+              <button
+                className="upload-modal-close"
+                onClick={() => !isUploading && setShowUploadModal(false)}
+                disabled={isUploading}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="upload-modal-body">
+              <div className="upload-field">
+                <label>Title</label>
+                <input
+                  type="text"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  placeholder="Document title"
+                  disabled={isUploading}
+                />
+              </div>
+
+              <div className="upload-tabs">
+                <button
+                  type="button"
+                  className={`upload-tab ${!uploadUrl && uploadContent ? 'active' : ''}`}
+                  onClick={() => { setUploadUrl(''); }}
+                >
+                  Paste Text
+                </button>
+                <button
+                  type="button"
+                  className={`upload-tab ${uploadUrl ? 'active' : ''}`}
+                  onClick={() => { setUploadContent(''); }}
+                >
+                  From URL
+                </button>
+                <button
+                  type="button"
+                  className={`upload-tab`}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Upload File
+                </button>
+              </div>
+
+              {uploadUrl || (!uploadContent && !uploadUrl) ? (
+                <div className="upload-field">
+                  <label>URL (Google Docs, web pages)</label>
+                  <input
+                    type="url"
+                    value={uploadUrl}
+                    onChange={(e) => setUploadUrl(e.target.value)}
+                    placeholder="https://docs.google.com/document/d/..."
+                    disabled={isUploading}
+                  />
+                  <p className="upload-hint">Paste a Google Doc URL or any web page</p>
+                </div>
+              ) : (
+                <div className="upload-field">
+                  <label>Content</label>
+                  <textarea
+                    value={uploadContent}
+                    onChange={(e) => setUploadContent(e.target.value)}
+                    placeholder="Paste your text here..."
+                    disabled={isUploading}
+                    rows={8}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="upload-modal-footer">
+              <button
+                type="button"
+                className="upload-cancel"
+                onClick={() => setShowUploadModal(false)}
+                disabled={isUploading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="upload-submit"
+                onClick={handleUploadSubmit}
+                disabled={isUploading || !uploadTitle.trim() || (!uploadContent.trim() && !uploadUrl.trim())}
+              >
+                {isUploading ? 'Processing...' : 'Add Knowledge'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

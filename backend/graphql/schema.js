@@ -1017,5 +1017,20 @@ export default gql`
 
     # Cancel a Remember preview (cleanup)
     cancelRemember(previewId: ID!): Boolean!
+
+    # Process document content into knowledge graph
+    # Accepts raw text content or a URL (Google Docs, web pages)
+    processDocumentContent(teamId: ID!, title: String!, content: String, url: String): DocumentProcessResult!
+  }
+
+  # Result of processing a document
+  type DocumentProcessResult {
+    success: Boolean!
+    title: String!
+    nodesCreated: Int!
+    edgesCreated: Int!
+    chunksCreated: Int!
+    factsExtracted: Int!
+    message: String
   }
 `;
