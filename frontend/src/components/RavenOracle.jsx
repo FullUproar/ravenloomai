@@ -2,16 +2,29 @@
  * RavenOracle - Immersive knowledge constellation interface
  *
  * A radically different UX for knowledge management:
- * - Full-screen constellation visualization
+ * - Full-screen constellation visualization where each particle is a fact
  * - Single input - Raven detects intent (ask vs remember)
- * - Knowledge clusters emerge organically
- * - Scopes appear as labeled regions in the constellation
+ * - Knowledge clusters emerge organically by category
+ * - Empty on day 1 - grows as you add knowledge
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { gql, useMutation, useLazyQuery } from '@apollo/client';
+import { gql, useMutation, useLazyQuery, useQuery } from '@apollo/client';
 import ReactMarkdown from 'react-markdown';
 import './RavenOracle.css';
+
+// Fetch existing knowledge
+const GET_FACTS = gql`
+  query GetFacts($teamId: ID!, $limit: Int) {
+    getFacts(teamId: $teamId, limit: $limit) {
+      id
+      content
+      category
+      entityType
+      entityName
+    }
+  }
+`;
 
 // Reuse existing GraphQL operations
 const ASK_RAVEN = gql`
@@ -49,49 +62,56 @@ const CONFIRM_REMEMBER = gql`
       factsCreated {
         id
         content
+        category
       }
       message
     }
   }
 `;
 
-// Particle system for constellation
-class Particle {
-  constructor(canvas, cluster = null) {
+// Category colors for visual grouping
+const CATEGORY_COLORS = {
+  general: { r: 147, g: 130, b: 195 },      // Purple (default)
+  product: { r: 100, g: 180, b: 230 },      // Blue
+  process: { r: 130, g: 195, b: 147 },      // Green
+  people: { r: 230, g: 160, b: 100 },       // Orange
+  policy: { r: 195, g: 130, b: 147 },       // Pink
+  technical: { r: 180, g: 180, b: 130 },    // Yellow-ish
+  sales: { r: 130, g: 175, b: 195 },        // Teal
+  marketing: { r: 195, g: 147, b: 180 },    // Magenta
+};
+
+// Knowledge particle - represents a single fact
+class KnowledgeParticle {
+  constructor(canvas, fact, clusterCenter) {
     this.canvas = canvas;
-    this.cluster = cluster;
-    this.reset();
-  }
+    this.fact = fact;
+    this.id = fact.id;
 
-  reset() {
-    const ctx = this.canvas.getContext('2d');
-    const centerX = this.canvas.width / 2;
-    const centerY = this.canvas.height / 2;
+    // Get color from category
+    const category = fact.category?.toLowerCase() || 'general';
+    this.color = CATEGORY_COLORS[category] || CATEGORY_COLORS.general;
 
-    if (this.cluster) {
-      // Clustered particle - orbit around cluster center
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 30 + Math.random() * 60;
-      this.x = this.cluster.x + Math.cos(angle) * radius;
-      this.y = this.cluster.y + Math.sin(angle) * radius;
-      this.baseX = this.x;
-      this.baseY = this.y;
-    } else {
-      // Free-floating particle
-      this.x = Math.random() * this.canvas.width;
-      this.y = Math.random() * this.canvas.height;
-      this.baseX = this.x;
-      this.baseY = this.y;
-    }
+    // Position near cluster center with some spread
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 40 + Math.random() * 80;
+    this.baseX = clusterCenter.x + Math.cos(angle) * radius;
+    this.baseY = clusterCenter.y + Math.sin(angle) * radius;
+    this.x = this.baseX;
+    this.y = this.baseY;
 
-    this.size = Math.random() * 2 + 0.5;
-    this.alpha = Math.random() * 0.5 + 0.1;
-    this.speed = Math.random() * 0.5 + 0.1;
+    // Visual properties
+    this.size = 2.5 + Math.random() * 1.5;
+    this.alpha = 0.4 + Math.random() * 0.3;
     this.angle = Math.random() * Math.PI * 2;
-    this.orbitRadius = Math.random() * 20 + 5;
-    this.orbitSpeed = (Math.random() - 0.5) * 0.02;
+    this.orbitRadius = 8 + Math.random() * 12;
+    this.orbitSpeed = (Math.random() - 0.5) * 0.015;
     this.pulsePhase = Math.random() * Math.PI * 2;
-    this.pulseSpeed = Math.random() * 0.02 + 0.01;
+    this.pulseSpeed = 0.01 + Math.random() * 0.01;
+
+    // For new particles - start bright and fade to normal
+    this.isNew = false;
+    this.newFade = 1;
   }
 
   update() {
@@ -102,23 +122,83 @@ class Particle {
 
     // Subtle pulse
     this.pulsePhase += this.pulseSpeed;
-    this.currentAlpha = this.alpha * (0.7 + Math.sin(this.pulsePhase) * 0.3);
+    const pulse = 0.7 + Math.sin(this.pulsePhase) * 0.3;
+
+    // New particle effect
+    if (this.isNew && this.newFade > 0) {
+      this.newFade -= 0.005;
+      this.currentAlpha = this.alpha * pulse + this.newFade * 0.5;
+      this.currentSize = this.size + this.newFade * 3;
+    } else {
+      this.isNew = false;
+      this.currentAlpha = this.alpha * pulse;
+      this.currentSize = this.size;
+    }
   }
 
   draw(ctx) {
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(147, 130, 195, ${this.currentAlpha})`;
+    ctx.arc(this.x, this.y, this.currentSize, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.currentAlpha})`;
     ctx.fill();
   }
 }
 
-// Constellation canvas component
-function ConstellationCanvas({ clusters, onAddParticles }) {
+// Constellation canvas component - now driven by actual facts
+function ConstellationCanvas({ facts, onAddParticles, onFactCount }) {
   const canvasRef = useRef(null);
   const particlesRef = useRef([]);
+  const clustersRef = useRef({});
   const animationRef = useRef(null);
 
+  // Build particles from facts
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Group facts by category to create clusters
+    const categories = {};
+    facts.forEach(fact => {
+      const cat = fact.category?.toLowerCase() || 'general';
+      if (!categories[cat]) categories[cat] = [];
+      categories[cat].push(fact);
+    });
+
+    // Calculate cluster positions in a circle around center
+    const categoryNames = Object.keys(categories);
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const clusterRadius = Math.min(canvas.width, canvas.height) * 0.25;
+
+    clustersRef.current = {};
+    categoryNames.forEach((cat, i) => {
+      const angle = (i / categoryNames.length) * Math.PI * 2 - Math.PI / 2;
+      clustersRef.current[cat] = {
+        name: cat.charAt(0).toUpperCase() + cat.slice(1),
+        x: centerX + Math.cos(angle) * clusterRadius,
+        y: centerY + Math.sin(angle) * clusterRadius,
+        color: CATEGORY_COLORS[cat] || CATEGORY_COLORS.general
+      };
+    });
+
+    // Create particles for facts we don't already have
+    const existingIds = new Set(particlesRef.current.map(p => p.id));
+    facts.forEach(fact => {
+      if (!existingIds.has(fact.id)) {
+        const cat = fact.category?.toLowerCase() || 'general';
+        const cluster = clustersRef.current[cat] || { x: centerX, y: centerY };
+        const particle = new KnowledgeParticle(canvas, fact, cluster);
+        particlesRef.current.push(particle);
+      }
+    });
+
+    // Report fact count
+    if (onFactCount) {
+      onFactCount(facts.length);
+    }
+  }, [facts, onFactCount]);
+
+  // Initialize canvas and animation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -131,29 +211,27 @@ function ConstellationCanvas({ clusters, onAddParticles }) {
     resize();
     window.addEventListener('resize', resize);
 
-    // Initialize particles
-    const particleCount = 150;
-    particlesRef.current = [];
-    for (let i = 0; i < particleCount; i++) {
-      particlesRef.current.push(new Particle(canvas));
-    }
-
     // Animation loop
     const animate = () => {
-      ctx.fillStyle = 'rgba(13, 13, 13, 0.1)';
+      // Clear with slight trail effect
+      ctx.fillStyle = 'rgba(13, 13, 13, 0.15)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw connections between nearby particles
+      // Draw connections between nearby particles (same cluster)
       particlesRef.current.forEach((p1, i) => {
         particlesRef.current.slice(i + 1).forEach(p2 => {
+          // Only connect particles of the same category
+          if (p1.fact.category !== p2.fact.category) return;
+
           const dx = p1.x - p2.x;
           const dy = p1.y - p2.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 100) {
+          if (dist < 80) {
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(147, 130, 195, ${0.1 * (1 - dist / 100)})`;
+            const alpha = 0.15 * (1 - dist / 80);
+            ctx.strokeStyle = `rgba(${p1.color.r}, ${p1.color.g}, ${p1.color.b}, ${alpha})`;
             ctx.stroke();
           }
         });
@@ -166,11 +244,11 @@ function ConstellationCanvas({ clusters, onAddParticles }) {
       });
 
       // Draw cluster labels
-      clusters.forEach(cluster => {
-        ctx.font = '14px Inter, sans-serif';
-        ctx.fillStyle = 'rgba(147, 130, 195, 0.7)';
+      Object.values(clustersRef.current).forEach(cluster => {
+        ctx.font = '12px Inter, sans-serif';
+        ctx.fillStyle = `rgba(${cluster.color.r}, ${cluster.color.g}, ${cluster.color.b}, 0.5)`;
         ctx.textAlign = 'center';
-        ctx.fillText(cluster.name, cluster.x, cluster.y - 80);
+        ctx.fillText(cluster.name, cluster.x, cluster.y - 100);
       });
 
       animationRef.current = requestAnimationFrame(animate);
@@ -184,25 +262,40 @@ function ConstellationCanvas({ clusters, onAddParticles }) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [clusters]);
+  }, []);
 
-  // Add burst of particles when knowledge is added
+  // Expose function to add new particles
   useEffect(() => {
     if (onAddParticles) {
-      onAddParticles.current = (x, y, count = 5) => {
+      onAddParticles.current = (newFacts) => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas || !newFacts?.length) return;
 
-        for (let i = 0; i < count; i++) {
-          const p = new Particle(canvas);
-          p.baseX = x || canvas.width / 2;
-          p.baseY = y || canvas.height / 2;
-          p.x = p.baseX;
-          p.y = p.baseY;
-          p.alpha = 0.8; // Brighter initially
-          p.size = 3;
-          particlesRef.current.push(p);
-        }
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        newFacts.forEach(fact => {
+          const cat = fact.category?.toLowerCase() || 'general';
+          let cluster = clustersRef.current[cat];
+
+          // Create new cluster if needed
+          if (!cluster) {
+            const existingCount = Object.keys(clustersRef.current).length;
+            const angle = (existingCount / (existingCount + 1)) * Math.PI * 2 - Math.PI / 2;
+            const clusterRadius = Math.min(canvas.width, canvas.height) * 0.25;
+            cluster = {
+              name: cat.charAt(0).toUpperCase() + cat.slice(1),
+              x: centerX + Math.cos(angle) * clusterRadius,
+              y: centerY + Math.sin(angle) * clusterRadius,
+              color: CATEGORY_COLORS[cat] || CATEGORY_COLORS.general
+            };
+            clustersRef.current[cat] = cluster;
+          }
+
+          const particle = new KnowledgeParticle(canvas, fact, cluster);
+          particle.isNew = true;
+          particlesRef.current.push(particle);
+        });
       };
     }
   }, [onAddParticles]);
@@ -214,10 +307,17 @@ export default function RavenOracle({ scopeId, teamId }) {
   const [input, setInput] = useState('');
   const [conversation, setConversation] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [clusters, setClusters] = useState([]);
+  const [factCount, setFactCount] = useState(0);
   const inputRef = useRef(null);
   const addParticlesRef = useRef(null);
   const conversationEndRef = useRef(null);
+
+  // Fetch existing facts to populate constellation
+  const { data: factsData } = useQuery(GET_FACTS, {
+    variables: { teamId, limit: 500 },
+    fetchPolicy: 'cache-and-network'
+  });
+  const facts = factsData?.getFacts || [];
 
   // GraphQL operations
   const [askRaven] = useLazyQuery(ASK_RAVEN, { fetchPolicy: 'network-only' });
@@ -307,9 +407,9 @@ export default function RavenOracle({ scopeId, teamId }) {
             });
 
             if (confirmData?.confirmRemember?.success) {
-              // Add particles burst for visual feedback
-              if (addParticlesRef.current) {
-                addParticlesRef.current(null, null, 8);
+              // Add new fact particles to constellation
+              if (addParticlesRef.current && confirmData.confirmRemember.factsCreated) {
+                addParticlesRef.current(confirmData.confirmRemember.factsCreated);
               }
 
               const factsCount = confirmData.confirmRemember.factsCreated?.length || 0;
@@ -350,8 +450,9 @@ export default function RavenOracle({ scopeId, teamId }) {
   return (
     <div className="raven-oracle">
       <ConstellationCanvas
-        clusters={clusters}
+        facts={facts}
         onAddParticles={addParticlesRef}
+        onFactCount={setFactCount}
       />
 
       <div className="oracle-content">
@@ -360,7 +461,14 @@ export default function RavenOracle({ scopeId, teamId }) {
           {conversation.length === 0 && (
             <div className="oracle-welcome">
               <div className="welcome-glow" />
-              <p className="welcome-text">What would you like to know... or remember?</p>
+              {factCount === 0 ? (
+                <p className="welcome-text">Your knowledge constellation awaits.<br />Share something to begin.</p>
+              ) : (
+                <p className="welcome-text">
+                  {factCount} {factCount === 1 ? 'memory' : 'memories'} in your constellation.<br />
+                  Ask anything or add more.
+                </p>
+              )}
             </div>
           )}
 
