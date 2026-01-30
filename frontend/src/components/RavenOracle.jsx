@@ -446,6 +446,7 @@ export default function RavenOracle({ scopeId, teamId }) {
   const [factCount, setFactCount] = useState(0);
   const [highlightIds, setHighlightIds] = useState([]);
   const [selectedFact, setSelectedFact] = useState(null);
+  const [exploreMode, setExploreMode] = useState(false);
   const inputRef = useRef(null);
   const addParticlesRef = useRef(null);
   const conversationEndRef = useRef(null);
@@ -608,7 +609,7 @@ export default function RavenOracle({ scopeId, teamId }) {
   };
 
   return (
-    <div className="raven-oracle">
+    <div className={`raven-oracle ${exploreMode ? 'explore-mode' : ''}`}>
       <ConstellationCanvas
         facts={facts}
         onAddParticles={addParticlesRef}
@@ -617,10 +618,19 @@ export default function RavenOracle({ scopeId, teamId }) {
         onSelectFact={setSelectedFact}
       />
 
-      <div className="oracle-content">
+      {/* Explore toggle */}
+      <button
+        className="explore-toggle"
+        onClick={() => setExploreMode(!exploreMode)}
+        title={exploreMode ? 'Show chat' : 'Explore constellation'}
+      >
+        {exploreMode ? '💬' : '✨'}
+      </button>
+
+      <div className={`oracle-content ${exploreMode ? 'collapsed' : ''}`}>
         {/* Conversation thread */}
         <div className="oracle-conversation">
-          {conversation.length === 0 && (
+          {conversation.length === 0 && !exploreMode && (
             <div className="oracle-welcome">
               <div className="welcome-glow" />
               {factCount === 0 ? (
@@ -628,7 +638,7 @@ export default function RavenOracle({ scopeId, teamId }) {
               ) : (
                 <p className="welcome-text">
                   {factCount} {factCount === 1 ? 'memory' : 'memories'} in your constellation.<br />
-                  Ask anything or add more.
+                  Click ✨ to explore, or ask below.
                 </p>
               )}
             </div>

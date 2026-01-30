@@ -46,6 +46,7 @@
   align-items: center;
   justify-content: center;
   position: relative;
+  pointer-events: none; /* Allow clicks to pass through to constellation */
 }
 
 .welcome-glow {
@@ -510,4 +511,66 @@
 
 .constellation-zoom button:hover {
   background: rgba(147, 130, 195, 0.4);
+}
+
+/* Explore mode toggle */
+.explore-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 48px;
+  height: 48px;
+  background: rgba(30, 30, 35, 0.9);
+  border: 1px solid rgba(147, 130, 195, 0.4);
+  border-radius: 50%;
+  font-size: 1.25rem;
+  cursor: pointer;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(8px);
+}
+
+.explore-toggle:hover {
+  background: rgba(147, 130, 195, 0.3);
+  transform: scale(1.1);
+}
+
+/* Collapsed content in explore mode */
+.oracle-content.collapsed {
+  max-height: 80px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.3;
+  transition: all 0.3s ease;
+}
+
+.oracle-content.collapsed .oracle-conversation {
+  display: none;
+}
+
+.oracle-content.collapsed .oracle-input-area {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+/* Full explore mode - content area minimized */
+.raven-oracle.explore-mode .oracle-content {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 70px;
+  background: linear-gradient(transparent, rgba(13, 13, 13, 0.95));
+  padding: 0 1rem 1rem;
+}
+
+.raven-oracle.explore-mode .oracle-input-area {
+  padding-top: 0.5rem;
+}
+
+.raven-oracle.explore-mode .oracle-input-area::before {
+  display: none;
 }
