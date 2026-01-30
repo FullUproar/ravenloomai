@@ -23,7 +23,7 @@ const GET_TEAM_SCOPE = gql`
     getTeamScope(teamId: $teamId) {
       id
       name
-      scopeType
+      type
     }
   }
 `;
@@ -33,10 +33,15 @@ export default function OraclePage() {
   const [selectedTeam, setSelectedTeam] = useState(null);
 
   // Get team scope once we have a team
-  const { data: scopeData, loading: scopeLoading } = useQuery(GET_TEAM_SCOPE, {
+  const { data: scopeData, loading: scopeLoading, error: scopeError } = useQuery(GET_TEAM_SCOPE, {
     variables: { teamId: selectedTeam?.id },
     skip: !selectedTeam?.id
   });
+
+  // Log scope errors for debugging
+  if (scopeError) {
+    console.error('Scope query error:', scopeError);
+  }
 
   // Auto-select first team
   useEffect(() => {
