@@ -22,6 +22,8 @@
   position: absolute;
   inset: 0;
   z-index: 0;
+  touch-action: none; /* Prevent default touch behaviors for custom gestures */
+  user-select: none;
 }
 
 /* Content overlay */
@@ -411,20 +413,24 @@
 }
 
 /* Constellation interactivity */
-.constellation-tooltip {
+.constellation-hint {
   position: absolute;
-  background: rgba(30, 30, 35, 0.95);
-  border: 1px solid rgba(147, 130, 195, 0.4);
-  color: rgba(255, 255, 255, 0.9);
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  font-size: 0.8125rem;
-  max-width: 250px;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(30, 30, 35, 0.6);
+  border: 1px solid rgba(147, 130, 195, 0.2);
+  color: rgba(255, 255, 255, 0.4);
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  z-index: 5;
   pointer-events: none;
-  transform: translateX(-50%);
-  z-index: 10;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+
+.raven-oracle:not(.explore-mode) .constellation-hint {
+  opacity: 0;
 }
 
 .constellation-detail {

@@ -164,11 +164,16 @@ function ConstellationCanvas({ facts, onAddParticles, onFactCount, highlightIds,
   const particlesRef = useRef([]);
   const clustersRef = useRef({});
   const animationRef = useRef(null);
-  const [hoveredParticle, setHoveredParticle] = useState(null);
   const [selectedParticle, setSelectedParticle] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const highlightSet = useRef(new Set());
+
+  // Drag state refs (not state to avoid re-renders during drag)
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const hasDraggedRef = useRef(false);
 
   // Update highlight set when highlightIds changes
   useEffect(() => {
@@ -241,8 +246,9 @@ function ConstellationCanvas({ facts, onAddParticles, onFactCount, highlightIds,
       ctx.fillStyle = 'rgba(13, 13, 13, 1)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Apply zoom transform
+      // Apply pan and zoom transform
       ctx.save();
+      ctx.translate(pan.x, pan.y);
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.scale(zoom, zoom);
       ctx.translate(-canvas.width / 2, -canvas.height / 2);
@@ -362,13 +368,15 @@ function ConstellationCanvas({ facts, onAddParticles, onFactCount, highlightIds,
 
     const getMousePos = (e) => {
       const rect = canvas.getBoundingClientRect();
-      return {
-        x: (e.clientX - rect.left - pan.x) / zoom,
-        y: (e.clientY - rect.top - pan.y) / zoom
-      };
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      // Transform screen coords to canvas coords accounting for pan and zoom
+      const canvasX = (clientX - rect.left - pan.x - canvas.width / 2) / zoom + canvas.width / 2;
+      const canvasY = (clientY - rect.top - pan.y - canvas.height / 2) / zoom + canvas.height / 2;
+      return { x: canvasX, y: canvasY, screenX: clientX - rect.left, screenY: clientY - rect.top };
     };
 
-    const findParticleAt = (pos, threshold = 15) => {
+    const findParticleAt = (pos, threshold = 20) => {
       for (const p of particlesRef.current) {
         const dx = p.x - pos.x;
         const dy = p.y - pos.y;
@@ -380,56 +388,179 @@ function ConstellationCanvas({ facts, onAddParticles, onFactCount, highlightIds,
       return null;
     };
 
-    const handleMouseMove = (e) => {
-      const pos = getMousePos(e);
-      const particle = findParticleAt(pos);
-      setHoveredParticle(particle);
-      canvas.style.cursor = particle ? 'pointer' : 'default';
+    const handleMouseDown = (e) => {
+      if (e.button !== 0 && !e.touches) return; // Only left click or touch
+      isDraggingRef.current = true;
+      hasDraggedRef.current = false;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      dragStartRef.current = { x: clientX, y: clientY };
+      panStartRef.current = { ...pan };
+      canvas.style.cursor = 'grabbing';
     };
 
-    const handleClick = (e) => {
-      const pos = getMousePos(e);
-      const particle = findParticleAt(pos);
-      setSelectedParticle(particle);
-      if (particle && onSelectFact) {
-        onSelectFact(particle.fact);
+    const handleMouseMove = (e) => {
+      if (isDraggingRef.current) {
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const dx = clientX - dragStartRef.current.x;
+        const dy = clientY - dragStartRef.current.y;
+
+        // Mark as dragged if moved more than 5px
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+          hasDraggedRef.current = true;
+        }
+
+        setPan({
+          x: panStartRef.current.x + dx,
+          y: panStartRef.current.y + dy
+        });
+      } else {
+        // Check if hovering over a particle for cursor feedback
+        const pos = getMousePos(e);
+        const particle = findParticleAt(pos);
+        canvas.style.cursor = particle ? 'pointer' : 'grab';
+      }
+    };
+
+    const handleMouseUp = (e) => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        canvas.style.cursor = 'grab';
+
+        // If didn't drag significantly, treat as click
+        if (!hasDraggedRef.current) {
+          const pos = getMousePos(e.changedTouches ? e.changedTouches[0] : e);
+          const particle = findParticleAt(pos);
+          if (particle) {
+            setSelectedParticle(particle);
+            if (onSelectFact) {
+              onSelectFact(particle.fact);
+            }
+          } else {
+            setSelectedParticle(null);
+          }
+        }
       }
     };
 
     const handleWheel = (e) => {
       e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Zoom factor
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setZoom(z => Math.max(0.5, Math.min(3, z * delta)));
+      const newZoom = Math.max(0.3, Math.min(5, zoom * delta));
+      const zoomRatio = newZoom / zoom;
+
+      // Adjust pan to zoom toward mouse position
+      const newPanX = mouseX - (mouseX - pan.x) * zoomRatio;
+      const newPanY = mouseY - (mouseY - pan.y) * zoomRatio;
+
+      setZoom(newZoom);
+      setPan({ x: newPanX, y: newPanY });
     };
 
+    // Double-click to zoom in and center on point
+    const handleDoubleClick = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Check if clicking on a particle
+      const pos = getMousePos(e);
+      const particle = findParticleAt(pos);
+
+      if (particle) {
+        // Zoom in on particle
+        const newZoom = Math.min(zoom * 1.5, 5);
+        setZoom(newZoom);
+        // Center on particle
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        setPan({
+          x: centerX - (particle.x - centerX) * newZoom - centerX + canvas.width / 2,
+          y: centerY - (particle.y - centerY) * newZoom - centerY + canvas.height / 2
+        });
+        setSelectedParticle(particle);
+        if (onSelectFact) onSelectFact(particle.fact);
+      } else {
+        // Reset zoom and pan
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+      }
+    };
+
+    // Touch pinch zoom
+    let lastTouchDist = 0;
+    const handleTouchStart = (e) => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+      } else if (e.touches.length === 1) {
+        handleMouseDown(e);
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (lastTouchDist > 0) {
+          const scale = dist / lastTouchDist;
+          const newZoom = Math.max(0.3, Math.min(5, zoom * scale));
+          setZoom(newZoom);
+        }
+        lastTouchDist = dist;
+      } else if (e.touches.length === 1) {
+        handleMouseMove(e);
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      lastTouchDist = 0;
+      handleMouseUp(e);
+    };
+
+    // Mouse events
+    canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('click', handleClick);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('mouseleave', handleMouseUp);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
+    canvas.addEventListener('dblclick', handleDoubleClick);
+
+    // Touch events
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd);
+
+    // Set initial cursor
+    canvas.style.cursor = 'grab';
 
     return () => {
+      canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('click', handleClick);
+      canvas.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('mouseleave', handleMouseUp);
       canvas.removeEventListener('wheel', handleWheel);
+      canvas.removeEventListener('dblclick', handleDoubleClick);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
     };
   }, [zoom, pan, onSelectFact]);
 
   return (
     <>
       <canvas ref={canvasRef} className="constellation-canvas" />
-      {/* Tooltip for hovered particle */}
-      {hoveredParticle && (
-        <div
-          className="constellation-tooltip"
-          style={{
-            left: hoveredParticle.x * zoom + pan.x,
-            top: hoveredParticle.y * zoom + pan.y - 40
-          }}
-        >
-          {hoveredParticle.fact.content?.substring(0, 100)}
-          {hoveredParticle.fact.content?.length > 100 ? '...' : ''}
-        </div>
-      )}
-      {/* Selected particle detail */}
+      {/* Selected particle detail panel */}
       {selectedParticle && (
         <div className="constellation-detail">
           <button className="detail-close" onClick={() => setSelectedParticle(null)}>×</button>
@@ -442,13 +573,17 @@ function ConstellationCanvas({ facts, onAddParticles, onFactCount, highlightIds,
           )}
         </div>
       )}
-      {/* Zoom indicator */}
-      {zoom !== 1 && (
+      {/* Zoom/pan indicator */}
+      {(zoom !== 1 || pan.x !== 0 || pan.y !== 0) && (
         <div className="constellation-zoom">
           {Math.round(zoom * 100)}%
-          <button onClick={() => setZoom(1)}>Reset</button>
+          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Reset</button>
         </div>
       )}
+      {/* Controls hint */}
+      <div className="constellation-hint">
+        Scroll to zoom • Drag to pan • Click to inspect • Double-click to reset
+      </div>
     </>
   );
 }
