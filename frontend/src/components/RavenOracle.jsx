@@ -145,11 +145,21 @@ class KnowledgeParticle {
 }
 
 // Constellation canvas component - now driven by actual facts
-function ConstellationCanvas({ facts, onAddParticles, onFactCount }) {
+function ConstellationCanvas({ facts, onAddParticles, onFactCount, highlightIds, onSelectFact }) {
   const canvasRef = useRef(null);
   const particlesRef = useRef([]);
   const clustersRef = useRef({});
   const animationRef = useRef(null);
+  const [hoveredParticle, setHoveredParticle] = useState(null);
+  const [selectedParticle, setSelectedParticle] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const highlightSet = useRef(new Set());
+
+  // Update highlight set when highlightIds changes
+  useEffect(() => {
+    highlightSet.current = new Set(highlightIds || []);
+  }, [highlightIds]);
 
   // Build particles from facts
   useEffect(() => {
@@ -213,9 +223,15 @@ function ConstellationCanvas({ facts, onAddParticles, onFactCount }) {
 
     // Animation loop
     const animate = () => {
-      // Clear with slight trail effect
-      ctx.fillStyle = 'rgba(13, 13, 13, 0.15)';
+      // Clear completely (zoom requires full clear)
+      ctx.fillStyle = 'rgba(13, 13, 13, 1)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Apply zoom transform
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
 
       // Draw connections between nearby particles (same cluster)
       particlesRef.current.forEach((p1, i) => {
@@ -240,17 +256,42 @@ function ConstellationCanvas({ facts, onAddParticles, onFactCount }) {
       // Update and draw particles
       particlesRef.current.forEach(p => {
         p.update();
-        p.draw(ctx);
+
+        // Check if this particle should be highlighted
+        const isHighlighted = highlightSet.current.has(p.id);
+        const isSelected = selectedParticle?.id === p.id;
+        const isHovered = hoveredParticle?.id === p.id;
+
+        // Draw with highlight effects
+        ctx.beginPath();
+        const size = p.currentSize * (isHighlighted || isSelected ? 2 : 1) * (isHovered ? 1.3 : 1);
+        ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+
+        if (isHighlighted || isSelected) {
+          // Bright glow for highlighted/selected
+          ctx.fillStyle = `rgba(255, 220, 100, ${p.currentAlpha + 0.4})`;
+          ctx.shadowColor = 'rgba(255, 220, 100, 0.8)';
+          ctx.shadowBlur = 15;
+        } else if (isHovered) {
+          ctx.fillStyle = `rgba(${p.color.r + 50}, ${p.color.g + 50}, ${p.color.b + 50}, ${p.currentAlpha + 0.2})`;
+          ctx.shadowBlur = 0;
+        } else {
+          ctx.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.currentAlpha})`;
+          ctx.shadowBlur = 0;
+        }
+        ctx.fill();
+        ctx.shadowBlur = 0;
       });
 
       // Draw cluster labels
       Object.values(clustersRef.current).forEach(cluster => {
-        ctx.font = '12px Inter, sans-serif';
+        ctx.font = `${12 / zoom}px Inter, sans-serif`;
         ctx.fillStyle = `rgba(${cluster.color.r}, ${cluster.color.g}, ${cluster.color.b}, 0.5)`;
         ctx.textAlign = 'center';
         ctx.fillText(cluster.name, cluster.x, cluster.y - 100);
       });
 
+      ctx.restore();
       animationRef.current = requestAnimationFrame(animate);
     };
 
@@ -300,7 +341,102 @@ function ConstellationCanvas({ facts, onAddParticles, onFactCount }) {
     }
   }, [onAddParticles]);
 
-  return <canvas ref={canvasRef} className="constellation-canvas" />;
+  // Mouse interaction handlers
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const getMousePos = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left - pan.x) / zoom,
+        y: (e.clientY - rect.top - pan.y) / zoom
+      };
+    };
+
+    const findParticleAt = (pos, threshold = 15) => {
+      for (const p of particlesRef.current) {
+        const dx = p.x - pos.x;
+        const dy = p.y - pos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < threshold / zoom) {
+          return p;
+        }
+      }
+      return null;
+    };
+
+    const handleMouseMove = (e) => {
+      const pos = getMousePos(e);
+      const particle = findParticleAt(pos);
+      setHoveredParticle(particle);
+      canvas.style.cursor = particle ? 'pointer' : 'default';
+    };
+
+    const handleClick = (e) => {
+      const pos = getMousePos(e);
+      const particle = findParticleAt(pos);
+      setSelectedParticle(particle);
+      if (particle && onSelectFact) {
+        onSelectFact(particle.fact);
+      }
+    };
+
+    const handleWheel = (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setZoom(z => Math.max(0.5, Math.min(3, z * delta)));
+    };
+
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('click', handleClick);
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('click', handleClick);
+      canvas.removeEventListener('wheel', handleWheel);
+    };
+  }, [zoom, pan, onSelectFact]);
+
+  return (
+    <>
+      <canvas ref={canvasRef} className="constellation-canvas" />
+      {/* Tooltip for hovered particle */}
+      {hoveredParticle && (
+        <div
+          className="constellation-tooltip"
+          style={{
+            left: hoveredParticle.x * zoom + pan.x,
+            top: hoveredParticle.y * zoom + pan.y - 40
+          }}
+        >
+          {hoveredParticle.fact.content?.substring(0, 100)}
+          {hoveredParticle.fact.content?.length > 100 ? '...' : ''}
+        </div>
+      )}
+      {/* Selected particle detail */}
+      {selectedParticle && (
+        <div className="constellation-detail">
+          <button className="detail-close" onClick={() => setSelectedParticle(null)}>×</button>
+          <div className="detail-category">{selectedParticle.fact.category || 'General'}</div>
+          <div className="detail-content">{selectedParticle.fact.content}</div>
+          {selectedParticle.fact.entityName && (
+            <div className="detail-entity">
+              {selectedParticle.fact.entityType}: {selectedParticle.fact.entityName}
+            </div>
+          )}
+        </div>
+      )}
+      {/* Zoom indicator */}
+      {zoom !== 1 && (
+        <div className="constellation-zoom">
+          {Math.round(zoom * 100)}%
+          <button onClick={() => setZoom(1)}>Reset</button>
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function RavenOracle({ scopeId, teamId }) {
@@ -308,6 +444,8 @@ export default function RavenOracle({ scopeId, teamId }) {
   const [conversation, setConversation] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [factCount, setFactCount] = useState(0);
+  const [highlightIds, setHighlightIds] = useState([]);
+  const [selectedFact, setSelectedFact] = useState(null);
   const inputRef = useRef(null);
   const addParticlesRef = useRef(null);
   const conversationEndRef = useRef(null);
@@ -318,6 +456,14 @@ export default function RavenOracle({ scopeId, teamId }) {
     fetchPolicy: 'cache-and-network'
   });
   const facts = factsData?.getFacts || [];
+
+  // Clear highlights after a delay
+  useEffect(() => {
+    if (highlightIds.length > 0) {
+      const timer = setTimeout(() => setHighlightIds([]), 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightIds]);
 
   // GraphQL operations
   const [askRaven] = useLazyQuery(ASK_RAVEN, { fetchPolicy: 'network-only' });
@@ -372,6 +518,10 @@ export default function RavenOracle({ scopeId, teamId }) {
         });
 
         if (data?.askRaven) {
+          // Highlight facts used in the constellation
+          const usedIds = data.askRaven.factsUsed?.map(f => f.id) || [];
+          setHighlightIds(usedIds);
+
           setConversation(prev => [...prev, {
             type: 'raven',
             intent: 'answer',
@@ -408,18 +558,28 @@ export default function RavenOracle({ scopeId, teamId }) {
 
             if (confirmData?.confirmRemember?.success) {
               // Add new fact particles to constellation
-              if (addParticlesRef.current && confirmData.confirmRemember.factsCreated) {
-                addParticlesRef.current(confirmData.confirmRemember.factsCreated);
+              const newFacts = confirmData.confirmRemember.factsCreated || [];
+              if (addParticlesRef.current && newFacts.length > 0) {
+                addParticlesRef.current(newFacts);
               }
 
-              const factsCount = confirmData.confirmRemember.factsCreated?.length || 0;
+              // Generate conversational recap
+              const factsCount = newFacts.length;
+              let recap = "";
+              if (factsCount === 0) {
+                recap = "I didn't find any new information to store from that.";
+              } else if (factsCount === 1) {
+                recap = `Got it. I now know: **${newFacts[0].content}**`;
+              } else {
+                recap = `I've captured ${factsCount} pieces of knowledge:\n\n` +
+                  newFacts.map(f => `• ${f.content}`).join('\n');
+              }
+
               setConversation(prev => [...prev, {
                 type: 'raven',
                 intent: 'remembered',
-                content: factsCount === 1
-                  ? "I've woven that into my memory."
-                  : `I've woven ${factsCount} insights into my memory.`,
-                facts: confirmData.confirmRemember.factsCreated,
+                content: recap,
+                facts: newFacts,
                 timestamp: new Date()
               }]);
             }
@@ -453,6 +613,8 @@ export default function RavenOracle({ scopeId, teamId }) {
         facts={facts}
         onAddParticles={addParticlesRef}
         onFactCount={setFactCount}
+        highlightIds={highlightIds}
+        onSelectFact={setSelectedFact}
       />
 
       <div className="oracle-content">

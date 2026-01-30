@@ -50,8 +50,22 @@ export async function ask(scopeId, userId, question) {
   console.log(`[RavenService.ask] Searching ${searchScopeIds.length} scopes`);
 
   // Search for relevant knowledge
-  const knowledge = await KnowledgeService.getKnowledgeContext(teamId, question);
-  console.log(`[RavenService.ask] Found ${knowledge.facts.length} facts, ${knowledge.decisions.length} decisions`);
+  let knowledge = await KnowledgeService.getKnowledgeContext(teamId, question);
+  console.log(`[RavenService.ask] Semantic search found ${knowledge.facts.length} facts`);
+
+  // If semantic search found no facts, also include recent facts as context
+  // This helps when embeddings are missing or search terms don't match
+  if (knowledge.facts.length === 0) {
+    console.log(`[RavenService.ask] No semantic matches, fetching recent facts as fallback`);
+    const recentFacts = await KnowledgeService.getFacts(teamId, { limit: 20 });
+    knowledge.facts = recentFacts;
+    console.log(`[RavenService.ask] Added ${recentFacts.length} recent facts as context`);
+  }
+
+  // Log fact content for debugging
+  if (knowledge.facts.length > 0) {
+    console.log(`[RavenService.ask] Facts: ${knowledge.facts.map(f => f.content).join(' | ')}`);
+  }
 
   // GraphRAG search for richer context
   let graphContext = { entryNodes: [], relatedNodes: [], chunks: [] };
