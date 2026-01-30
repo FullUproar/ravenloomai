@@ -9,43 +9,43 @@ import { gql, useQuery } from '@apollo/client';
 import RavenOracle from '../components/RavenOracle';
 import '../components/RavenOracle.css';
 
-const GET_USER_TEAMS = gql`
-  query GetUserTeams {
-    me {
+const GET_MY_TEAMS = gql`
+  query GetMyTeams {
+    getMyTeams {
       id
-      teams {
-        id
-        name
-        scopes {
-          id
-          name
-          scopeType
-        }
-      }
+      name
+    }
+  }
+`;
+
+const GET_TEAM_SCOPE = gql`
+  query GetTeamScope($teamId: ID!) {
+    getTeamScope(teamId: $teamId) {
+      id
+      name
+      scopeType
     }
   }
 `;
 
 export default function OraclePage() {
-  const { data, loading, error } = useQuery(GET_USER_TEAMS);
-  const [selectedScope, setSelectedScope] = useState(null);
+  const { data: teamsData, loading: teamsLoading, error: teamsError } = useQuery(GET_MY_TEAMS);
+  const [selectedTeam, setSelectedTeam] = useState(null);
 
-  // Auto-select first team's root scope
+  // Get team scope once we have a team
+  const { data: scopeData, loading: scopeLoading } = useQuery(GET_TEAM_SCOPE, {
+    variables: { teamId: selectedTeam?.id },
+    skip: !selectedTeam?.id
+  });
+
+  // Auto-select first team
   useEffect(() => {
-    if (data?.me?.teams?.[0]) {
-      const team = data.me.teams[0];
-      // Find team-level scope or first scope
-      const teamScope = team.scopes?.find(s => s.scopeType === 'team') || team.scopes?.[0];
-      if (teamScope) {
-        setSelectedScope({
-          scopeId: teamScope.id,
-          teamId: team.id,
-          teamName: team.name,
-          scopeName: teamScope.name
-        });
-      }
+    if (teamsData?.getMyTeams?.[0] && !selectedTeam) {
+      setSelectedTeam(teamsData.getMyTeams[0]);
     }
-  }, [data]);
+  }, [teamsData, selectedTeam]);
+
+  const loading = teamsLoading || scopeLoading;
 
   if (loading) {
     return (
@@ -55,7 +55,7 @@ export default function OraclePage() {
     );
   }
 
-  if (error || !data?.me) {
+  if (teamsError || !teamsData?.getMyTeams?.length) {
     return (
       <div className="oracle-error">
         <p>Please sign in to access the Oracle.</p>
@@ -64,19 +64,18 @@ export default function OraclePage() {
     );
   }
 
-  if (!selectedScope) {
+  if (!scopeData?.getTeamScope) {
     return (
       <div className="oracle-error">
-        <p>No team found. Please create or join a team first.</p>
-        <a href="/">Go to dashboard</a>
+        <p>Setting up your knowledge space...</p>
       </div>
     );
   }
 
   return (
     <RavenOracle
-      scopeId={selectedScope.scopeId}
-      teamId={selectedScope.teamId}
+      scopeId={scopeData.getTeamScope.id}
+      teamId={selectedTeam.id}
     />
   );
 }
