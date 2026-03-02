@@ -7,6 +7,9 @@ import AdminDashboard from './pages/AdminDashboard';
 import DataImportPage from './pages/DataImportPage';
 import RavenCopilot from './components/RavenCopilot';
 import RavenKnowledge from './components/RavenKnowledge';
+import EntityTreeExplorer from './components/EntityTreeExplorer';
+import FreshnessDashboard from './components/FreshnessDashboard';
+import KnowledgeGraphViz from './components/KnowledgeGraphViz';
 import { CommandPaletteProvider } from './components/CommandPalette';
 
 // API base URL - uses /api prefix in production, localhost in development
@@ -2553,6 +2556,13 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                     <span className="nav-badge">{learningObjectives.filter(lo => lo.status === 'active').length}</span>
                   )}
                 </button>
+                {/* Knowledge Graph */}
+                <button
+                  className={`nav-item ${activeView === 'graph' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('knowledge', 'graph')}
+                >
+                  <span className="nav-item-label">Knowledge Graph</span>
+                </button>
                 {/* Knowledge Base */}
                 <button
                   className={`nav-item ${activeView === 'knowledge' ? 'active' : ''}`}
@@ -2560,6 +2570,20 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
                 >
                   <span className="nav-item-label">Knowledge Base</span>
                   {kbSources.length > 0 && <span className="nav-count">{kbSources.length}</span>}
+                </button>
+                {/* Freshness Dashboard */}
+                <button
+                  className={`nav-item ${activeView === 'freshness' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('knowledge', 'freshness')}
+                >
+                  <span className="nav-item-label">Freshness</span>
+                </button>
+                {/* Graph Visualization */}
+                <button
+                  className={`nav-item ${activeView === 'graphviz' ? 'active' : ''}`}
+                  onClick={() => handleSectionItemClick('knowledge', 'graphviz')}
+                >
+                  <span className="nav-item-label">Graph View</span>
                 </button>
                 {/* Connections (Google Drive and future integrations) */}
                 <button
@@ -3922,6 +3946,18 @@ function TeamDashboard({ teamId, initialView, initialItemId, user, onSignOut }) 
               </button>
             </form>
           </div>
+        </main>
+      ) : activeView === 'graph' ? (
+        <main className="graph-area" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <EntityTreeExplorer teamId={teamId} />
+        </main>
+      ) : activeView === 'freshness' ? (
+        <main className="freshness-area" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <FreshnessDashboard teamId={teamId} />
+        </main>
+      ) : activeView === 'graphviz' ? (
+        <main className="graphviz-area" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <KnowledgeGraphViz teamId={teamId} />
         </main>
       ) : activeView === 'knowledge' ? (
         <main className="knowledge-area">

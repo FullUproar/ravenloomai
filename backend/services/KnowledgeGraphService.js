@@ -274,9 +274,10 @@ function getOverlapText(text, chars) {
 
 /**
  * Create or update an entity node in the knowledge graph
+ * Now supports hierarchy with parentNodeId and scaleLevel
  */
 export async function upsertNode(teamId, entity, sourceInfo = {}) {
-  const { name, type, description } = entity;
+  const { name, type, description, parentNodeId = null, scaleLevel = 0 } = entity;
   const { sourceType = 'document', sourceId = null } = sourceInfo;
 
   // Normalize name for consistency
@@ -307,8 +308,8 @@ export async function upsertNode(teamId, entity, sourceInfo = {}) {
     const embedding = await generateEmbedding(`${type}: ${normalizedName}. ${description || ''}`);
 
     const result = await db.query(`
-      INSERT INTO kg_nodes (team_id, name, type, description, embedding, source_type, source_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO kg_nodes (team_id, name, type, description, embedding, source_type, source_id, parent_node_id, scale_level)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `, [
       teamId,
@@ -317,7 +318,9 @@ export async function upsertNode(teamId, entity, sourceInfo = {}) {
       description || null,
       embedding ? `[${embedding.join(',')}]` : null,
       sourceType,
-      sourceId
+      sourceId,
+      parentNodeId,
+      scaleLevel
     ]);
 
     console.log(`[KG Node] Created: ${type}:${normalizedName}`);
@@ -816,6 +819,434 @@ export async function findUserByName(teamId, name) {
   return userResult.rows[0] || null;
 }
 
+// ============================================================================
+// HIERARCHY OPERATIONS
+// ============================================================================
+
+/**
+ * Get a node with its children
+ */
+export async function getNodeWithChildren(nodeId, includeFactCount = false) {
+  const nodeResult = await db.query(`
+    SELECT * FROM kg_nodes WHERE id = $1
+  `, [nodeId]);
+
+  if (nodeResult.rows.length === 0) return null;
+
+  const node = nodeResult.rows[0];
+
+  // Get direct children
+  const childrenResult = await db.query(`
+    SELECT * FROM kg_nodes
+    WHERE parent_node_id = $1
+    ORDER BY scale_level DESC, name ASC
+  `, [nodeId]);
+
+  node.children = childrenResult.rows;
+
+  // Optionally get fact counts
+  if (includeFactCount) {
+    const factCountResult = await db.query(`
+      SELECT COUNT(*) FROM facts WHERE kg_node_id = $1 AND valid_until IS NULL
+    `, [nodeId]);
+    node.factCount = parseInt(factCountResult.rows[0].count);
+  }
+
+  return node;
+}
+
+/**
+ * Get root-level nodes for a team (nodes with no parent)
+ */
+export async function getRootNodes(teamId) {
+  const result = await db.query(`
+    SELECT n.*,
+           (SELECT COUNT(*) FROM facts f WHERE f.kg_node_id = n.id AND f.valid_until IS NULL) as fact_count
+    FROM kg_nodes n
+    WHERE n.team_id = $1 AND n.parent_node_id IS NULL
+    ORDER BY n.scale_level DESC, n.name ASC
+  `, [teamId]);
+
+  return result.rows;
+}
+
+/**
+ * Search nodes by name (text-based search for hierarchy detection)
+ */
+export async function searchNodes(teamId, query, options = {}) {
+  const { limit = 10 } = options;
+
+  const result = await db.query(`
+    SELECT n.*,
+           (SELECT COUNT(*) FROM facts f WHERE f.kg_node_id = n.id AND f.valid_until IS NULL) as fact_count,
+           similarity(LOWER(n.name), LOWER($2)) as name_similarity
+    FROM kg_nodes n
+    WHERE n.team_id = $1
+      AND (
+        LOWER(n.name) LIKE LOWER($3)
+        OR LOWER(n.name) % LOWER($2)
+      )
+    ORDER BY name_similarity DESC, n.scale_level DESC
+    LIMIT $4
+  `, [teamId, query, `%${query}%`, limit]);
+
+  return result.rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    description: row.description,
+    scaleLevel: row.scale_level,
+    childCount: row.child_count || 0,
+    factCount: parseInt(row.fact_count) || 0
+  }));
+}
+
+/**
+ * Get all ancestors of a node (from immediate parent to root)
+ */
+export async function getNodeAncestors(nodeId) {
+  const result = await db.query(`
+    WITH RECURSIVE ancestors AS (
+      SELECT n.*, 0 as depth
+      FROM kg_nodes n
+      WHERE n.id = (SELECT parent_node_id FROM kg_nodes WHERE id = $1)
+
+      UNION ALL
+
+      SELECT n.*, a.depth + 1
+      FROM kg_nodes n
+      JOIN ancestors a ON n.id = a.parent_node_id
+      WHERE a.depth < 10
+    )
+    SELECT * FROM ancestors ORDER BY depth DESC
+  `, [nodeId]);
+
+  return result.rows;
+}
+
+/**
+ * Reparent a node (move it under a new parent)
+ */
+export async function reparentNode(nodeId, newParentId) {
+  // Verify the new parent exists (if not null)
+  if (newParentId) {
+    const parentExists = await db.query('SELECT id FROM kg_nodes WHERE id = $1', [newParentId]);
+    if (parentExists.rows.length === 0) {
+      throw new Error('Parent node not found');
+    }
+
+    // Prevent circular reference
+    const ancestors = await getNodeAncestors(newParentId);
+    if (ancestors.some(a => a.id === nodeId)) {
+      throw new Error('Cannot create circular reference');
+    }
+  }
+
+  // Update the node's parent (triggers will update path and child_count)
+  const result = await db.query(`
+    UPDATE kg_nodes SET parent_node_id = $2, updated_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `, [nodeId, newParentId]);
+
+  return result.rows[0];
+}
+
+/**
+ * Attach a fact to a knowledge graph node
+ */
+export async function attachFactToNode(factId, nodeId) {
+  const result = await db.query(`
+    UPDATE facts SET kg_node_id = $2, updated_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `, [factId, nodeId]);
+
+  return result.rows[0];
+}
+
+/**
+ * Generate or update summary for a node based on its children and facts
+ */
+export async function generateNodeSummary(teamId, nodeId) {
+  // Get the node
+  const nodeResult = await db.query('SELECT * FROM kg_nodes WHERE id = $1', [nodeId]);
+  if (nodeResult.rows.length === 0) return null;
+  const node = nodeResult.rows[0];
+
+  // Get child nodes
+  const childrenResult = await db.query(`
+    SELECT name, type, summary FROM kg_nodes WHERE parent_node_id = $1
+  `, [nodeId]);
+
+  // Get facts attached to this node
+  const factsResult = await db.query(`
+    SELECT content FROM facts WHERE kg_node_id = $1 AND valid_until IS NULL LIMIT 10
+  `, [nodeId]);
+
+  // Build context for summary generation
+  const childInfo = childrenResult.rows.map(c => `${c.type}: ${c.name}${c.summary ? ` (${c.summary})` : ''}`).join(', ');
+  const factInfo = factsResult.rows.map(f => f.content).join('; ');
+
+  const contextText = `Node: ${node.type} "${node.name}"
+${node.description ? `Description: ${node.description}` : ''}
+${childInfo ? `Contains: ${childInfo}` : ''}
+${factInfo ? `Key facts: ${factInfo}` : ''}`;
+
+  // Generate summary using AI
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'Generate a brief 1-2 sentence summary of this knowledge node. Be concise and informative.'
+        },
+        { role: 'user', content: contextText }
+      ],
+      max_tokens: 100,
+      temperature: 0
+    });
+
+    const summary = response.choices[0].message.content.trim();
+
+    // Update the node
+    const updated = await db.query(`
+      UPDATE kg_nodes SET summary = $2, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [nodeId, summary]);
+
+    return updated.rows[0];
+  } catch (error) {
+    console.error('[KG Summary] Error:', error.message);
+    return node;
+  }
+}
+
+// ============================================================================
+// DEPTH-AWARE GRAPHRAG SEARCH
+// ============================================================================
+
+/**
+ * Detect if a query is high-level (overview) or detail-seeking
+ */
+export async function detectQueryIntent(query) {
+  const systemPrompt = `Classify this query's depth intent:
+
+- "overview": Wants summary/status (e.g., "What's our Gen Con plan?", "Status of the launch?", "Tell me about X")
+- "detail": Wants specifics (e.g., "What time does the booth open?", "Who's handling demos Saturday?")
+- "specific": Looking for a single fact (e.g., "What's John's phone number?", "What's the MSRP?")
+
+Return JSON only: {"intent": "overview|detail|specific", "confidence": 0.0-1.0}`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: query }
+      ],
+      max_tokens: 50,
+      temperature: 0
+    });
+
+    let content = response.choices[0].message.content;
+    const match = content.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+    return { intent: 'detail', confidence: 0.5 };
+  } catch (error) {
+    console.error('[QueryIntent] Error:', error.message);
+    return { intent: 'detail', confidence: 0.5 };
+  }
+}
+
+/**
+ * Hierarchical GraphRAG search - respects node hierarchy and scale levels
+ *
+ * @param {string} teamId - Team ID
+ * @param {string} query - User query
+ * @param {Object} options
+ * @param {number} options.topK - Number of entry point nodes (default 5)
+ * @param {number} options.maxDepth - Max hierarchy depth to descend (default 2)
+ * @param {string} options.targetScale - 'overview' (summaries), 'detail' (facts), 'auto' (detect)
+ * @param {string} options.focusNodeId - Start search from specific node
+ */
+export async function hierarchicalGraphRAGSearch(teamId, query, options = {}) {
+  const { topK = 5, maxDepth = 2, targetScale = 'auto', focusNodeId = null } = options;
+
+  console.log(`[HierarchicalRAG] Searching: "${query}" (scale: ${targetScale})`);
+
+  // 1. Detect query intent if auto
+  let intent = targetScale;
+  if (targetScale === 'auto') {
+    const detected = await detectQueryIntent(query);
+    intent = detected.intent;
+    console.log(`[HierarchicalRAG] Detected intent: ${intent} (${detected.confidence})`);
+  }
+
+  // 2. Generate query embedding
+  const queryEmbedding = await generateEmbedding(query);
+  if (!queryEmbedding) {
+    return { entryNodes: [], relatedNodes: [], chunks: [], facts: [], intent };
+  }
+
+  // 3. Vector search for entry nodes
+  let entryNodesQuery;
+  let entryNodesParams;
+
+  if (focusNodeId) {
+    // Search within a specific subtree
+    entryNodesQuery = `
+      SELECT n.*, 1 - (n.embedding <=> $1) as similarity
+      FROM kg_nodes n
+      WHERE n.team_id = $2 AND n.embedding IS NOT NULL
+        AND (n.id = $4 OR $4 = ANY(n.path))
+      ORDER BY n.embedding <=> $1
+      LIMIT $3
+    `;
+    entryNodesParams = [`[${queryEmbedding.join(',')}]`, teamId, topK, focusNodeId];
+  } else {
+    entryNodesQuery = `
+      SELECT n.*, 1 - (n.embedding <=> $1) as similarity
+      FROM kg_nodes n
+      WHERE n.team_id = $2 AND n.embedding IS NOT NULL
+      ORDER BY n.embedding <=> $1
+      LIMIT $3
+    `;
+    entryNodesParams = [`[${queryEmbedding.join(',')}]`, teamId, topK];
+  }
+
+  const entryNodesResult = await db.query(entryNodesQuery, entryNodesParams);
+  const entryNodes = entryNodesResult.rows;
+
+  console.log(`[HierarchicalRAG] Found ${entryNodes.length} entry nodes`);
+
+  if (entryNodes.length === 0) {
+    return { entryNodes: [], relatedNodes: [], chunks: [], facts: [], intent };
+  }
+
+  // 4. Based on intent, gather appropriate context
+  const entryNodeIds = entryNodes.map(n => n.id);
+  let facts = [];
+  let relatedNodes = [];
+  let chunks = [];
+
+  if (intent === 'overview') {
+    // For overview, get summaries and high-level info
+    // Prefer nodes with higher scale_level
+    const highLevelResult = await db.query(`
+      SELECT n.*, n.summary, n.child_count
+      FROM kg_nodes n
+      WHERE n.id = ANY($1) OR n.parent_node_id = ANY($1)
+      ORDER BY n.scale_level DESC, n.child_count DESC
+      LIMIT 10
+    `, [entryNodeIds]);
+
+    relatedNodes = highLevelResult.rows;
+
+    // Get summary facts only (not detailed)
+    const summaryFactsResult = await db.query(`
+      SELECT f.* FROM facts f
+      WHERE f.kg_node_id = ANY($1) AND f.valid_until IS NULL
+      ORDER BY f.created_at DESC
+      LIMIT 5
+    `, [entryNodeIds]);
+
+    facts = summaryFactsResult.rows;
+
+  } else if (intent === 'detail' || intent === 'specific') {
+    // For detail, descend into hierarchy and get all facts
+    // Get descendants up to maxDepth
+    const descendantsResult = await db.query(`
+      SELECT n.*
+      FROM kg_nodes n
+      WHERE n.team_id = $1
+        AND (n.id = ANY($2) OR EXISTS (
+          SELECT 1 FROM kg_nodes parent
+          WHERE parent.id = ANY($2) AND parent.id = ANY(n.path)
+        ))
+      LIMIT 50
+    `, [teamId, entryNodeIds]);
+
+    relatedNodes = descendantsResult.rows;
+    const allNodeIds = relatedNodes.map(n => n.id);
+
+    // Get all facts from these nodes
+    const factsResult = await db.query(`
+      SELECT f.*, n.name as node_name
+      FROM facts f
+      LEFT JOIN kg_nodes n ON f.kg_node_id = n.id
+      WHERE f.kg_node_id = ANY($1) AND f.valid_until IS NULL
+      ORDER BY f.created_at DESC
+      LIMIT 20
+    `, [allNodeIds]);
+
+    facts = factsResult.rows;
+
+    // Get chunks linked to these nodes
+    const chunksResult = await db.query(`
+      SELECT DISTINCT ON (content) content, source_title, source_type
+      FROM kg_chunks
+      WHERE team_id = $1 AND linked_node_ids && $2
+      ORDER BY content, created_at DESC
+      LIMIT 10
+    `, [teamId, allNodeIds]);
+
+    chunks = chunksResult.rows;
+  }
+
+  // 5. Also get edge-connected nodes (1 hop)
+  const edgeRelatedResult = await db.query(`
+    SELECT DISTINCT n.id, n.name, n.type, n.summary, e.relationship
+    FROM kg_edges e
+    JOIN kg_nodes n ON n.id = CASE
+      WHEN e.source_node_id = ANY($1) THEN e.target_node_id
+      ELSE e.source_node_id
+    END
+    WHERE (e.source_node_id = ANY($1) OR e.target_node_id = ANY($1))
+      AND n.id != ALL($1)
+    ORDER BY e.weight DESC
+    LIMIT 10
+  `, [entryNodeIds]);
+
+  const edgeRelated = edgeRelatedResult.rows;
+
+  console.log(`[HierarchicalRAG] Returning ${facts.length} facts, ${relatedNodes.length} nodes, ${chunks.length} chunks`);
+
+  return {
+    entryNodes,
+    relatedNodes: [...relatedNodes, ...edgeRelated],
+    chunks,
+    facts,
+    intent
+  };
+}
+
+/**
+ * Get knowledge tree for a team (for UI tree explorer)
+ */
+export async function getKnowledgeTree(teamId, parentId = null) {
+  const query = parentId
+    ? `SELECT n.*,
+         (SELECT COUNT(*) FROM facts f WHERE f.kg_node_id = n.id AND f.valid_until IS NULL) as fact_count
+       FROM kg_nodes n
+       WHERE n.team_id = $1 AND n.parent_node_id = $2
+       ORDER BY n.scale_level DESC, n.name ASC`
+    : `SELECT n.*,
+         (SELECT COUNT(*) FROM facts f WHERE f.kg_node_id = n.id AND f.valid_until IS NULL) as fact_count
+       FROM kg_nodes n
+       WHERE n.team_id = $1 AND n.parent_node_id IS NULL
+       ORDER BY n.scale_level DESC, n.name ASC`;
+
+  const params = parentId ? [teamId, parentId] : [teamId];
+  const result = await db.query(query, params);
+
+  return result.rows;
+}
+
 export default {
   extractEntitiesAndRelationships,
   chunkText,
@@ -833,5 +1264,16 @@ export default {
   getUserFacts,
   getUserFact,
   getUserContext,
-  findUserByName
+  findUserByName,
+  // Hierarchy operations
+  getNodeWithChildren,
+  getRootNodes,
+  getNodeAncestors,
+  reparentNode,
+  attachFactToNode,
+  generateNodeSummary,
+  // Depth-aware search
+  detectQueryIntent,
+  hierarchicalGraphRAGSearch,
+  getKnowledgeTree
 };

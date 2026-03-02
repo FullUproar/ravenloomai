@@ -14,8 +14,21 @@ import db from '../db.js';
 import * as AIService from './AIService.js';
 import * as KnowledgeService from './KnowledgeService.js';
 import * as ScopeService from './ScopeService.js';
-import { graphRAGSearch, processDocument } from './KnowledgeGraphService.js';
+import {
+  graphRAGSearch,
+  hierarchicalGraphRAGSearch,
+  processDocument,
+  searchNodes,
+  upsertNode,
+  attachFactToNode,
+  getRootNodes
+} from './KnowledgeGraphService.js';
 import KnowledgeBaseService from './KnowledgeBaseService.js';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 import * as GoogleDriveService from './GoogleDriveService.js';
 import crypto from 'crypto';
 
@@ -68,13 +81,31 @@ export async function ask(scopeId, userId, question) {
     console.log(`[RavenService.ask] Facts: ${knowledge.facts.map(f => f.content).join(' | ')}`);
   }
 
-  // GraphRAG search for richer context
-  let graphContext = { entryNodes: [], relatedNodes: [], chunks: [] };
+  // Hierarchical GraphRAG search - depth-aware based on question type
+  let graphContext = { entryNodes: [], relatedNodes: [], chunks: [], facts: [], intent: 'detail' };
   try {
-    graphContext = await graphRAGSearch(teamId, question, { topK: 5, hopDepth: 1 });
-    console.log(`[RavenService.ask] GraphRAG: ${graphContext.entryNodes.length} entry nodes, ${graphContext.chunks.length} chunks`);
+    graphContext = await hierarchicalGraphRAGSearch(teamId, question, {
+      topK: 5,
+      maxDepth: 2,
+      targetScale: 'auto'  // Auto-detect if overview or detail question
+    });
+    console.log(`[RavenService.ask] HierarchicalRAG: ${graphContext.entryNodes.length} entry nodes, ${graphContext.facts.length} facts, intent=${graphContext.intent}`);
+
+    // Merge graph facts with knowledge facts (dedupe by ID)
+    if (graphContext.facts && graphContext.facts.length > 0) {
+      const existingIds = new Set(knowledge.facts.map(f => f.id));
+      const newFacts = graphContext.facts.filter(f => !existingIds.has(f.id));
+      knowledge.facts = [...knowledge.facts, ...newFacts];
+      console.log(`[RavenService.ask] Added ${newFacts.length} additional facts from graph hierarchy`);
+    }
   } catch (err) {
-    console.error('[RavenService.ask] GraphRAG error:', err.message);
+    console.error('[RavenService.ask] HierarchicalRAG error:', err.message);
+    // Fallback to basic graphRAG
+    try {
+      graphContext = await graphRAGSearch(teamId, question, { topK: 5, hopDepth: 1 });
+    } catch (fallbackErr) {
+      console.error('[RavenService.ask] GraphRAG fallback error:', fallbackErr.message);
+    }
   }
 
   // Search KB documents
@@ -103,11 +134,123 @@ export async function ask(scopeId, userId, question) {
 }
 
 // ============================================================================
+// HIERARCHY DETECTION FOR REMEMBER
+// ============================================================================
+
+/**
+ * Detect hierarchy hints in a statement
+ * E.g., "For Gen Con 2026, our booth is #1847" → parent: "Gen Con 2026"
+ *
+ * Returns suggested parent entity and hierarchy action
+ */
+async function detectHierarchy(teamId, statement) {
+  try {
+    // Use AI to extract hierarchy hints
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Analyze this statement for hierarchy hints. Look for:
+1. Context prefixes: "For X...", "Regarding X...", "About X...", "In X..."
+2. Possessive references: "X's booth", "the X project"
+3. Temporal contexts: "At Gen Con 2026...", "During Q1..."
+4. Organizational: "In the marketing team...", "For the website..."
+
+Extract the parent entity name if one is implied. Return JSON:
+{
+  "hasHierarchy": true/false,
+  "parentName": "Entity Name" or null,
+  "parentType": "event|project|product|process|concept|company" or null,
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation"
+}`
+        },
+        { role: 'user', content: statement }
+      ],
+      max_tokens: 200,
+      temperature: 0
+    });
+
+    const content = response.choices[0].message.content;
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+  } catch (error) {
+    console.error('[detectHierarchy] Error:', error.message);
+  }
+
+  return { hasHierarchy: false, parentName: null, parentType: null, confidence: 0 };
+}
+
+/**
+ * Find or suggest a parent entity for a statement
+ */
+async function findSuggestedParent(teamId, hierarchyHint) {
+  if (!hierarchyHint.hasHierarchy || !hierarchyHint.parentName) {
+    return null;
+  }
+
+  // Search for existing entities matching the parent name
+  const existingNodes = await searchNodes(teamId, hierarchyHint.parentName, { limit: 5 });
+
+  // Look for exact or close matches
+  const parentName = hierarchyHint.parentName.toLowerCase();
+  const exactMatch = existingNodes.find(n =>
+    n.name.toLowerCase() === parentName
+  );
+
+  if (exactMatch) {
+    return {
+      action: 'attach_to_existing',
+      node: {
+        id: exactMatch.id,
+        name: exactMatch.name,
+        type: exactMatch.type,
+        scaleLevel: exactMatch.scaleLevel
+      },
+      confidence: hierarchyHint.confidence
+    };
+  }
+
+  // Check for close matches (contains the name)
+  const closeMatch = existingNodes.find(n =>
+    n.name.toLowerCase().includes(parentName) ||
+    parentName.includes(n.name.toLowerCase())
+  );
+
+  if (closeMatch) {
+    return {
+      action: 'attach_to_existing',
+      node: {
+        id: closeMatch.id,
+        name: closeMatch.name,
+        type: closeMatch.type,
+        scaleLevel: closeMatch.scaleLevel
+      },
+      confidence: hierarchyHint.confidence * 0.8,  // Lower confidence for partial match
+      alternativeName: hierarchyHint.parentName  // User might want to create a new one
+    };
+  }
+
+  // No existing match - suggest creating a new container
+  return {
+    action: 'create_container',
+    suggestedName: hierarchyHint.parentName,
+    suggestedType: hierarchyHint.parentType || 'concept',
+    confidence: hierarchyHint.confidence
+  };
+}
+
+// ============================================================================
 // REMEMBER (Preview → Confirm flow)
 // ============================================================================
 
 /**
  * Preview a Remember statement - extract facts and detect conflicts
+ * Now also detects hierarchy and suggests placement
+ *
  * @param {string} scopeId - The scope to store facts in
  * @param {string} userId - The user remembering
  * @param {string} statement - The statement to remember
@@ -135,6 +278,24 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
   const conflicts = await detectConflicts(teamId, extractedFacts);
   console.log(`[RavenService.previewRemember] Found ${conflicts.length} conflicts`);
 
+  // NEW: Detect hierarchy hints and suggest placement
+  let suggestedParent = null;
+  let hierarchyAction = 'standalone';
+  try {
+    const hierarchyHint = await detectHierarchy(teamId, statement);
+    console.log(`[RavenService.previewRemember] Hierarchy hint:`, hierarchyHint);
+
+    if (hierarchyHint.hasHierarchy) {
+      suggestedParent = await findSuggestedParent(teamId, hierarchyHint);
+      if (suggestedParent) {
+        hierarchyAction = suggestedParent.action;
+        console.log(`[RavenService.previewRemember] Suggested parent:`, suggestedParent);
+      }
+    }
+  } catch (err) {
+    console.error('[RavenService.previewRemember] Hierarchy detection error:', err.message);
+  }
+
   // Generate a preview ID and store the preview
   const previewId = generateUUID();
   pendingPreviews.set(previewId, {
@@ -147,6 +308,8 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
     conflicts,
     isMismatch: mismatch.isMismatch,
     mismatchSuggestion: mismatch.suggestion,
+    suggestedParent,
+    hierarchyAction,
     createdAt: new Date()
   });
 
@@ -159,7 +322,10 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
     extractedFacts,
     conflicts,
     isMismatch: mismatch.isMismatch,
-    mismatchSuggestion: mismatch.suggestion
+    mismatchSuggestion: mismatch.suggestion,
+    // NEW: Hierarchy placement suggestions
+    suggestedParent,
+    hierarchyAction
   };
 }
 
@@ -167,8 +333,13 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
  * Confirm and save facts from a preview
  * @param {string} previewId - The preview ID
  * @param {string[]} skipConflictIds - IDs of conflicting facts to skip/not update
+ * @param {Object} hierarchyOptions - Optional hierarchy settings
+ * @param {string} hierarchyOptions.parentNodeId - Attach facts to this node
+ * @param {boolean} hierarchyOptions.createContainer - Create a new container node
+ * @param {string} hierarchyOptions.containerName - Name for new container
+ * @param {string} hierarchyOptions.containerType - Type for new container
  */
-export async function confirmRemember(previewId, skipConflictIds = []) {
+export async function confirmRemember(previewId, skipConflictIds = [], hierarchyOptions = {}) {
   console.log(`[RavenService.confirmRemember] previewId=${previewId}`);
 
   const preview = pendingPreviews.get(previewId);
@@ -180,6 +351,35 @@ export async function confirmRemember(previewId, skipConflictIds = []) {
 
   const factsCreated = [];
   const factsUpdated = [];
+  let targetNodeId = null;
+  let nodeCreated = null;
+
+  // Handle hierarchy options
+  const { parentNodeId, createContainer, containerName, containerType } = hierarchyOptions;
+
+  try {
+    if (createContainer && containerName) {
+      // Create a new container node for these facts
+      console.log(`[RavenService.confirmRemember] Creating container: ${containerName}`);
+      const newNode = await upsertNode(teamId, {
+        name: containerName,
+        type: containerType || 'concept',
+        scaleLevel: 2,  // Container level
+        description: `Created from remember: "${sourceText.substring(0, 100)}..."`
+      }, {
+        sourceType: 'remember',
+        sourceId: previewId
+      });
+      targetNodeId = newNode.id;
+      nodeCreated = { id: newNode.id, name: newNode.name, type: newNode.type };
+    } else if (parentNodeId) {
+      // Attach to existing node
+      targetNodeId = parentNodeId;
+    }
+  } catch (err) {
+    console.error('[RavenService.confirmRemember] Hierarchy creation error:', err.message);
+    // Continue without hierarchy attachment
+  }
 
   // Build a set of conflict fact IDs to skip
   const skipIds = new Set(skipConflictIds || []);
@@ -201,7 +401,8 @@ export async function confirmRemember(previewId, skipConflictIds = []) {
         sourceQuote: sourceText,
         sourceUrl,
         sourceType: 'user_statement',
-        createdBy: userId
+        createdBy: userId,
+        kgNodeId: targetNodeId  // Attach to node if specified
       });
 
       factsUpdated.push(newFact);
@@ -215,7 +416,8 @@ export async function confirmRemember(previewId, skipConflictIds = []) {
         sourceQuote: sourceText,
         sourceUrl,
         sourceType: 'user_statement',
-        createdBy: userId
+        createdBy: userId,
+        kgNodeId: targetNodeId  // Attach to node if specified
       });
       factsCreated.push(fact);
     }
@@ -228,7 +430,9 @@ export async function confirmRemember(previewId, skipConflictIds = []) {
     success: true,
     factsCreated,
     factsUpdated,
-    message: `Created ${factsCreated.length} fact(s), updated ${factsUpdated.length} fact(s)`
+    nodeCreated,
+    attachedToNodeId: targetNodeId,
+    message: `Created ${factsCreated.length} fact(s), updated ${factsUpdated.length} fact(s)${targetNodeId ? `, attached to knowledge graph` : ''}`
   };
 }
 
@@ -449,7 +653,7 @@ function levenshteinSimilarity(a, b) {
  * Create a fact with source attribution
  */
 async function createFactWithAttribution(teamId, scopeId, factData) {
-  const { content, entityType, entityName, attribute, value, category, confidenceScore, sourceQuote, sourceUrl, sourceType, createdBy, contextTags = [] } = factData;
+  const { content, entityType, entityName, attribute, value, category, confidenceScore, sourceQuote, sourceUrl, sourceType, createdBy, contextTags = [], kgNodeId = null } = factData;
 
   // Generate embedding
   let embedding = null;
@@ -461,8 +665,8 @@ async function createFactWithAttribution(teamId, scopeId, factData) {
 
   const result = await db.query(
     `INSERT INTO facts (team_id, scope_id, content, entity_type, entity_name, attribute, value, category,
-                       confidence_score, source_type, source_quote, source_url, created_by, embedding, context_tags)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                       confidence_score, source_type, source_quote, source_url, created_by, embedding, context_tags, kg_node_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING *`,
     [
       teamId,
@@ -479,7 +683,8 @@ async function createFactWithAttribution(teamId, scopeId, factData) {
       sourceUrl,
       createdBy,
       embedding ? `[${embedding.join(',')}]` : null,
-      JSON.stringify(contextTags)
+      JSON.stringify(contextTags),
+      kgNodeId
     ]
   );
 
@@ -512,6 +717,10 @@ function mapFact(row) {
     supersededBy: row.superseded_by,
     contextTags: row.context_tags || [],
     metadata: row.metadata,
+    kgNodeId: row.kg_node_id,
+    freshnessStatus: row.freshness_status,
+    lastValidatedAt: row.last_validated_at,
+    confidence: row.confidence ? parseFloat(row.confidence) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

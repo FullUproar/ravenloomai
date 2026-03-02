@@ -154,6 +154,16 @@ export default gql`
     explanation: String!
   }
 
+  # Suggested parent node for hierarchy placement
+  type SuggestedParent {
+    action: String!  # attach_to_existing, create_container, standalone
+    node: KnowledgeNode
+    suggestedName: String
+    suggestedType: String
+    alternativeName: String
+    confidence: Float
+  }
+
   # Preview response from Remember (requires confirmation)
   type RememberPreview {
     previewId: ID!
@@ -162,6 +172,17 @@ export default gql`
     conflicts: [FactConflict!]!
     isMismatch: Boolean!  # True if input looks like a question
     mismatchSuggestion: String
+    # Hierarchy placement suggestions
+    suggestedParent: SuggestedParent
+    hierarchyAction: String  # attach_to_existing, create_container, standalone
+  }
+
+  # Options for hierarchy placement when confirming remember
+  input HierarchyOptions {
+    parentNodeId: ID         # Attach facts to existing node
+    createContainer: Boolean # Create a new container node
+    containerName: String    # Name for new container
+    containerType: String    # Type for new container (event, project, etc.)
   }
 
   # Result after confirming a Remember
@@ -169,6 +190,8 @@ export default gql`
     success: Boolean!
     factsCreated: [Fact!]!
     factsUpdated: [Fact!]!
+    nodeCreated: KnowledgeNode      # If a container was created
+    attachedToNodeId: ID            # Node facts were attached to
     message: String
   }
 
@@ -891,6 +914,35 @@ export default gql`
 
     # Get fact attribution/provenance
     getFactAttribution(factId: ID!): FactAttribution
+
+    # ============================================================================
+    # KNOWLEDGE GRAPH QUERIES
+    # ============================================================================
+
+    # Get the knowledge tree (root nodes or children of a parent)
+    getKnowledgeTree(teamId: ID!, parentId: ID): [KnowledgeNode!]!
+
+    # Get a single knowledge node with its details
+    getKnowledgeNode(nodeId: ID!): KnowledgeNode
+
+    # Get ancestors of a node (breadcrumb trail)
+    getKnowledgeNodeAncestors(nodeId: ID!): [KnowledgeNode!]!
+
+    # Search knowledge nodes by name/content
+    searchKnowledgeNodes(teamId: ID!, query: String!, limit: Int): [KnowledgeNode!]!
+
+    # ============================================================================
+    # KNOWLEDGE FRESHNESS QUERIES
+    # ============================================================================
+
+    # Get freshness statistics for a team's knowledge
+    getFreshnessStats(teamId: ID!): FreshnessStats!
+
+    # Get facts that need review (stale or flagged)
+    getFactsNeedingReview(teamId: ID!, limit: Int, offset: Int, category: String): [FactNeedingReview!]!
+
+    # Find facts with outdated temporal references
+    getTemporallyOutdatedFacts(teamId: ID!, limit: Int): [TemporallyOutdatedFact!]!
   }
 
   # ============================================================================
@@ -1013,7 +1065,8 @@ export default gql`
     previewRemember(scopeId: ID!, statement: String!, sourceUrl: String): RememberPreview!
 
     # Confirm and save facts from a preview
-    confirmRemember(previewId: ID!, skipConflictIds: [ID!]): RememberResult!
+    # hierarchyOptions allows attaching facts to knowledge graph nodes
+    confirmRemember(previewId: ID!, skipConflictIds: [ID!], hierarchyOptions: HierarchyOptions): RememberResult!
 
     # Cancel a Remember preview (cleanup)
     cancelRemember(previewId: ID!): Boolean!
@@ -1021,6 +1074,51 @@ export default gql`
     # Process document content into knowledge graph
     # Accepts raw text content or a URL (Google Docs, web pages)
     processDocumentContent(teamId: ID!, title: String!, content: String, url: String): DocumentProcessResult!
+
+    # ============================================================================
+    # CONVERSATION IMPORT (AI Chat Import)
+    # ============================================================================
+
+    # Import a conversation from ChatGPT, Claude, or plain text
+    importConversation(teamId: ID!, input: ConversationImportInput!): ConversationImportResult!
+
+    # ============================================================================
+    # KNOWLEDGE GRAPH NODES (Hierarchy Management)
+    # ============================================================================
+
+    # Create a new knowledge node
+    createKnowledgeNode(teamId: ID!, input: CreateKnowledgeNodeInput!): KnowledgeNode!
+
+    # Update a knowledge node
+    updateKnowledgeNode(nodeId: ID!, input: UpdateKnowledgeNodeInput!): KnowledgeNode!
+
+    # Move a node to a new parent (reparent)
+    reparentKnowledgeNode(nodeId: ID!, newParentId: ID): KnowledgeNode!
+
+    # Generate or regenerate a node's summary
+    generateKnowledgeNodeSummary(nodeId: ID!): KnowledgeNode!
+
+    # Attach a fact to a knowledge node
+    attachFactToNode(factId: ID!, nodeId: ID!): Fact!
+
+    # Delete a knowledge node (and optionally its children)
+    deleteKnowledgeNode(nodeId: ID!, deleteChildren: Boolean): Boolean!
+
+    # ============================================================================
+    # KNOWLEDGE FRESHNESS MUTATIONS
+    # ============================================================================
+
+    # Mark stale knowledge for a team (facts/nodes not validated in threshold days)
+    markStaleKnowledge(teamId: ID!, staleThresholdDays: Int): StaleMarkResult!
+
+    # Validate facts as still accurate (mark as fresh)
+    validateFacts(factIds: [ID!]!): ValidationResult!
+
+    # Expire a fact (mark as no longer valid)
+    expireFact(factId: ID!): Boolean!
+
+    # Set valid time range for a fact
+    setFactValidRange(factId: ID!, validFrom: DateTime, validUntil: DateTime): Fact!
   }
 
   # Result of processing a document
@@ -1031,6 +1129,115 @@ export default gql`
     edgesCreated: Int!
     chunksCreated: Int!
     factsExtracted: Int!
+    message: String
+  }
+
+  # ============================================================================
+  # KNOWLEDGE GRAPH TYPES
+  # ============================================================================
+
+  # A node in the knowledge graph (entity with hierarchy)
+  type KnowledgeNode {
+    id: ID!
+    teamId: ID!
+    name: String!
+    type: String!
+    description: String
+    summary: String
+    scaleLevel: Int!
+    childCount: Int!
+    factCount: Int
+    parentNode: KnowledgeNode
+    children: [KnowledgeNode!]!
+    facts: [Fact!]!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  # Input for creating a knowledge node
+  input CreateKnowledgeNodeInput {
+    name: String!
+    type: String!
+    description: String
+    parentNodeId: ID
+    scaleLevel: Int
+  }
+
+  # Input for updating a knowledge node
+  input UpdateKnowledgeNodeInput {
+    name: String
+    description: String
+    summary: String
+  }
+
+  # Input for importing a conversation
+  input ConversationImportInput {
+    format: String!  # chatgpt_json, claude_markdown, plain_text
+    content: String!
+    title: String
+    sourceUrl: String
+  }
+
+  # ============================================================================
+  # KNOWLEDGE FRESHNESS TYPES
+  # ============================================================================
+
+  # Statistics about knowledge freshness
+  type FreshnessStats {
+    fresh: Int!
+    stale: Int!
+    needsReview: Int!
+    expired: Int!
+    total: Int!
+    avgConfidence: Float
+    oldestValidation: DateTime
+    olderThan90Days: Int!
+    healthScore: Int!  # 0-100 score indicating overall knowledge health
+  }
+
+  # A fact that needs review
+  type FactNeedingReview {
+    id: ID!
+    content: String!
+    category: String
+    freshnessStatus: String!
+    lastValidatedAt: DateTime
+    confidence: Float
+    daysSinceValidation: Int
+    nodeName: String
+    nodeType: String
+    createdAt: DateTime!
+  }
+
+  # A fact with potentially outdated temporal references
+  type TemporallyOutdatedFact {
+    id: ID!
+    content: String!
+    category: String
+    pastYearsReferenced: [String!]!
+    hasPastTenseWords: Boolean!
+    nodeName: String
+    freshnessStatus: String
+    createdAt: DateTime!
+  }
+
+  # Result of validating facts
+  type ValidationResult {
+    factsValidated: Int!
+  }
+
+  # Result of marking stale knowledge
+  type StaleMarkResult {
+    factsMarked: Int!
+    nodesMarked: Int!
+  }
+
+  # Result of conversation import
+  type ConversationImportResult {
+    success: Boolean!
+    nodesCreated: Int!
+    factsCreated: Int!
+    rootNodeId: ID
     message: String
   }
 `;

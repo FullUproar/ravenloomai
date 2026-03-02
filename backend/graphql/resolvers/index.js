@@ -20,7 +20,9 @@ import GoogleDriveService from '../../services/GoogleDriveService.js';
 import UploadService from '../../services/UploadService.js';
 import GifService from '../../services/GifService.js';
 import KnowledgeBaseService from '../../services/KnowledgeBaseService.js';
-import { graphRAGSearch, getGraphStats } from '../../services/KnowledgeGraphService.js';
+import * as KnowledgeGraphService from '../../services/KnowledgeGraphService.js';
+import * as ConversationImportService from '../../services/ConversationImportService.js';
+import * as KnowledgeFreshnessService from '../../services/KnowledgeFreshnessService.js';
 import * as RateLimiterService from '../../services/RateLimiterService.js';
 import * as ScopeService from '../../services/ScopeService.js';
 import * as RavenService from '../../services/RavenService.js';
@@ -474,6 +476,62 @@ const resolvers = {
     getFactAttribution: async (_, { factId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return RavenService.getFactAttribution(factId);
+    },
+
+    // ============================================================================
+    // KNOWLEDGE GRAPH QUERIES
+    // ============================================================================
+
+    getKnowledgeTree: async (_, { teamId, parentId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeGraphService.getKnowledgeTree(teamId, parentId);
+    },
+
+    getKnowledgeNode: async (_, { nodeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeGraphService.getNodeWithChildren(nodeId, true);
+    },
+
+    getKnowledgeNodeAncestors: async (_, { nodeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeGraphService.getNodeAncestors(nodeId);
+    },
+
+    searchKnowledgeNodes: async (_, { teamId, query, limit = 20 }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const embedding = await AIService.generateEmbedding(query);
+      if (!embedding) return [];
+
+      const result = await pool.query(`
+        SELECT n.*,
+               (SELECT COUNT(*) FROM facts f WHERE f.kg_node_id = n.id AND f.valid_until IS NULL) as fact_count,
+               1 - (n.embedding <=> $1) as similarity
+        FROM kg_nodes n
+        WHERE n.team_id = $2 AND n.embedding IS NOT NULL
+        ORDER BY n.embedding <=> $1
+        LIMIT $3
+      `, [`[${embedding.join(',')}]`, teamId, limit]);
+
+      return result.rows;
+    },
+
+    // ========================================================================
+    // KNOWLEDGE FRESHNESS QUERIES
+    // ========================================================================
+
+    getFreshnessStats: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeFreshnessService.getFreshnessStats(teamId);
+    },
+
+    getFactsNeedingReview: async (_, { teamId, limit, offset, category }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeFreshnessService.getFactsNeedingReview(teamId, { limit, offset, category });
+    },
+
+    getTemporallyOutdatedFacts: async (_, { teamId, limit }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeFreshnessService.findTemporallyOutdated(teamId, { limit });
     }
   },
 
@@ -948,9 +1006,9 @@ const resolvers = {
       return RavenService.previewRemember(scopeId, userId, statement, sourceUrl);
     },
 
-    confirmRemember: async (_, { previewId, skipConflictIds }, { userId }) => {
+    confirmRemember: async (_, { previewId, skipConflictIds, hierarchyOptions }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      return RavenService.confirmRemember(previewId, skipConflictIds);
+      return RavenService.confirmRemember(previewId, skipConflictIds, hierarchyOptions || {});
     },
 
     cancelRemember: async (_, { previewId }, { userId }) => {
@@ -961,6 +1019,119 @@ const resolvers = {
     processDocumentContent: async (_, { teamId, title, content, url }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return RavenService.processDocumentContent(teamId, userId, { title, content, url });
+    },
+
+    // ============================================================================
+    // CONVERSATION IMPORT
+    // ============================================================================
+
+    importConversation: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return ConversationImportService.importConversation(teamId, userId, input);
+    },
+
+    // ============================================================================
+    // KNOWLEDGE GRAPH MUTATIONS
+    // ============================================================================
+
+    createKnowledgeNode: async (_, { teamId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeGraphService.upsertNode(teamId, {
+        name: input.name,
+        type: input.type,
+        description: input.description,
+        parentNodeId: input.parentNodeId,
+        scaleLevel: input.scaleLevel || 0
+      }, { sourceType: 'manual' });
+    },
+
+    updateKnowledgeNode: async (_, { nodeId, input }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const updates = {};
+      if (input.name !== undefined) updates.name = input.name;
+      if (input.description !== undefined) updates.description = input.description;
+      if (input.summary !== undefined) updates.summary = input.summary;
+
+      const result = await pool.query(`
+        UPDATE kg_nodes SET
+          name = COALESCE($2, name),
+          description = COALESCE($3, description),
+          summary = COALESCE($4, summary),
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `, [nodeId, input.name, input.description, input.summary]);
+
+      return result.rows[0];
+    },
+
+    reparentKnowledgeNode: async (_, { nodeId, newParentId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeGraphService.reparentNode(nodeId, newParentId);
+    },
+
+    generateKnowledgeNodeSummary: async (_, { nodeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const node = await pool.query('SELECT team_id FROM kg_nodes WHERE id = $1', [nodeId]);
+      if (node.rows.length === 0) throw new Error('Node not found');
+      return KnowledgeGraphService.generateNodeSummary(node.rows[0].team_id, nodeId);
+    },
+
+    attachFactToNode: async (_, { factId, nodeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeGraphService.attachFactToNode(factId, nodeId);
+    },
+
+    deleteKnowledgeNode: async (_, { nodeId, deleteChildren }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      if (deleteChildren) {
+        // Delete all descendants first (using path array)
+        await pool.query(`
+          DELETE FROM kg_nodes WHERE $1 = ANY(path)
+        `, [nodeId]);
+      } else {
+        // Reparent children to this node's parent
+        const node = await pool.query('SELECT parent_node_id FROM kg_nodes WHERE id = $1', [nodeId]);
+        if (node.rows.length > 0) {
+          await pool.query(`
+            UPDATE kg_nodes SET parent_node_id = $2 WHERE parent_node_id = $1
+          `, [nodeId, node.rows[0].parent_node_id]);
+        }
+      }
+
+      // Delete the node itself
+      await pool.query('DELETE FROM kg_nodes WHERE id = $1', [nodeId]);
+      return true;
+    },
+
+    // ========================================================================
+    // KNOWLEDGE FRESHNESS MUTATIONS
+    // ========================================================================
+
+    markStaleKnowledge: async (_, { teamId, staleThresholdDays = 90 }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeFreshnessService.markStaleKnowledge(teamId, staleThresholdDays);
+    },
+
+    validateFacts: async (_, { factIds }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const count = await KnowledgeFreshnessService.validateFacts(factIds, userId);
+      return { factsValidated: count };
+    },
+
+    expireFact: async (_, { factId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      await KnowledgeFreshnessService.expireFact(factId);
+      return true;
+    },
+
+    setFactValidRange: async (_, { factId, validFrom, validUntil }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const result = await KnowledgeFreshnessService.setFactValidRange(factId, validFrom, validUntil);
+      // Return the full fact
+      const factResult = await pool.query('SELECT * FROM facts WHERE id = $1', [factId]);
+      return factResult.rows[0];
     }
   },
 
@@ -1069,6 +1240,41 @@ const resolvers = {
       if (!fact.scopeId) return null;
       return ScopeService.getScopeById(fact.scopeId);
     }
+  },
+
+  KnowledgeNode: {
+    parentNode: async (node) => {
+      if (!node.parent_node_id && !node.parentNodeId) return null;
+      const parentId = node.parent_node_id || node.parentNodeId;
+      const result = await pool.query('SELECT * FROM kg_nodes WHERE id = $1', [parentId]);
+      return result.rows[0] || null;
+    },
+
+    children: async (node) => {
+      const result = await pool.query(`
+        SELECT * FROM kg_nodes
+        WHERE parent_node_id = $1
+        ORDER BY scale_level DESC, name ASC
+      `, [node.id]);
+      return result.rows;
+    },
+
+    facts: async (node) => {
+      const result = await pool.query(`
+        SELECT * FROM facts
+        WHERE kg_node_id = $1 AND valid_until IS NULL
+        ORDER BY created_at DESC
+      `, [node.id]);
+      return result.rows;
+    },
+
+    // Map snake_case DB columns to camelCase GraphQL fields
+    teamId: (node) => node.team_id || node.teamId,
+    scaleLevel: (node) => node.scale_level ?? node.scaleLevel ?? 0,
+    childCount: (node) => node.child_count ?? node.childCount ?? 0,
+    factCount: (node) => node.fact_count ?? node.factCount ?? 0,
+    createdAt: (node) => node.created_at || node.createdAt,
+    updatedAt: (node) => node.updated_at || node.updatedAt
   },
 
   TeamQuestion: {

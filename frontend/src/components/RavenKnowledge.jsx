@@ -54,13 +54,26 @@ const PREVIEW_REMEMBER = gql`
       }
       isMismatch
       mismatchSuggestion
+      hierarchyAction
+      suggestedParent {
+        action
+        node {
+          id
+          name
+          type
+          scaleLevel
+        }
+        suggestedName
+        suggestedType
+        confidence
+      }
     }
   }
 `;
 
 const CONFIRM_REMEMBER = gql`
-  mutation ConfirmRemember($previewId: ID!, $skipConflictIds: [ID!]) {
-    confirmRemember(previewId: $previewId, skipConflictIds: $skipConflictIds) {
+  mutation ConfirmRemember($previewId: ID!, $skipConflictIds: [ID!], $hierarchyOptions: HierarchyOptions) {
+    confirmRemember(previewId: $previewId, skipConflictIds: $skipConflictIds, hierarchyOptions: $hierarchyOptions) {
       success
       factsCreated {
         id
@@ -70,6 +83,12 @@ const CONFIRM_REMEMBER = gql`
         id
         content
       }
+      nodeCreated {
+        id
+        name
+        type
+      }
+      attachedToNodeId
       message
     }
   }
@@ -89,6 +108,8 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [rememberPreview, setRememberPreview] = useState(null);
   const [rememberResult, setRememberResult] = useState(null);
   const [skipConflictIds, setSkipConflictIds] = useState([]);
+  const [hierarchyOption, setHierarchyOption] = useState('suggested'); // 'suggested', 'standalone', 'custom'
+  const [customContainerName, setCustomContainerName] = useState('');
   const [error, setError] = useState(null);
   const inputRef = useRef(null);
   const followUpRef = useRef(null);
@@ -128,6 +149,8 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     setRememberPreview(null);
     setRememberResult(null);
     setSkipConflictIds([]);
+    setHierarchyOption('suggested');
+    setCustomContainerName('');
     setError(null);
     inputRef.current?.focus();
   };
@@ -179,10 +202,34 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     if (!rememberPreview?.previewId) return;
 
     try {
+      // Build hierarchy options based on user selection
+      let hierarchyOptions = null;
+      const suggested = rememberPreview.suggestedParent;
+
+      if (hierarchyOption === 'suggested' && suggested) {
+        if (suggested.action === 'attach_to_existing' && suggested.node) {
+          hierarchyOptions = { parentNodeId: suggested.node.id };
+        } else if (suggested.action === 'create_container' && suggested.suggestedName) {
+          hierarchyOptions = {
+            createContainer: true,
+            containerName: suggested.suggestedName,
+            containerType: suggested.suggestedType || 'concept'
+          };
+        }
+      } else if (hierarchyOption === 'custom' && customContainerName.trim()) {
+        hierarchyOptions = {
+          createContainer: true,
+          containerName: customContainerName.trim(),
+          containerType: 'concept'
+        };
+      }
+      // If 'standalone', hierarchyOptions stays null
+
       const { data } = await confirmRemember({
         variables: {
           previewId: rememberPreview.previewId,
-          skipConflictIds
+          skipConflictIds,
+          hierarchyOptions
         }
       });
 
@@ -374,6 +421,75 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                   </label>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Hierarchy placement options */}
+          {rememberPreview.suggestedParent && (
+            <div className="preview-hierarchy">
+              <h4>Knowledge placement:</h4>
+              <div className="hierarchy-options">
+                <label className={`hierarchy-option ${hierarchyOption === 'suggested' ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="hierarchy"
+                    value="suggested"
+                    checked={hierarchyOption === 'suggested'}
+                    onChange={(e) => setHierarchyOption(e.target.value)}
+                  />
+                  <div className="option-content">
+                    {rememberPreview.suggestedParent.action === 'attach_to_existing' ? (
+                      <>
+                        <span className="option-label">Attach to existing:</span>
+                        <span className="option-value">{rememberPreview.suggestedParent.node?.name}</span>
+                        <span className="option-type">({rememberPreview.suggestedParent.node?.type})</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="option-label">Create container:</span>
+                        <span className="option-value">{rememberPreview.suggestedParent.suggestedName}</span>
+                        <span className="option-type">({rememberPreview.suggestedParent.suggestedType})</span>
+                      </>
+                    )}
+                  </div>
+                </label>
+
+                <label className={`hierarchy-option ${hierarchyOption === 'standalone' ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="hierarchy"
+                    value="standalone"
+                    checked={hierarchyOption === 'standalone'}
+                    onChange={(e) => setHierarchyOption(e.target.value)}
+                  />
+                  <div className="option-content">
+                    <span className="option-label">Save as standalone facts</span>
+                  </div>
+                </label>
+
+                <label className={`hierarchy-option ${hierarchyOption === 'custom' ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="hierarchy"
+                    value="custom"
+                    checked={hierarchyOption === 'custom'}
+                    onChange={(e) => setHierarchyOption(e.target.value)}
+                  />
+                  <div className="option-content">
+                    <span className="option-label">Create custom container:</span>
+                    {hierarchyOption === 'custom' && (
+                      <input
+                        type="text"
+                        className="custom-container-input"
+                        placeholder="Container name..."
+                        value={customContainerName}
+                        onChange={(e) => setCustomContainerName(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    )}
+                  </div>
+                </label>
+              </div>
             </div>
           )}
 
