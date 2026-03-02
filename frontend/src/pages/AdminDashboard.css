@@ -206,3 +206,121 @@
 .status-active {
   color: #4CAF50;
 }
+
+/* Responsive - Tablet */
+@media (max-width: 768px) {
+  .admin-dashboard {
+    padding: 1rem;
+  }
+
+  .admin-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .admin-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .admin-tabs {
+    flex-wrap: wrap;
+  }
+
+  .admin-tabs button {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .create-form {
+    flex-direction: column;
+  }
+
+  .create-form input {
+    width: 100%;
+  }
+
+  .admin-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 0.75rem;
+    font-size: 0.875rem;
+  }
+}
+
+/* Responsive - Mobile */
+@media (max-width: 480px) {
+  .admin-dashboard {
+    padding: 0.75rem;
+  }
+
+  .admin-header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .admin-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .admin-header .close-btn {
+    padding: 0.625rem 1rem;
+    min-height: 44px;
+  }
+
+  .admin-tabs {
+    gap: 0.375rem;
+    margin-bottom: 1rem;
+  }
+
+  .admin-tabs button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    flex: 1;
+    min-height: 44px;
+  }
+
+  .admin-section h2 {
+    font-size: 1.125rem;
+    margin-bottom: 1rem;
+  }
+
+  .create-form input,
+  .create-form button {
+    min-height: 44px;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .admin-table select {
+    min-height: 36px;
+    font-size: 0.8125rem;
+  }
+
+  .delete-btn {
+    min-height: 36px;
+    padding: 0.375rem 0.625rem;
+  }
+}
+
+/* Touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .admin-header .close-btn,
+  .admin-tabs button,
+  .create-form button,
+  .delete-btn {
+    min-height: 44px;
+  }
+
+  .admin-table select {
+    min-height: 44px;
+  }
+}

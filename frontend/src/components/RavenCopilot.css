@@ -264,8 +264,23 @@
   cursor: not-allowed;
 }
 
-/* Responsive - hide on small screens */
+/* Responsive - Tablet (narrower sidebar) */
 @media (max-width: 1024px) {
+  .raven-copilot {
+    width: 280px;
+  }
+
+  .copilot-quick-actions {
+    display: none;
+  }
+
+  .copilot-message {
+    font-size: 0.85rem;
+  }
+}
+
+/* Responsive - Small tablet / Large phone */
+@media (max-width: 768px) {
   .raven-copilot {
     display: none;
   }
@@ -278,4 +293,39 @@
 
 .has-copilot-collapsed .main-content {
   margin-right: 48px;
+}
+
+@media (max-width: 1024px) {
+  .has-copilot .main-content {
+    margin-right: 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .has-copilot .main-content,
+  .has-copilot-collapsed .main-content {
+    margin-right: 0;
+  }
+}
+
+/* Touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .copilot-send-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .copilot-collapse-btn {
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
+  .copilot-quick-actions button {
+    min-height: 36px;
+    padding: 8px 12px;
+  }
+
+  .copilot-input-area input {
+    min-height: 44px;
+  }
 }

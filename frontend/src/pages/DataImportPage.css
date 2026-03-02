@@ -388,3 +388,167 @@
 .close-btn.primary:hover {
   background: #6D5B9C;
 }
+
+/* Responsive - Tablet */
+@media (max-width: 768px) {
+  .data-import-page {
+    padding: 1rem;
+  }
+
+  .import-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .import-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .source-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .source-card {
+    padding: 1.5rem;
+  }
+
+  .upload-zone {
+    padding: 2rem;
+  }
+
+  .mapping-table th,
+  .mapping-table td {
+    padding: 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .import-actions {
+    flex-direction: column-reverse;
+  }
+
+  .import-actions button {
+    width: 100%;
+  }
+
+  .results-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Responsive - Mobile */
+@media (max-width: 480px) {
+  .data-import-page {
+    padding: 0.75rem;
+  }
+
+  .import-header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .import-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .import-header .close-btn {
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+  }
+
+  .import-step h2 {
+    font-size: 1.125rem;
+  }
+
+  .step-description {
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  .source-cards {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .source-card {
+    padding: 1.25rem;
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .source-icon {
+    font-size: 2rem;
+  }
+
+  .source-name {
+    font-size: 1rem;
+  }
+
+  .upload-zone {
+    padding: 1.5rem;
+  }
+
+  .upload-icon {
+    font-size: 2rem;
+  }
+
+  .upload-text {
+    font-size: 1rem;
+  }
+
+  .mapping-table th,
+  .mapping-table td {
+    padding: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .mapping-table select,
+  .mapping-table input {
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    min-height: 40px;
+  }
+
+  .back-btn,
+  .import-btn {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+  }
+
+  .results-summary {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .result-stat {
+    padding: 1rem;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+  }
+
+  .stat-label {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .import-header .close-btn,
+  .back-btn,
+  .import-btn,
+  .close-btn.primary {
+    min-height: 44px;
+  }
+
+  .source-card {
+    min-height: 60px;
+  }
+
+  .mapping-table select,
+  .mapping-table input {
+    min-height: 44px;
+  }
+}

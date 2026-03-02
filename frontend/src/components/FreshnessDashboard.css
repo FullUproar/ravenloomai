@@ -393,25 +393,149 @@
   font-size: 0.875rem;
 }
 
-/* Responsive */
+/* Responsive - Tablet */
 @media (max-width: 768px) {
   .freshness-header {
     flex-direction: column;
     gap: 1rem;
     padding: 1rem;
   }
-  
+
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
     padding: 1rem;
   }
-  
+
   .tab-content {
     padding: 1rem;
   }
-  
+
   .bulk-actions {
     flex-direction: column;
     gap: 0.75rem;
+  }
+
+  .fact-action {
+    width: 40px;
+    height: 40px;
+  }
+
+  .tab-btn {
+    padding: 0.875rem 0.75rem;
+  }
+}
+
+/* Responsive - Mobile */
+@media (max-width: 480px) {
+  .freshness-header {
+    padding: 0.75rem;
+  }
+
+  .header-content h2 {
+    font-size: 1.25rem;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .action-btn {
+    flex: 1;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .stat-card {
+    padding: 0.75rem;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+  }
+
+  .stat-label {
+    font-size: 0.625rem;
+  }
+
+  .tab-nav {
+    padding: 0 0.75rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab-btn {
+    padding: 0.75rem 0.5rem;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+  }
+
+  .tab-content {
+    padding: 0.75rem;
+  }
+
+  .overview-card {
+    padding: 1rem;
+  }
+
+  .health-legend {
+    gap: 0.75rem;
+  }
+
+  .legend-item {
+    font-size: 0.75rem;
+  }
+
+  .fact-card {
+    padding: 0.75rem;
+    flex-direction: column;
+  }
+
+  .fact-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .fact-action {
+    width: 44px;
+    height: 44px;
+  }
+
+  .bulk-actions {
+    padding: 0.625rem 0.75rem;
+  }
+
+  .pagination button {
+    padding: 0.625rem 0.875rem;
+    min-height: 44px;
+  }
+}
+
+/* Touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .fact-action {
+    width: 44px;
+    height: 44px;
+  }
+
+  .action-btn {
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+  }
+
+  .tab-btn {
+    min-height: 44px;
+  }
+
+  .pagination button {
+    min-height: 44px;
+  }
+
+  .select-all {
+    min-height: 44px;
   }
 }
