@@ -3,6 +3,10 @@ node_modules/
 dist/
 build/
 
+# Next.js
+.next/
+out/
+
 # Environment variables
 .env
 .env.local

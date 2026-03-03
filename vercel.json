@@ -1,58 +1,14 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "installCommand": "npm install",
-  "outputDirectory": "frontend/dist",
-  "rewrites": [
-    {
-      "source": "/api/graphql",
-      "destination": "/api/graphql"
-    },
-    {
-      "source": "/api/check-alerts",
-      "destination": "/api/check-alerts"
-    },
-    {
-      "source": "/api/upload",
-      "destination": "/api/upload"
-    },
-    {
-      "source": "/api/oauth/google/start",
-      "destination": "/api/oauth/google/start"
-    },
-    {
-      "source": "/api/oauth/google/callback",
-      "destination": "/api/oauth/google/callback"
-    },
-    {
-      "source": "/((?!api).*)",
-      "destination": "/index.html"
-    }
-  ],
+  "framework": "nextjs",
   "functions": {
-    "api/graphql.js": {
-      "maxDuration": 30
-    },
-    "api/check-alerts.js": {
-      "maxDuration": 60
-    },
-    "api/upload.js": {
-      "maxDuration": 30
-    },
-    "api/oauth/google/start.js": {
-      "maxDuration": 10
-    },
-    "api/oauth/google/callback.js": {
-      "maxDuration": 10
-    }
+    "app/api/ask/route.ts": { "maxDuration": 30 },
+    "app/api/extract/route.ts": { "maxDuration": 30 },
+    "app/api/graph/route.ts": { "maxDuration": 10 }
   },
   "crons": [
     {
-      "path": "/api/check-alerts",
+      "path": "/api/recalls/check",
       "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/send-digests",
-      "schedule": "0 * * * *"
     }
   ]
 }
