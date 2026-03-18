@@ -469,4 +469,16 @@
   .onboarding-ask-container {
     flex-direction: column;
   }
+
+  /* Prevent iOS zoom on input focus */
+  .onboarding-textarea,
+  .onboarding-ask-input {
+    font-size: 16px;
+  }
+
+  .onboarding-btn-primary,
+  .onboarding-btn-ghost {
+    padding: 0.875rem 1.25rem;
+    font-size: 1rem;
+  }
 }

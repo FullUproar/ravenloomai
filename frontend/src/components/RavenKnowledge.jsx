@@ -457,7 +457,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                   <div className="conflict-type">{conflict.conflictType}</div>
                   <div className="conflict-explanation">{conflict.explanation}</div>
                   <div className="conflict-existing">
-                    Existing: {conflict.existingFact.content.substring(0, 100)}...
+                    Existing: {(conflict.existingFact.content || '').substring(0, 100)}...
                   </div>
                   <label className="conflict-skip">
                     <input
