@@ -1275,5 +1275,206 @@ export default {
   // Depth-aware search
   detectQueryIntent,
   hierarchicalGraphRAGSearch,
-  getKnowledgeTree
+  getKnowledgeTree,
+  // Context graph operations
+  processFactIntoGraph
 };
+
+// ============================================================================
+// CONTEXT GRAPH OPERATIONS
+// ============================================================================
+
+/**
+ * Process a confirmed fact into the knowledge graph with context entities.
+ *
+ * Creates:
+ * - Concept nodes for entities mentioned in the fact
+ * - Context nodes (temporal, formality, audience, etc.)
+ * - Edges between concepts (the semantic "fact" itself)
+ * - Context edges (IN_CONTEXT, OCCURRED_IN, SCOPED_TO)
+ * - Trust data on edges (source_fact_ids, confirmation_count)
+ *
+ * @param {string} teamId
+ * @param {Object} fact - The confirmed fact (from DB)
+ * @param {Object} extractedData - The AI extraction data (entities, contexts, intent)
+ */
+export async function processFactIntoGraph(teamId, fact, extractedData) {
+  const { entities = [], contexts = [], intent } = extractedData;
+  const factId = fact.id;
+  const sourceInfo = { sourceType: 'fact', sourceId: factId };
+
+  console.log(`[processFactIntoGraph] fact=${factId}, ${entities.length} entities, ${contexts.length} contexts`);
+
+  const createdNodeIds = [];
+
+  try {
+    // 1. Create/upsert concept nodes for entities
+    for (const entity of entities) {
+      const node = await upsertNode(teamId, {
+        name: entity.name,
+        type: entity.type || 'concept',
+        description: null
+      }, sourceInfo);
+      if (node) createdNodeIds.push(node.id);
+    }
+
+    // 2. Create context nodes
+    for (const ctx of contexts) {
+      const node = await upsertNode(teamId, {
+        name: ctx.name,
+        type: ctx.type || 'context',
+        description: null
+      }, sourceInfo);
+      if (node) {
+        createdNodeIds.push(node.id);
+
+        // Create hierarchical context relationships (temporal hierarchy)
+        if (ctx.type === 'temporal') {
+          await createTemporalHierarchy(teamId, ctx.name, sourceInfo);
+        }
+      }
+    }
+
+    // 3. Create edges between entities (concept → relationship → concept)
+    // If we have 2+ entities, create relationships between them
+    if (entities.length >= 2) {
+      for (let i = 0; i < entities.length - 1; i++) {
+        const edge = await createEdge(teamId, {
+          source: entities[i].name,
+          target: entities[i + 1].name,
+          relationship: 'RELATED_TO'
+        }, sourceInfo);
+
+        // Update trust fields on the edge
+        if (edge) {
+          await updateEdgeTrustData(edge.id, factId);
+        }
+      }
+    }
+
+    // 4. Create context edges (entity → IN_CONTEXT → context)
+    for (const entity of entities) {
+      for (const ctx of contexts) {
+        const contextRelType = getContextRelationType(ctx.type);
+        const edge = await createEdge(teamId, {
+          source: entity.name,
+          target: ctx.name,
+          relationship: contextRelType
+        }, sourceInfo);
+
+        if (edge) {
+          await updateEdgeTrustData(edge.id, factId);
+        }
+      }
+    }
+
+    // 5. Create a chunk for the fact content (for GraphRAG retrieval)
+    await createChunk(teamId, {
+      content: fact.content,
+      sourceType: 'fact',
+      sourceId: factId,
+      sourceTitle: `Fact: ${fact.content.substring(0, 50)}`,
+      linkedNodeIds: createdNodeIds
+    });
+
+    console.log(`[processFactIntoGraph] Done. ${createdNodeIds.length} nodes involved.`);
+    return { nodesInvolved: createdNodeIds.length };
+
+  } catch (error) {
+    console.error(`[processFactIntoGraph] Error:`, error.message);
+    return { nodesInvolved: 0 };
+  }
+}
+
+/**
+ * Create temporal hierarchy for a date context.
+ * e.g., "March 2026" → IS_PART_OF → "Q1 2026" → IS_PART_OF → "2026"
+ */
+async function createTemporalHierarchy(teamId, temporalName, sourceInfo) {
+  const name = temporalName.toLowerCase();
+
+  // Try to extract year
+  const yearMatch = name.match(/\b(20\d{2})\b/);
+  if (!yearMatch) return;
+
+  const year = yearMatch[1];
+
+  // Try to extract quarter
+  const quarterMatch = name.match(/q([1-4])\s*\d{4}|([1-4])(?:st|nd|rd|th)\s*quarter/i);
+  const monthMatch = name.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\b/i);
+
+  let quarter = null;
+  if (quarterMatch) {
+    quarter = `Q${quarterMatch[1] || quarterMatch[2]} ${year}`;
+  } else if (monthMatch) {
+    const monthToQuarter = {
+      jan: 1, feb: 1, mar: 1,
+      apr: 2, may: 2, jun: 2,
+      jul: 3, aug: 3, sep: 3,
+      oct: 4, nov: 4, dec: 4
+    };
+    const q = monthToQuarter[monthMatch[1].toLowerCase().substring(0, 3)];
+    if (q) quarter = `Q${q} ${year}`;
+  }
+
+  // Create year node
+  await upsertNode(teamId, { name: year, type: 'temporal' }, sourceInfo);
+
+  // Create quarter node and link to year
+  if (quarter && quarter !== temporalName) {
+    await upsertNode(teamId, { name: quarter, type: 'temporal' }, sourceInfo);
+    await createEdge(teamId, {
+      source: quarter, target: year, relationship: 'IS_PART_OF'
+    }, sourceInfo);
+
+    // Link original to quarter (if different)
+    if (temporalName !== quarter) {
+      await createEdge(teamId, {
+        source: temporalName, target: quarter, relationship: 'IS_PART_OF'
+      }, sourceInfo);
+    }
+  } else if (temporalName !== year) {
+    // Link directly to year
+    await createEdge(teamId, {
+      source: temporalName, target: year, relationship: 'IS_PART_OF'
+    }, sourceInfo);
+  }
+}
+
+/**
+ * Map context type to the appropriate edge relationship
+ */
+function getContextRelationType(contextType) {
+  switch (contextType) {
+    case 'temporal': return 'OCCURRED_IN';
+    case 'formality': return 'IN_CONTEXT';
+    case 'audience': return 'PRESENTED_TO';
+    case 'work_stage': return 'DURING_STAGE';
+    case 'intent': return 'STATED_AS';
+    case 'organizational': return 'SCOPED_TO';
+    default: return 'IN_CONTEXT';
+  }
+}
+
+/**
+ * Update trust-related fields on a graph edge
+ */
+async function updateEdgeTrustData(edgeId, factId) {
+  try {
+    // Increment confirmation count and add fact ID to source list (if not already present)
+    await db.query(`
+      UPDATE kg_edges
+      SET confirmation_count = COALESCE(confirmation_count, 0) + 1,
+          last_confirmed_at = NOW(),
+          source_fact_ids = CASE
+            WHEN $2::uuid = ANY(COALESCE(source_fact_ids, '{}'))
+            THEN source_fact_ids
+            ELSE array_append(COALESCE(source_fact_ids, '{}'), $2::uuid)
+          END
+      WHERE id = $1
+    `, [edgeId, factId]);
+  } catch (err) {
+    // Non-critical — log and continue
+    console.error(`[updateEdgeTrustData] Error:`, err.message);
+  }
+}

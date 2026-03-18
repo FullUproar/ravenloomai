@@ -1146,21 +1146,34 @@ Return a JSON object with:
     {
       "statement": "The atomic fact statement",
       "category": "product|company|process|people|decision|general",
-      "entities": ["Entity1", "Entity2"],
+      "entities": [{"name": "Entity Name", "type": "person|product|company|concept|date|event|location"}],
       "confidence": 0.0-1.0,
-      "contextTags": ["tag1", "tag2"]
+      "contextTags": ["tag1", "tag2"],
+      "trustTier": "official|tribal",
+      "contexts": [
+        {"name": "Context Name", "type": "temporal|formality|audience|work_stage|intent|organizational"}
+      ],
+      "intent": "decision|observation|opinion|question"
     }
-  ],
-  "sourceQuestion": "The original question if this is a Q&A" (optional)
+  ]
 }
 
-Context tags are temporal or conditional qualifiers on when a fact applies:
-- Temporal: "after:2025-01-01", "before:2026-Q2", "during:project-alpha"
-- Conditional: "when:budget-approved", "if:headcount-increases"
-- NEVER use context tags for geographic/organizational scope (that belongs in the entity name)
-- Most facts have NO context tags (empty array) - only add if explicitly stated
-- Example: "Starting Q2, we'll use Jira" → contextTags: ["after:2026-Q2"]
-- Example: "California office uses Slack" → contextTags: [] (California is in the entity, not context)
+TRUST TIER classification:
+- "official": From canonical source documents (contracts, SOWs, brand guides, handbooks, signed agreements, formal specs)
+- "tribal": From the flow of work (Slack threads, meeting notes, pasted recaps, casual decisions, verbal agreements)
+- When in doubt, default to "tribal"
+
+CONTEXT ENTITIES: Extract the contexts in which this fact was stated. Contexts have their own relationships.
+- temporal: dates, quarters, years (e.g., "Q1 2026", "March 2026", "2025")
+- formality: the communication channel (e.g., "formal document", "Slack thread", "meeting notes", "email")
+- audience: who this was communicated to (e.g., "client-facing", "internal", "public")
+- work_stage: project phase (e.g., "active project", "proposal", "archived")
+- intent: what type of statement this is (e.g., "decision", "observation", "opinion", "question")
+- organizational: team/department scope (e.g., "marketing team", "engineering")
+
+Most facts will have 1-3 contexts. Only include contexts that are explicitly stated or strongly implied.
+
+ENTITY FORMAT: Entities should include type. Common types: person, product, company, concept, date, event, location.
 
 Extract ALL distinct facts from the text. Aim for 3-10 facts depending on content richness.
 Return ONLY valid JSON.`
@@ -1177,7 +1190,7 @@ Return ONLY valid JSON.`
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages,
-      max_tokens: 1000,
+      max_tokens: 2000,
       temperature: 0
     });
 
@@ -1197,9 +1210,14 @@ Return ONLY valid JSON.`
       .map(f => ({
         statement: f.statement,
         category: f.category || 'general',
-        entities: f.entities || [],
+        entities: (f.entities || []).map(e =>
+          typeof e === 'string' ? { name: e, type: 'concept' } : e
+        ),
         confidence: f.confidence || 0.7,
-        contextTags: f.contextTags || []
+        contextTags: f.contextTags || [],
+        trustTier: f.trustTier || 'tribal',
+        contexts: f.contexts || [],
+        intent: f.intent || 'observation'
       }));
   } catch (error) {
     console.error('Atomic fact extraction error:', error);
@@ -1209,7 +1227,10 @@ Return ONLY valid JSON.`
       category: 'general',
       entities: [],
       confidence: 0.5,
-      contextTags: []
+      contextTags: [],
+      trustTier: 'tribal',
+      contexts: [],
+      intent: 'observation'
     }];
   }
 }

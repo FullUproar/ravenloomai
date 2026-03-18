@@ -1,0 +1,472 @@
+/**
+ * Onboarding - First 5 Minutes Experience
+ * Designed for Dana: clean, no jargon, trust-building.
+ */
+
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  position: relative;
+}
+
+/* Progress bar */
+.onboarding-progress {
+  height: 3px;
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+}
+
+.onboarding-progress-fill {
+  height: 100%;
+  background: var(--cta);
+  transition: width 0.5s var(--ease-out-expo);
+  border-radius: 0 2px 2px 0;
+}
+
+/* Content area */
+.onboarding-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.onboarding-step {
+  max-width: 640px;
+  width: 100%;
+  animation: onboardingFadeIn 0.4s var(--ease-out-expo);
+}
+
+@keyframes onboardingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Typography */
+.onboarding-headline {
+  font-family: var(--font-header);
+  font-size: 2rem;
+  line-height: 1.2;
+  margin-bottom: 0.75rem;
+  color: var(--text);
+}
+
+.onboarding-step-title {
+  font-family: var(--font-header);
+  font-size: 1.5rem;
+  line-height: 1.3;
+  margin-bottom: 0.5rem;
+}
+
+.onboarding-subtext {
+  font-size: 1rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+/* Input container */
+.onboarding-input-container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  transition: border-color 0.15s var(--ease-out);
+}
+
+.onboarding-input-container:focus-within {
+  border-color: var(--cta);
+}
+
+.onboarding-textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  font-family: var(--font-body);
+  background: transparent;
+  color: var(--text);
+}
+
+.onboarding-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.onboarding-input-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Buttons */
+.onboarding-btn-primary {
+  padding: 0.6rem 1.25rem;
+  background: var(--cta);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s var(--ease-out);
+}
+
+.onboarding-btn-primary:hover:not(:disabled) {
+  background: var(--cta-hover);
+  transform: translateY(-1px);
+}
+
+.onboarding-btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.onboarding-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.onboarding-btn-ghost {
+  padding: 0.6rem 1.25rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s var(--ease-out);
+}
+
+.onboarding-btn-ghost:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* Error */
+.onboarding-error {
+  color: var(--pop);
+  font-size: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+/* Fact cards (Step 2) */
+.onboarding-facts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.onboarding-fact-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  animation: factSlideIn 0.3s var(--ease-out-expo);
+  animation-fill-mode: both;
+}
+
+.onboarding-fact-card:nth-child(1) { animation-delay: 0.05s; }
+.onboarding-fact-card:nth-child(2) { animation-delay: 0.1s; }
+.onboarding-fact-card:nth-child(3) { animation-delay: 0.15s; }
+.onboarding-fact-card:nth-child(4) { animation-delay: 0.2s; }
+.onboarding-fact-card:nth-child(5) { animation-delay: 0.25s; }
+
+@keyframes factSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.onboarding-fact-content {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.onboarding-fact-category {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.onboarding-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* Success badge (Step 3) */
+.onboarding-success-badge {
+  display: inline-block;
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--success);
+  padding: 0.4rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+  animation: badgePop 0.4s var(--ease-spring);
+}
+
+@keyframes badgePop {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* Suggestions (Step 3) */
+.onboarding-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+}
+
+.onboarding-suggestion {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--cta);
+  font-size: 0.85rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s var(--ease-out);
+}
+
+.onboarding-suggestion:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--cta);
+}
+
+/* Ask input (Step 3) */
+.onboarding-ask-container {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.onboarding-ask-input {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.15s var(--ease-out);
+}
+
+.onboarding-ask-input:focus {
+  border-color: var(--cta);
+}
+
+.onboarding-ask-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Answer card (Step 4) */
+.onboarding-answer-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.onboarding-answer-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.onboarding-answer-text {
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.onboarding-answer-text p {
+  margin: 0 0 0.5rem;
+}
+
+.onboarding-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.onboarding-source-chip {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+/* Simulate (Step 4) */
+.onboarding-simulate-divider {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 1.5rem 0;
+  position: relative;
+}
+
+.onboarding-simulate-divider::before,
+.onboarding-simulate-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 100px);
+  height: 1px;
+  background: var(--border);
+}
+
+.onboarding-simulate-divider::before { left: 0; }
+.onboarding-simulate-divider::after { right: 0; }
+
+.onboarding-simulate-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--cta);
+  border-radius: 12px;
+  padding: 1.25rem;
+  animation: onboardingFadeIn 0.4s var(--ease-out-expo);
+}
+
+.onboarding-simulate-question {
+  font-style: italic;
+  color: var(--cta);
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.onboarding-simulate-punchline {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-weight: 500;
+  color: var(--success);
+  font-size: 0.9rem;
+}
+
+.onboarding-loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 2rem;
+}
+
+/* Tease cards (Step 5) */
+.onboarding-tease-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.onboarding-tease-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.onboarding-tease-icon {
+  font-size: 1.5rem;
+  width: 2.5rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.onboarding-tease-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.onboarding-tease-text strong {
+  font-size: 0.9rem;
+}
+
+.onboarding-tease-text span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Skip button */
+.onboarding-skip {
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.onboarding-skip:hover {
+  color: var(--text);
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .onboarding-content {
+    padding: 1.5rem 1rem;
+    align-items: flex-start;
+  }
+
+  .onboarding-headline {
+    font-size: 1.5rem;
+  }
+
+  .onboarding-step-title {
+    font-size: 1.25rem;
+  }
+
+  .onboarding-ask-container {
+    flex-direction: column;
+  }
+}

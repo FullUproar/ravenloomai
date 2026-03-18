@@ -311,15 +311,13 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
       {/* Input area (shown only when idle - not during results) */}
       {mode === 'idle' && (
         <div className="raven-knowledge-input-section">
-          <div className="raven-knowledge-scope-label">
-            {scopeName || 'Knowledge'}
-          </div>
+          {/* Scope label hidden — shown in RavenHome toolbar via ScopeToggle */}
 
           <div className="raven-knowledge-input-container">
             <textarea
               ref={inputRef}
               className="raven-knowledge-input"
-              placeholder="Ask a question or share something to remember..."
+              placeholder="Tell me something, or ask me anything..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {

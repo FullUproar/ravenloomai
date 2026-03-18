@@ -407,24 +407,6 @@ export default gql`
   }
 
   # ============================================================================
-  # GIF TYPES (Tenor API)
-  # ============================================================================
-
-  type Gif {
-    id: String!
-    title: String
-    url: String!
-    previewUrl: String
-    width: Int
-    height: Int
-  }
-
-  type GifCategory {
-    name: String!
-    imageUrl: String
-  }
-
-  # ============================================================================
   # CHANNEL, THREAD & MESSAGE TYPES
   # ============================================================================
 
@@ -503,6 +485,7 @@ export default gql`
     supersededBy: ID
     contextTags: [String!]  # Context scoping: ["project:alpha", "california", "usa"]
     metadata: JSON
+    trustTier: String  # official (canonical docs) or tribal (flow of work)
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -817,6 +800,7 @@ export default gql`
     getThreadMessages(threadId: ID!, limit: Int): [Message!]!
 
     # Knowledge
+    getFactCount(teamId: ID!): Int!
     getFacts(teamId: ID!, category: String, entityType: String, limit: Int): [Fact!]!
     getDecisions(teamId: ID!, limit: Int): [Decision!]!
     searchKnowledge(teamId: ID!, query: String!): KnowledgeResult!
@@ -867,11 +851,6 @@ export default gql`
     getKnowledgeBaseSources(teamId: ID!): [KnowledgeBaseSource!]!
     getKnowledgeBaseDocuments(teamId: ID!, sourceId: ID): [KnowledgeBaseDocument!]!
     isInKnowledgeBase(teamId: ID!, provider: String!, sourceId: String!): Boolean!
-
-    # GIFs (Tenor API)
-    searchGifs(query: String!, limit: Int): [Gif!]!
-    getTrendingGifs(limit: Int): [Gif!]!
-    getGifCategories: [GifCategory!]!
 
     # Team Settings (admin only)
     getTeamSettings(teamId: ID!): TeamSettings!

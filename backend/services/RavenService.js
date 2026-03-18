@@ -21,7 +21,8 @@ import {
   searchNodes,
   upsertNode,
   attachFactToNode,
-  getRootNodes
+  getRootNodes,
+  processFactIntoGraph
 } from './KnowledgeGraphService.js';
 import KnowledgeBaseService from './KnowledgeBaseService.js';
 import OpenAI from 'openai';
@@ -30,13 +31,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 import * as GoogleDriveService from './GoogleDriveService.js';
+import * as ConfirmationEventService from './ConfirmationEventService.js';
 import crypto from 'crypto';
-
-// Generate UUID using Node.js crypto
-const generateUUID = () => crypto.randomUUID();
-
-// In-memory store for pending Remember previews (could be Redis in production)
-const pendingPreviews = new Map();
 
 // ============================================================================
 // ASK (Instant read-only response)
@@ -296,25 +292,22 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
     console.error('[RavenService.previewRemember] Hierarchy detection error:', err.message);
   }
 
-  // Generate a preview ID and store the preview
-  const previewId = generateUUID();
-  pendingPreviews.set(previewId, {
-    scopeId,
-    teamId,
-    userId,
-    sourceText: statement,
-    sourceUrl,
-    extractedFacts,
-    conflicts,
-    isMismatch: mismatch.isMismatch,
-    mismatchSuggestion: mismatch.suggestion,
-    suggestedParent,
-    hierarchyAction,
-    createdAt: new Date()
-  });
+  // Persist preview to database (replaces in-memory Map)
+  const result = await db.query(
+    `INSERT INTO remember_previews
+       (scope_id, team_id, user_id, source_text, source_url, extracted_facts, conflicts,
+        is_mismatch, mismatch_suggestion, suggested_parent, hierarchy_action, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
+     RETURNING id`,
+    [
+      scopeId, teamId, userId, statement, sourceUrl,
+      JSON.stringify(extractedFacts), JSON.stringify(conflicts),
+      mismatch.isMismatch, mismatch.suggestion,
+      JSON.stringify(suggestedParent), hierarchyAction
+    ]
+  );
 
-  // Clean up old previews (older than 1 hour)
-  cleanupOldPreviews();
+  const previewId = result.rows[0].id;
 
   return {
     previewId,
@@ -339,15 +332,31 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
  * @param {string} hierarchyOptions.containerName - Name for new container
  * @param {string} hierarchyOptions.containerType - Type for new container
  */
-export async function confirmRemember(previewId, skipConflictIds = [], hierarchyOptions = {}) {
+export async function confirmRemember(previewId, skipConflictIds = [], hierarchyOptions = {}, confirmingUserId = null) {
   console.log(`[RavenService.confirmRemember] previewId=${previewId}`);
 
-  const preview = pendingPreviews.get(previewId);
-  if (!preview) {
+  // Read preview from database
+  const previewResult = await db.query(
+    `SELECT * FROM remember_previews WHERE id = $1 AND status = 'pending'`,
+    [previewId]
+  );
+
+  if (previewResult.rows.length === 0) {
     throw new Error('Preview not found or expired');
   }
 
-  const { scopeId, teamId, userId, sourceText, sourceUrl, extractedFacts, conflicts } = preview;
+  const row = previewResult.rows[0];
+  const scopeId = row.scope_id;
+  const teamId = row.team_id;
+  const userId = row.user_id;
+  const sourceText = row.source_text;
+  const sourceUrl = row.source_url;
+  const extractedFacts = row.extracted_facts || [];
+  const conflicts = row.conflicts || [];
+  const previewCreatedAt = row.created_at;
+
+  // The confirming user (may differ from the stating user in team context)
+  const confirmer = confirmingUserId || userId;
 
   const factsCreated = [];
   const factsUpdated = [];
@@ -388,12 +397,12 @@ export async function confirmRemember(previewId, skipConflictIds = [], hierarchy
     // Check if this fact has a conflict
     const conflict = conflicts.find(c =>
       c.extractedFactContent === extractedFact.content &&
-      !skipIds.has(c.existingFact.id)
+      !skipIds.has(c.existingFact?.id)
     );
 
     if (conflict && conflict.conflictType === 'update') {
       // Update the existing fact (supersede it)
-      const oldFact = await KnowledgeService.invalidateFact(conflict.existingFact.id);
+      await KnowledgeService.invalidateFact(conflict.existingFact.id);
 
       // Create new fact with reference to old one
       const newFact = await createFactWithAttribution(teamId, scopeId, {
@@ -406,9 +415,36 @@ export async function confirmRemember(previewId, skipConflictIds = [], hierarchy
       });
 
       factsUpdated.push(newFact);
+
+      // Process into knowledge graph (context nodes, edges, trust data)
+      await processFactIntoGraph(teamId, newFact, extractedFact).catch(err =>
+        console.error('[confirmRemember] Graph processing error:', err.message)
+      );
+
+      // Log confirmation event
+      await ConfirmationEventService.logConfirmationEvent({
+        teamId, previewId, factId: newFact.id,
+        confirmingUserId: confirmer, statingUserId: userId,
+        outcome: 'confirmed', originalContent: extractedFact.content,
+        responseTimeMs: Date.now() - new Date(previewCreatedAt).getTime()
+      });
+
+      // Log conflict override
+      await ConfirmationEventService.logConflictOverride({
+        previewId, existingFactId: conflict.existingFact.id,
+        newFactId: newFact.id, conflictType: conflict.conflictType,
+        userDecision: 'override', userId: confirmer
+      });
+
     } else if (conflict && conflict.conflictType === 'duplicate') {
-      // Skip duplicates
+      // Log skip decision
+      await ConfirmationEventService.logConflictOverride({
+        previewId, existingFactId: conflict.existingFact.id,
+        newFactId: null, conflictType: 'duplicate',
+        userDecision: 'skip', userId: confirmer
+      });
       continue;
+
     } else {
       // Create new fact
       const fact = await createFactWithAttribution(teamId, scopeId, {
@@ -420,11 +456,39 @@ export async function confirmRemember(previewId, skipConflictIds = [], hierarchy
         kgNodeId: targetNodeId  // Attach to node if specified
       });
       factsCreated.push(fact);
+
+      // Process into knowledge graph (context nodes, edges, trust data)
+      await processFactIntoGraph(teamId, fact, extractedFact).catch(err =>
+        console.error('[confirmRemember] Graph processing error:', err.message)
+      );
+
+      // Log confirmation event
+      await ConfirmationEventService.logConfirmationEvent({
+        teamId, previewId, factId: fact.id,
+        confirmingUserId: confirmer, statingUserId: userId,
+        outcome: 'confirmed', originalContent: extractedFact.content,
+        responseTimeMs: Date.now() - new Date(previewCreatedAt).getTime()
+      });
     }
   }
 
-  // Clean up the preview
-  pendingPreviews.delete(previewId);
+  // Log skipped conflicts (user chose to keep existing)
+  for (const skipId of skipIds) {
+    const skippedConflict = conflicts.find(c => c.existingFact?.id === skipId);
+    if (skippedConflict) {
+      await ConfirmationEventService.logConflictOverride({
+        previewId, existingFactId: skipId,
+        newFactId: null, conflictType: skippedConflict.conflictType,
+        userDecision: 'keep_existing', userId: confirmer
+      });
+    }
+  }
+
+  // Mark preview as confirmed
+  await db.query(
+    `UPDATE remember_previews SET status = 'confirmed', confirmed_at = NOW() WHERE id = $1`,
+    [previewId]
+  );
 
   return {
     success: true,
@@ -439,8 +503,12 @@ export async function confirmRemember(previewId, skipConflictIds = [], hierarchy
 /**
  * Cancel a Remember preview
  */
-export function cancelRemember(previewId) {
-  return pendingPreviews.delete(previewId);
+export async function cancelRemember(previewId) {
+  const result = await db.query(
+    `UPDATE remember_previews SET status = 'cancelled' WHERE id = $1 AND status = 'pending'`,
+    [previewId]
+  );
+  return result.rowCount > 0;
 }
 
 /**
@@ -522,11 +590,14 @@ async function extractFactsFromStatement(statement) {
       value: fact.value || null,
       category: fact.category || 'general',
       confidenceScore: fact.confidence || 0.8,
-      contextTags: fact.contextTags || []
+      contextTags: fact.contextTags || [],
+      trustTier: fact.trustTier || 'tribal',
+      contexts: fact.contexts || [],
+      entities: fact.entities || [],
+      intent: fact.intent || 'observation'
     }));
   } catch (error) {
     console.error('[extractFactsFromStatement] AI extraction failed, using raw statement:', error.message);
-    // Fallback: treat the whole statement as a single fact
     return [{
       content: statement,
       entityType: null,
@@ -535,7 +606,11 @@ async function extractFactsFromStatement(statement) {
       value: null,
       category: 'general',
       confidenceScore: 0.7,
-      contextTags: []
+      contextTags: [],
+      trustTier: 'tribal',
+      contexts: [],
+      entities: [],
+      intent: 'observation'
     }];
   }
 }
@@ -653,7 +728,8 @@ function levenshteinSimilarity(a, b) {
  * Create a fact with source attribution
  */
 async function createFactWithAttribution(teamId, scopeId, factData) {
-  const { content, entityType, entityName, attribute, value, category, confidenceScore, sourceQuote, sourceUrl, sourceType, createdBy, contextTags = [], kgNodeId = null } = factData;
+  const { content, entityType, entityName, attribute, value, category, confidenceScore,
+          sourceQuote, sourceUrl, sourceType, createdBy, contextTags = [], kgNodeId = null, trustTier = null } = factData;
 
   // Generate embedding
   let embedding = null;
@@ -665,8 +741,9 @@ async function createFactWithAttribution(teamId, scopeId, factData) {
 
   const result = await db.query(
     `INSERT INTO facts (team_id, scope_id, content, entity_type, entity_name, attribute, value, category,
-                       confidence_score, source_type, source_quote, source_url, created_by, embedding, context_tags, kg_node_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                       confidence_score, source_type, source_quote, source_url, created_by, embedding,
+                       context_tags, kg_node_id, trust_tier)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING *`,
     [
       teamId,
@@ -684,7 +761,8 @@ async function createFactWithAttribution(teamId, scopeId, factData) {
       createdBy,
       embedding ? `[${embedding.join(',')}]` : null,
       JSON.stringify(contextTags),
-      kgNodeId
+      kgNodeId,
+      trustTier
     ]
   );
 
@@ -721,22 +799,12 @@ function mapFact(row) {
     freshnessStatus: row.freshness_status,
     lastValidatedAt: row.last_validated_at,
     confidence: row.confidence ? parseFloat(row.confidence) : null,
+    trustTier: row.trust_tier,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
-/**
- * Clean up old pending previews (older than 1 hour)
- */
-function cleanupOldPreviews() {
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  for (const [id, preview] of pendingPreviews.entries()) {
-    if (preview.createdAt < oneHourAgo) {
-      pendingPreviews.delete(id);
-    }
-  }
-}
 
 // ============================================================================
 // DOCUMENT PROCESSING

@@ -18,7 +18,7 @@ import * as QuestionService from '../../services/QuestionService.js';
 import * as LearningObjectiveService from '../../services/LearningObjectiveService.js';
 import GoogleDriveService from '../../services/GoogleDriveService.js';
 import UploadService from '../../services/UploadService.js';
-import GifService from '../../services/GifService.js';
+
 import KnowledgeBaseService from '../../services/KnowledgeBaseService.js';
 import * as KnowledgeGraphService from '../../services/KnowledgeGraphService.js';
 import * as ConversationImportService from '../../services/ConversationImportService.js';
@@ -93,6 +93,14 @@ const resolvers = {
     },
 
     // Knowledge
+    getFactCount: async (_, { teamId }) => {
+      const result = await pool.query(
+        `SELECT COUNT(*) FROM facts WHERE team_id = $1 AND (status IS NULL OR status = 'active')`,
+        [teamId]
+      );
+      return parseInt(result.rows[0].count, 10);
+    },
+
     getFacts: async (_, { teamId, category, entityType, limit }) => {
       return KnowledgeService.getFacts(teamId, { category, entityType, limit });
     },
@@ -343,19 +351,6 @@ const resolvers = {
     getGooglePickerConfig: async (_, __, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return GoogleDriveService.getPickerConfig(userId);
-    },
-
-    // GIF Search (Tenor API)
-    searchGifs: async (_, { query, limit }) => {
-      return GifService.search(query, limit || 20);
-    },
-
-    getTrendingGifs: async (_, { limit }) => {
-      return GifService.getTrending(limit || 20);
-    },
-
-    getGifCategories: async () => {
-      return GifService.getCategories();
     },
 
     // Team Settings (admin only)
@@ -1008,7 +1003,7 @@ const resolvers = {
 
     confirmRemember: async (_, { previewId, skipConflictIds, hierarchyOptions }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      return RavenService.confirmRemember(previewId, skipConflictIds, hierarchyOptions || {});
+      return RavenService.confirmRemember(previewId, skipConflictIds, hierarchyOptions || {}, userId);
     },
 
     cancelRemember: async (_, { previewId }, { userId }) => {

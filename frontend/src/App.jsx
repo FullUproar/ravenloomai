@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import Login from './Login.jsx';
-import TeamDashboard from './TeamDashboard.jsx';
+import Shell from './Shell.jsx';
 import AdminDashboard from './pages/AdminDashboard';
 
 // ============================================================================
@@ -188,10 +188,9 @@ function App({ apolloClient }) {
   // User is logged in but viewing team
   if (urlTeamId) {
     return (
-      <TeamDashboard
+      <Shell
         teamId={urlTeamId}
         initialView={urlView}
-        initialItemId={urlItemId}
         user={user}
         onSignOut={handleSignOut}
       />
