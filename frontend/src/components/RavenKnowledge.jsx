@@ -100,6 +100,60 @@ const CANCEL_REMEMBER = gql`
   }
 `;
 
+/**
+ * ConfidenceBadge - Shows answer confidence in plain English
+ * Dana trusts honesty more than false confidence.
+ */
+function ConfidenceBadge({ confidence }) {
+  if (confidence == null) return null;
+
+  let level, label;
+  if (confidence >= 0.7) {
+    level = 'high';
+    label = 'Based on confirmed knowledge';
+  } else if (confidence >= 0.4) {
+    level = 'medium';
+    label = 'Inferred from available context';
+  } else {
+    level = 'low';
+    label = 'Limited information — verify this';
+  }
+
+  return (
+    <div className={`confidence-badge confidence-badge--${level}`}>
+      <span className="confidence-dot" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/**
+ * ThinkingIndicator - Contextual progress messages
+ * Shows what Raven is actually doing, not just a spinner.
+ */
+function ThinkingIndicator({ mode }) {
+  const [messageIdx, setMessageIdx] = useState(0);
+
+  const messages = mode === 'asking'
+    ? ['Searching your knowledge base...', 'Analyzing connections...', 'Composing answer...']
+    : ['Reading your input...', 'Extracting key facts...', 'Checking for conflicts...'];
+
+  useEffect(() => {
+    setMessageIdx(0);
+    const interval = setInterval(() => {
+      setMessageIdx(prev => Math.min(prev + 1, messages.length - 1));
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [mode]);
+
+  return (
+    <div className="raven-knowledge-loading">
+      <div className="raven-thinking-dot" />
+      <span className="raven-thinking-text">{messages[messageIdx]}</span>
+    </div>
+  );
+}
+
 export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [input, setInput] = useState('');
   const [followUpInput, setFollowUpInput] = useState('');
@@ -177,15 +231,16 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   };
 
   // Handle Remember action (shows preview)
-  const handleRemember = async () => {
-    if (!input.trim() || !scopeId) return;
+  const handleRemember = async (overrideText = null) => {
+    const text = overrideText || input;
+    if (!text.trim() || !scopeId) return;
 
     setMode('remembering');
     setError(null);
 
     try {
       const { data } = await previewRemember({
-        variables: { scopeId, statement: input.trim() }
+        variables: { scopeId, statement: text.trim() }
       });
 
       setRememberPreview(data.previewRemember);
@@ -293,15 +348,13 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   // Handle correction - switch to Remember mode with the correction text
   const handleCorrection = () => {
     if (!followUpInput.trim()) return;
-    setInput(followUpInput);
+    const correctionText = followUpInput.trim();
+    setInput(correctionText);
     setFollowUpInput('');
     setAskResult(null);
     setRememberResult(null);
-    setMode('idle');
-    // Trigger Remember after a tick to let state update
-    setTimeout(() => {
-      handleRemember();
-    }, 0);
+    // Pass text directly — no setTimeout race condition
+    handleRemember(correctionText);
   };
 
   const isLoading = askLoading || previewLoading || confirmLoading;
@@ -356,12 +409,9 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
         </div>
       )}
 
-      {/* Loading indicator */}
+      {/* Contextual loading indicator */}
       {(mode === 'asking' || mode === 'remembering') && (
-        <div className="raven-knowledge-loading">
-          <div className="raven-knowledge-spinner" />
-          <span>{mode === 'asking' ? 'Searching knowledge...' : 'Analyzing statement...'}</span>
-        </div>
+        <ThinkingIndicator mode={mode} />
       )}
 
       {/* Remember Preview */}
@@ -526,6 +576,9 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
               <div className="result-answer">
                 <ReactMarkdown>{askResult.answer}</ReactMarkdown>
               </div>
+
+              {/* Confidence badge */}
+              <ConfidenceBadge confidence={askResult.confidence} />
 
               {askResult.factsUsed.length > 0 && (
                 <div className="result-sources">

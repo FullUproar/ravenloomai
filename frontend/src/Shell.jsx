@@ -6,13 +6,15 @@
  * No sidebar navigation tree. Minimal chrome.
  */
 
-import { useState, useEffect, Component } from 'react';
+import { useState, useEffect, Component, lazy, Suspense } from 'react';
 import { gql, useQuery } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
 import RavenHome from './components/RavenHome';
-import Onboarding from './components/Onboarding';
 import { useToast } from './Toast.jsx';
 import './Shell.css';
+
+// Lazy load Onboarding — only needed on first visit
+const Onboarding = lazy(() => import('./components/Onboarding'));
 
 // Error Boundary
 class ErrorBoundary extends Component {
@@ -166,11 +168,17 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
     return (
       <ErrorBoundary>
         <div className="shell">
-          <Onboarding
-            scopeId={teamScope.id}
-            onComplete={handleOnboardingComplete}
-            onFactsChanged={refetchFactCount}
-          />
+          <Suspense fallback={
+            <div className="shell-loading">
+              <div className="shell-loading-spinner" />
+            </div>
+          }>
+            <Onboarding
+              scopeId={teamScope.id}
+              onComplete={handleOnboardingComplete}
+              onFactsChanged={refetchFactCount}
+            />
+          </Suspense>
           {/* Footer branding */}
           <footer className="shell-footer">
             <span className="shell-footer-brand">Brought to you by Full Uproar</span>
@@ -228,7 +236,7 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
                 aria-expanded={showUserMenu}
                 aria-haspopup="true"
               >
-                {user.displayName || user.email?.split('@')[0]}
+                {user.displayName || user.email?.split('@')[0] || 'User'}
               </button>
               {showUserMenu && (
                 <div className="shell-user-dropdown" role="menu">

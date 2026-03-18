@@ -134,17 +134,71 @@
   color: var(--text-muted);
 }
 
-.raven-knowledge-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--bg-tertiary);
-  border-top-color: var(--cta);
+.raven-thinking-dot {
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  animation: raven-spin 0.8s linear infinite;
+  background: linear-gradient(135deg, var(--primary), var(--cta));
+  animation: thinkingPulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
-@keyframes raven-spin {
-  to { transform: rotate(360deg); }
+.raven-thinking-text {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  animation: thinkingFade 0.4s ease-out;
+}
+
+@keyframes thinkingPulse {
+  0%, 100% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+@keyframes thinkingFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Confidence Badge */
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.625rem;
+  border-radius: 4px;
+  margin-top: 0.75rem;
+}
+
+.confidence-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.confidence-badge--high {
+  color: #4ADE80;
+  background: rgba(74, 222, 128, 0.08);
+}
+.confidence-badge--high .confidence-dot {
+  background: #4ADE80;
+}
+
+.confidence-badge--medium {
+  color: #FBBF24;
+  background: rgba(251, 191, 36, 0.08);
+}
+.confidence-badge--medium .confidence-dot {
+  background: #FBBF24;
+}
+
+.confidence-badge--low {
+  color: var(--pop);
+  background: rgba(255, 111, 89, 0.08);
+}
+.confidence-badge--low .confidence-dot {
+  background: var(--pop);
 }
 
 /* Preview */
@@ -508,7 +562,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--success, #28a745);
+  background: var(--success);
   color: white;
   border-radius: 50%;
   font-size: 1.25rem;
@@ -656,7 +710,7 @@
 .preview-hierarchy {
   margin-top: 1.5rem;
   padding: 1rem;
-  background: var(--bg-tertiary, #f0f4f8);
+  background: var(--bg-tertiary);
   border-radius: 8px;
 }
 
@@ -664,7 +718,7 @@
   margin: 0 0 0.75rem 0;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--text-primary, #212529);
+  color: var(--text);
 }
 
 .hierarchy-options {
@@ -678,7 +732,7 @@
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.75rem;
-  background: var(--bg-primary, #ffffff);
+  background: var(--bg-secondary);
   border: 2px solid transparent;
   border-radius: 8px;
   cursor: pointer;
@@ -686,17 +740,17 @@
 }
 
 .hierarchy-option:hover {
-  background: var(--bg-hover, #f8f9fa);
+  background: var(--bg-tertiary);
 }
 
 .hierarchy-option.selected {
-  border-color: var(--accent-color, #6366f1);
+  border-color: var(--cta);
   background: rgba(99, 102, 241, 0.05);
 }
 
 .hierarchy-option input[type="radio"] {
   margin-top: 0.25rem;
-  accent-color: var(--accent-color, #6366f1);
+  accent-color: var(--cta);
 }
 
 .hierarchy-option .option-content {
@@ -709,33 +763,33 @@
 
 .hierarchy-option .option-label {
   font-size: 0.875rem;
-  color: var(--text-primary, #212529);
+  color: var(--text);
 }
 
 .hierarchy-option .option-value {
   font-weight: 600;
-  color: var(--accent-color, #6366f1);
+  color: var(--cta);
 }
 
 .hierarchy-option .option-type {
   font-size: 0.75rem;
-  color: var(--text-muted, #6c757d);
+  color: var(--text-muted);
 }
 
 .custom-container-input {
   width: 100%;
   margin-top: 0.5rem;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border, #dee2e6);
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 0.875rem;
-  background: var(--bg-primary, #ffffff);
-  color: var(--text-primary, #212529);
+  background: var(--bg-secondary);
+  color: var(--text);
 }
 
 .custom-container-input:focus {
   outline: none;
-  border-color: var(--accent-color, #6366f1);
+  border-color: var(--cta);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
@@ -753,6 +807,10 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 0.25rem;
+  }
+
+  .custom-container-input {
+    font-size: 16px; /* Prevents iOS zoom */
   }
 }
 

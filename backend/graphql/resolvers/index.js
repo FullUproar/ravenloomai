@@ -95,7 +95,10 @@ const resolvers = {
     // Knowledge
     getFactCount: async (_, { teamId }) => {
       const result = await pool.query(
-        `SELECT COUNT(*) FROM facts WHERE team_id = $1 AND (status IS NULL OR status = 'active')`,
+        `SELECT COUNT(*) FROM facts
+         WHERE team_id = $1
+           AND (status IS NULL OR status = 'active')
+           AND (valid_until IS NULL OR valid_until > NOW())`,
         [teamId]
       );
       return parseInt(result.rows[0].count, 10);
