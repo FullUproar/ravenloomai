@@ -10,7 +10,9 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import { createServer } from "http";
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
@@ -381,10 +383,63 @@ server.tool(
 
 // ── Start Server ─────────────────────────────────────────────────────────────
 
+const MCP_PORT = parseInt(process.env.MCP_PORT || "0", 10);
+const MCP_MODE = process.env.MCP_MODE || (MCP_PORT > 0 ? "http" : "stdio");
+
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("RavenLoom MCP server running on STDIO");
+  if (MCP_MODE === "http") {
+    // HTTP transport — for claude.ai and remote clients
+    const port = MCP_PORT || 3100;
+
+    const httpServer = createServer(async (req, res) => {
+      // CORS headers for claude.ai
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id");
+      res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
+      // Only handle /mcp path
+      const url = new URL(req.url || "/", `http://localhost:${port}`);
+      if (url.pathname !== "/mcp") {
+        if (url.pathname === "/" || url.pathname === "/health") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ status: "ok", server: "ravenloom-mcp", version: "1.0.0" }));
+          return;
+        }
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+
+      // Create a transport per session
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // stateless
+      });
+
+      // Connect server to this transport
+      await server.connect(transport);
+
+      // Handle the request
+      await transport.handleRequest(req, res);
+    });
+
+    httpServer.listen(port, () => {
+      console.error(`RavenLoom MCP server running on HTTP port ${port}`);
+      console.error(`  Endpoint: http://localhost:${port}/mcp`);
+      console.error(`  Health:   http://localhost:${port}/health`);
+    });
+  } else {
+    // STDIO transport — for Claude Desktop and Claude Code
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error("RavenLoom MCP server running on STDIO");
+  }
 }
 
 main().catch((err) => {
