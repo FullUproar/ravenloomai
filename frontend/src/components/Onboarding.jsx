@@ -177,9 +177,12 @@ export default function Onboarding({ scopeId, onComplete, onFactsChanged }) {
 
   return (
     <div className="onboarding">
-      {/* Progress bar */}
+      {/* Progress bar + step indicator */}
       <div className="onboarding-progress">
         <div className="onboarding-progress-fill" style={{ width: progressWidth }} />
+      </div>
+      <div className="onboarding-step-indicator">
+        Step {step} of 5
       </div>
 
       <div className="onboarding-content">

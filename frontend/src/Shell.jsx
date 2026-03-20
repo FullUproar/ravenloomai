@@ -3,13 +3,14 @@
  *
  * Replaces the 4,683-line TeamDashboard monolith.
  * Routes between Onboarding (first-time), RavenHome (primary), and KnowledgeExplorer (secondary).
- * No sidebar navigation tree. Minimal chrome.
+ * Handles scope switching (Just Me / My Team) and recall alerts.
  */
 
 import { useState, useEffect, Component, lazy, Suspense } from 'react';
-import { gql, useQuery } from '@apollo/client';
+import { gql, useQuery, useLazyQuery } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
 import RavenHome from './components/RavenHome';
+import KnowledgeExplorer from './components/KnowledgeExplorer';
 import { useToast } from './Toast.jsx';
 import './Shell.css';
 
@@ -47,7 +48,8 @@ class ErrorBoundary extends Component {
   }
 }
 
-// GraphQL - only what we need
+// ── GraphQL ──────────────────────────────────────────────────────────────────
+
 const GET_TEAM = gql`
   query GetTeam($teamId: ID!) {
     getTeam(teamId: $teamId) {
@@ -79,11 +81,38 @@ const GET_TEAM_SCOPE = gql`
   }
 `;
 
+const GET_PRIVATE_SCOPE = gql`
+  query GetMyPrivateScope($teamId: ID!, $coupledScopeId: ID!) {
+    getMyPrivateScope(teamId: $teamId, coupledScopeId: $coupledScopeId) {
+      id
+      teamId
+      type
+      name
+    }
+  }
+`;
+
 const GET_FACT_COUNT = gql`
   query GetFactCount($teamId: ID!) {
     getFactCount(teamId: $teamId)
   }
 `;
+
+const GET_PENDING_ALERTS = gql`
+  query GetPendingAlerts($teamId: ID!) {
+    getPendingAlerts(teamId: $teamId) {
+      id
+      message
+      triggerType
+      triggerAt
+      relatedFactId
+      status
+      createdAt
+    }
+  }
+`;
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 export default function Shell({ teamId, initialView, user, onSignOut }) {
   const navigate = useNavigate();
@@ -99,32 +128,51 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
   const [activeView, setActiveView] = useState(initialView === 'explore' ? 'explore' : 'home');
   // Scope toggle: false = "My Team" (team scope), true = "Just Me" (private scope)
   const [isPrivate, setIsPrivate] = useState(false);
+  // Private scope ID (fetched on demand)
+  const [privateScopeId, setPrivateScopeId] = useState(null);
   // User menu
   const [showUserMenu, setShowUserMenu] = useState(false);
+  // Recall panel
+  const [showRecalls, setShowRecalls] = useState(false);
 
   // Close user menu when clicking outside
   useEffect(() => {
-    if (!showUserMenu) return;
-    const handleClick = () => setShowUserMenu(false);
+    if (!showUserMenu && !showRecalls) return;
+    const handleClick = () => {
+      setShowUserMenu(false);
+      setShowRecalls(false);
+    };
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
-  }, [showUserMenu]);
+  }, [showUserMenu, showRecalls]);
 
-  // Fetch team data
+  // ── Data fetching ────────────────────────────────────────────────────────
+
   const { data: teamData, loading: teamLoading } = useQuery(GET_TEAM, {
     variables: { teamId },
     skip: !teamId
   });
   const team = teamData?.getTeam;
 
-  // Fetch team's root scope (needed by RavenKnowledge)
   const { data: scopeData, loading: scopeLoading } = useQuery(GET_TEAM_SCOPE, {
     variables: { teamId },
     skip: !teamId
   });
   const teamScope = scopeData?.getTeamScope;
 
-  // Fact count for the running counter
+  // Fetch private scope on demand
+  const [fetchPrivateScope] = useLazyQuery(GET_PRIVATE_SCOPE, {
+    fetchPolicy: 'cache-first',
+    onCompleted: (data) => {
+      setPrivateScopeId(data.getMyPrivateScope.id);
+    },
+    onError: (err) => {
+      console.error('Failed to fetch private scope:', err);
+      toast?.('Could not switch to private mode. Try again.');
+      setIsPrivate(false);
+    }
+  });
+
   const { data: factCountData, refetch: refetchFactCount } = useQuery(GET_FACT_COUNT, {
     variables: { teamId },
     skip: !teamId,
@@ -132,13 +180,46 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
   });
   const factCount = factCountData?.getFactCount || 0;
 
+  // Fetch pending alerts/recalls
+  const { data: alertsData } = useQuery(GET_PENDING_ALERTS, {
+    variables: { teamId },
+    skip: !teamId,
+    pollInterval: 60000 // Check every minute
+  });
+  const pendingAlerts = alertsData?.getPendingAlerts || [];
+
+  // ── Scope switching ──────────────────────────────────────────────────────
+
+  const handleTogglePrivate = () => {
+    if (!isPrivate && teamScope) {
+      // Switching TO private — fetch or create private scope
+      if (privateScopeId) {
+        setIsPrivate(true);
+      } else {
+        fetchPrivateScope({
+          variables: { teamId, coupledScopeId: teamScope.id }
+        });
+        setIsPrivate(true);
+      }
+    } else {
+      // Switching back to team
+      setIsPrivate(false);
+    }
+  };
+
+  // The active scope ID — either team or private
+  const activeScopeId = isPrivate && privateScopeId ? privateScopeId : teamScope?.id;
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
   const handleOnboardingComplete = () => {
     localStorage.setItem(onboardingKey, 'true');
     setShowOnboarding(false);
     refetchFactCount();
   };
 
-  // Loading state
+  // ── Loading state ────────────────────────────────────────────────────────
+
   if (teamLoading || scopeLoading) {
     return (
       <div className="shell">
@@ -163,7 +244,8 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
     );
   }
 
-  // Show onboarding for first-time users
+  // ── Onboarding ───────────────────────────────────────────────────────────
+
   if (showOnboarding) {
     return (
       <ErrorBoundary>
@@ -179,7 +261,6 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
               onFactsChanged={refetchFactCount}
             />
           </Suspense>
-          {/* Footer branding */}
           <footer className="shell-footer">
             <span className="shell-footer-brand">Brought to you by Full Uproar</span>
           </footer>
@@ -187,6 +268,8 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
       </ErrorBoundary>
     );
   }
+
+  // ── Main app ─────────────────────────────────────────────────────────────
 
   return (
     <ErrorBoundary>
@@ -199,7 +282,6 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
           </div>
 
           <div className="shell-header-center">
-            {/* Navigation tabs */}
             <nav className="shell-nav" role="tablist" aria-label="Main navigation">
               <button
                 role="tab"
@@ -224,8 +306,41 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
             {/* Fact counter */}
             {factCount > 0 && (
               <span className="shell-fact-counter" title={`${factCount} confirmed facts`}>
-                Raven knows {factCount} {factCount === 1 ? 'thing' : 'things'}
+                {factCount} {factCount === 1 ? 'thing' : 'things'}
               </span>
+            )}
+
+            {/* Recall alerts badge */}
+            {pendingAlerts.length > 0 && (
+              <div className="shell-recall-container">
+                <button
+                  className="shell-recall-btn"
+                  onClick={(e) => { e.stopPropagation(); setShowRecalls(!showRecalls); }}
+                  title={`${pendingAlerts.length} pending recall${pendingAlerts.length > 1 ? 's' : ''}`}
+                >
+                  <span className="shell-recall-badge">{pendingAlerts.length}</span>
+                </button>
+                {showRecalls && (
+                  <div className="shell-recall-dropdown" onClick={(e) => e.stopPropagation()}>
+                    <div className="shell-recall-header">Recalls</div>
+                    {pendingAlerts.slice(0, 5).map(alert => (
+                      <div key={alert.id} className="shell-recall-item">
+                        <span className="shell-recall-message">{alert.message}</span>
+                        {alert.triggerAt && (
+                          <span className="shell-recall-time">
+                            {new Date(alert.triggerAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {pendingAlerts.length > 5 && (
+                      <div className="shell-recall-more">
+                        +{pendingAlerts.length - 5} more
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* User menu */}
@@ -253,10 +368,10 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
           {activeView === 'home' && (
             <RavenHome
               teamId={teamId}
-              scopeId={teamScope.id}
+              scopeId={activeScopeId}
               scopeName={isPrivate ? 'Just Me' : team.name}
               isPrivate={isPrivate}
-              onTogglePrivate={() => setIsPrivate(!isPrivate)}
+              onTogglePrivate={handleTogglePrivate}
               factCount={factCount}
               onFactsChanged={refetchFactCount}
               user={user}
@@ -264,16 +379,11 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
           )}
 
           {activeView === 'explore' && (
-            <div className="explore-placeholder">
-              <h2>Knowledge Explorer</h2>
-              <p>Coming soon — browse and search your confirmed facts.</p>
-              <button
-                className="onboarding-btn-primary"
-                onClick={() => setActiveView('home')}
-              >
-                Back to Raven
-              </button>
-            </div>
+            <KnowledgeExplorer
+              teamId={teamId}
+              scopeId={activeScopeId}
+              onSwitchToHome={() => setActiveView('home')}
+            />
           )}
         </main>
 

@@ -110,13 +110,13 @@ function ConfidenceBadge({ confidence }) {
   let level, label;
   if (confidence >= 0.7) {
     level = 'high';
-    label = 'Based on confirmed knowledge';
+    label = 'Strong match from your saved knowledge';
   } else if (confidence >= 0.4) {
     level = 'medium';
-    label = 'Inferred from available context';
+    label = 'Partial match — some info may be missing';
   } else {
     level = 'low';
-    label = 'Limited information — verify this';
+    label = 'Not much to go on — double-check this';
   }
 
   return (
@@ -225,7 +225,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
       setMode('result');
     } catch (err) {
       console.error('Ask error:', err);
-      setError(err.message);
+      setError('Something went wrong getting an answer. Try again?');
       setMode('idle');
     }
   };
@@ -247,7 +247,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
       setMode('preview');
     } catch (err) {
       console.error('Remember preview error:', err);
-      setError(err.message);
+      setError('Something went wrong reading that. Try again?');
       setMode('idle');
     }
   };
@@ -293,7 +293,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
       onFactsChanged?.();
     } catch (err) {
       console.error('Confirm error:', err);
-      setError(err.message);
+      setError('Something went wrong saving. Try again?');
     }
   };
 
@@ -340,8 +340,8 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
       setMode('result');
     } catch (err) {
       console.error('Follow-up error:', err);
-      setError(err.message);
-      setMode('result'); // Stay in result mode to show error
+      setError('Something went wrong. Try again?');
+      setMode('result');
     }
   };
 
@@ -462,10 +462,10 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                   <label className="conflict-skip">
                     <input
                       type="checkbox"
-                      checked={skipConflictIds.includes(conflict.existingFact.id)}
+                      checked={!skipConflictIds.includes(conflict.existingFact.id)}
                       onChange={() => toggleSkipConflict(conflict.existingFact.id)}
                     />
-                    Keep existing (skip update)
+                    Replace with new info
                   </label>
                 </div>
               ))}
@@ -475,7 +475,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
           {/* Hierarchy placement options */}
           {rememberPreview.suggestedParent && (
             <div className="preview-hierarchy">
-              <h4>Knowledge placement:</h4>
+              <h4>Where should this go?</h4>
               <div className="hierarchy-options">
                 <label className={`hierarchy-option ${hierarchyOption === 'suggested' ? 'selected' : ''}`}>
                   <input
@@ -488,15 +488,13 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                   <div className="option-content">
                     {rememberPreview.suggestedParent.action === 'attach_to_existing' ? (
                       <>
-                        <span className="option-label">Attach to existing:</span>
+                        <span className="option-label">Group with:</span>
                         <span className="option-value">{rememberPreview.suggestedParent.node?.name}</span>
-                        <span className="option-type">({rememberPreview.suggestedParent.node?.type})</span>
                       </>
                     ) : (
                       <>
-                        <span className="option-label">Create container:</span>
+                        <span className="option-label">Create new group:</span>
                         <span className="option-value">{rememberPreview.suggestedParent.suggestedName}</span>
-                        <span className="option-type">({rememberPreview.suggestedParent.suggestedType})</span>
                       </>
                     )}
                   </div>
@@ -511,7 +509,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                     onChange={(e) => setHierarchyOption(e.target.value)}
                   />
                   <div className="option-content">
-                    <span className="option-label">Save as standalone facts</span>
+                    <span className="option-label">Don't group — save on its own</span>
                   </div>
                 </label>
 
@@ -524,12 +522,12 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                     onChange={(e) => setHierarchyOption(e.target.value)}
                   />
                   <div className="option-content">
-                    <span className="option-label">Create custom container:</span>
+                    <span className="option-label">Create my own group:</span>
                     {hierarchyOption === 'custom' && (
                       <input
                         type="text"
                         className="custom-container-input"
-                        placeholder="Container name..."
+                        placeholder="Group name..."
                         value={customContainerName}
                         onChange={(e) => setCustomContainerName(e.target.value)}
                         onClick={(e) => e.stopPropagation()}

@@ -803,24 +803,24 @@ const resolvers = {
       return UserService.updateSiteRole(targetUserId, role);
     },
 
-    deleteUser: async (_, { userId: targetUserId }, { userId, db }) => {
+    deleteUser: async (_, { userId: targetUserId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       const isAdmin = await UserService.isSiteAdmin(userId);
       if (!isAdmin) throw new Error('Not authorized: Super admin required');
       if (targetUserId === userId) throw new Error('Cannot delete yourself');
 
       // Delete user from database (cascades handle related records)
-      await db.query('DELETE FROM users WHERE id = $1', [targetUserId]);
+      await pool.query('DELETE FROM users WHERE id = $1', [targetUserId]);
       return true;
     },
 
-    deleteTeam: async (_, { teamId }, { userId, db }) => {
+    deleteTeam: async (_, { teamId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       const isAdmin = await UserService.isSiteAdmin(userId);
       if (!isAdmin) throw new Error('Not authorized: Super admin required');
 
       // Delete team (cascades handle related records)
-      await db.query('DELETE FROM teams WHERE id = $1', [teamId]);
+      await pool.query('DELETE FROM teams WHERE id = $1', [teamId]);
       return true;
     },
 

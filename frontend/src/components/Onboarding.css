@@ -26,6 +26,15 @@
   border-radius: 0 2px 2px 0;
 }
 
+/* Step indicator */
+.onboarding-step-indicator {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 0.5rem 0 0;
+  letter-spacing: 0.03em;
+}
+
 /* Content area */
 .onboarding-content {
   flex: 1;
