@@ -1,14 +1,31 @@
 {
-  "framework": "nextjs",
+  "buildCommand": "cd frontend && npm install && npx vite build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "cd backend && npm install && cd ../frontend && npm install",
+  "framework": null,
   "functions": {
-    "app/api/ask/route.ts": { "maxDuration": 30 },
-    "app/api/extract/route.ts": { "maxDuration": 30 },
-    "app/api/graph/route.ts": { "maxDuration": 10 }
+    "api/graphql.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "api/mcp.js": {
+      "maxDuration": 30,
+      "memory": 512
+    }
   },
-  "crons": [
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
     {
-      "path": "/api/recalls/check",
-      "schedule": "*/5 * * * *"
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS, DELETE" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, x-user-id, Accept, Mcp-Session-Id" },
+        { "key": "Access-Control-Expose-Headers", "value": "Mcp-Session-Id" }
+      ]
     }
   ]
 }
