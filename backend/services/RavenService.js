@@ -303,7 +303,7 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
       scopeId, teamId, userId, statement, sourceUrl,
       JSON.stringify(extractedFacts), JSON.stringify(conflicts),
       mismatch.isMismatch, mismatch.suggestion,
-      JSON.stringify(suggestedParent), hierarchyAction
+      JSON.stringify(suggestedParent), JSON.stringify(hierarchyAction)
     ]
   );
 
