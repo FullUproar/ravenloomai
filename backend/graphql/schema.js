@@ -1098,7 +1098,48 @@ export default gql`
 
     # Set valid time range for a fact
     setFactValidRange(factId: ID!, validFrom: DateTime, validUntil: DateTime): Fact!
+
+    # Graph Grooming (on-demand)
+    groomKnowledgeGraph(teamId: ID!): GraphGroomReport!
+    mergeNodes(teamId: ID!, canonicalNodeId: ID!, duplicateNodeId: ID!): MergeResult!
+    deleteOrphanNodes(teamId: ID!, nodeIds: [ID!]!): DeleteResult!
   }
+
+  type GraphGroomReport {
+    relationships: RelationshipReport
+    duplicates: [DuplicateProposal!]!
+    orphans: [OrphanNode!]!
+    weights: WeightReport
+    inferences: [InferenceProposal!]!
+    stats: GraphStats!
+  }
+
+  type RelationshipReport { refined: Int!, total: Int, message: String }
+  type WeightReport { updated: Int!, message: String }
+  type MergeResult { success: Boolean!, message: String }
+  type DeleteResult { deleted: Int! }
+
+  type DuplicateProposal {
+    nodeA: SimpleNode!
+    nodeB: SimpleNode!
+    similarity: String!
+    suggestedCanonical: String!
+  }
+
+  type SimpleNode { id: ID!, name: String!, type: String!, mentions: Int }
+
+  type OrphanNode { id: ID!, name: String!, type: String!, mentions: Int, createdAt: DateTime }
+
+  type InferenceProposal {
+    chain: String!
+    relationship: String!
+    statement: String!
+    confidence: Float!
+    sourceNodeId: ID
+    targetNodeId: ID
+  }
+
+  type GraphStats { totalNodes: Int!, totalEdges: Int!, totalFacts: Int! }
 
   # Result of processing a document
   type DocumentProcessResult {

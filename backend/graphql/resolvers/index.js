@@ -26,6 +26,7 @@ import * as KnowledgeFreshnessService from '../../services/KnowledgeFreshnessSer
 import * as RateLimiterService from '../../services/RateLimiterService.js';
 import * as ScopeService from '../../services/ScopeService.js';
 import * as RavenService from '../../services/RavenService.js';
+import * as GraphGroomingService from '../../services/GraphGroomingService.js';
 // SlackImportService temporarily disabled - needs adm-zip dependency
 // import * as SlackImportService from '../../services/SlackImportService.js';
 
@@ -1130,6 +1131,22 @@ const resolvers = {
       // Return the full fact
       const factResult = await pool.query('SELECT * FROM facts WHERE id = $1', [factId]);
       return factResult.rows[0];
+    },
+
+    // Graph Grooming (on-demand)
+    groomKnowledgeGraph: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return GraphGroomingService.groomGraph(teamId);
+    },
+
+    mergeNodes: async (_, { teamId, canonicalNodeId, duplicateNodeId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return GraphGroomingService.mergeNodes(teamId, canonicalNodeId, duplicateNodeId);
+    },
+
+    deleteOrphanNodes: async (_, { teamId, nodeIds }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return GraphGroomingService.deleteOrphanNodes(teamId, nodeIds);
     }
   },
 

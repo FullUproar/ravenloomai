@@ -9,7 +9,7 @@
  */
 
 import db from '../db.js';
-import { generateEmbedding } from './AIService.js';
+import { generateEmbedding, callOpenAI } from './AIService.js';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -1285,6 +1285,53 @@ export default {
 // ============================================================================
 
 /**
+ * Use AI to infer the actual relationship between entity pairs from a fact.
+ * Instead of hardcoding RELATED_TO, ask GPT to classify the relationship.
+ */
+async function inferRelationshipsFromFact(factContent, entities) {
+  if (entities.length < 2) return [];
+
+  const entityList = entities.map(e => `${e.name} (${e.type || 'concept'})`).join(', ');
+
+  try {
+    const response = await callOpenAI([{
+      role: 'system',
+      content: `Given a fact and its entities, determine the relationship between each pair of entities.
+
+Relationship types (use the most specific one that fits):
+FOUNDED_BY, WORKS_FOR, MANUFACTURES, PART_OF, IS_A, HAS, CREATED_BY,
+LAUNCHES_ON, LOCATED_IN, DEPENDS_ON, SUPERSEDES, MANAGES, USES, COSTS,
+PARTNERS_WITH, PRODUCES, SELLS, OWNS, EMPLOYS, TARGETS, SERVES, RELATED_TO
+
+Fact: "${factContent}"
+Entities: ${entityList}
+
+Return JSON array of relationships: [{"source": "Name", "target": "Name", "relationship": "TYPE"}]
+Only include pairs that have a clear relationship in the fact.
+Return ONLY valid JSON array.`
+    }], { maxTokens: 500, temperature: 0 });
+
+    let content = response;
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) content = codeBlockMatch[1].trim();
+
+    return JSON.parse(content);
+  } catch (error) {
+    console.error('[KG] Relationship inference failed, falling back to RELATED_TO:', error.message);
+    // Fallback: sequential RELATED_TO pairs
+    const fallback = [];
+    for (let i = 0; i < entities.length - 1; i++) {
+      fallback.push({
+        source: entities[i].name,
+        target: entities[i + 1].name,
+        relationship: 'RELATED_TO'
+      });
+    }
+    return fallback;
+  }
+}
+
+/**
  * Process a confirmed fact into the knowledge graph with context entities.
  *
  * Creates:
@@ -1335,17 +1382,17 @@ export async function processFactIntoGraph(teamId, fact, extractedData) {
       }
     }
 
-    // 3. Create edges between entities (concept → relationship → concept)
-    // If we have 2+ entities, create relationships between them
+    // 3. Create edges between entities using AI-extracted relationships
+    // Ask GPT to classify the relationship between entity pairs from the fact text
     if (entities.length >= 2) {
-      for (let i = 0; i < entities.length - 1; i++) {
+      const relationships = await inferRelationshipsFromFact(fact.content, entities);
+      for (const rel of relationships) {
         const edge = await createEdge(teamId, {
-          source: entities[i].name,
-          target: entities[i + 1].name,
-          relationship: 'RELATED_TO'
+          source: rel.source,
+          target: rel.target,
+          relationship: rel.relationship
         }, sourceInfo);
 
-        // Update trust fields on the edge
         if (edge) {
           await updateEdgeTrustData(edge.id, factId);
         }
