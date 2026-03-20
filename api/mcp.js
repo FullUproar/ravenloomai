@@ -220,13 +220,24 @@ function createMcpServer() {
   return server;
 }
 
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+const MCP_API_KEY = process.env.MCP_API_KEY || '';
+
+function checkAuth(req) {
+  if (!MCP_API_KEY) return true; // No key configured = open (dev mode)
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  return token === MCP_API_KEY;
+}
+
 // ── Vercel Handler ───────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Mcp-Session-Id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, Mcp-Session-Id');
   res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
 
   if (req.method === 'OPTIONS') {
@@ -236,6 +247,12 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     res.status(200).json({ status: 'ok', server: 'ravenloom-mcp', version: '1.0.0' });
+    return;
+  }
+
+  // Auth check for all non-GET requests
+  if (!checkAuth(req)) {
+    res.status(401).json({ error: 'Unauthorized. Provide Bearer token in Authorization header.' });
     return;
   }
 
