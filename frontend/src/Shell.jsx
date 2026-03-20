@@ -8,7 +8,7 @@
 
 import { useState, useEffect, Component, lazy, Suspense } from 'react';
 import { gql, useQuery, useLazyQuery } from '@apollo/client';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import RavenHome from './components/RavenHome';
 import KnowledgeExplorer from './components/KnowledgeExplorer';
 import { useToast } from './Toast.jsx';
@@ -116,6 +116,7 @@ const GET_PENDING_ALERTS = gql`
 
 export default function Shell({ teamId, initialView, user, onSignOut }) {
   const navigate = useNavigate();
+  const { view: urlView } = useParams();
   const toast = useToast();
 
   // Onboarding state — check if user has completed onboarding
@@ -124,8 +125,15 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
     return !localStorage.getItem(onboardingKey);
   });
 
-  // Active view: 'home' (default) or 'explore'
-  const [activeView, setActiveView] = useState(initialView === 'explore' ? 'explore' : 'home');
+  // Active view synced with URL: 'home' (default) or 'explore'
+  const resolvedView = urlView === 'explore' ? 'explore' : (initialView === 'explore' ? 'explore' : 'home');
+  const [activeView, setActiveViewState] = useState(resolvedView);
+
+  // Sync view changes to URL (deep links)
+  const setActiveView = (view) => {
+    setActiveViewState(view);
+    navigate(`/team/${teamId}/${view}`, { replace: true });
+  };
   // Scope toggle: false = "My Team" (team scope), true = "Just Me" (private scope)
   const [isPrivate, setIsPrivate] = useState(false);
   // Private scope ID (fetched on demand)
@@ -176,7 +184,8 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
   const { data: factCountData, refetch: refetchFactCount } = useQuery(GET_FACT_COUNT, {
     variables: { teamId },
     skip: !teamId,
-    fetchPolicy: 'cache-and-network'
+    fetchPolicy: 'cache-and-network',
+    pollInterval: 10000 // Auto-refresh every 10s — see new facts as they're added
   });
   const factCount = factCountData?.getFactCount || 0;
 

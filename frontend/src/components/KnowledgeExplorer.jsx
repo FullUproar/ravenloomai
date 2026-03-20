@@ -93,7 +93,8 @@ export default function KnowledgeExplorer({ teamId, scopeId, onSwitchToHome }) {
       category: activeCategory,
       limit: 200
     },
-    fetchPolicy: 'cache-and-network'
+    fetchPolicy: 'cache-and-network',
+    pollInterval: 15000 // Auto-refresh every 15s — see new facts as they're added
   });
 
   const allFacts = factsData?.getFacts || [];
