@@ -12,8 +12,8 @@ const GRAPHQL_URL = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}/api/graphql`
   : (process.env.RAVENLOOM_URL || 'http://localhost:4000/graphql');
 
-const DEFAULT_TEAM_ID = process.env.RAVENLOOM_TEAM_ID || '';
-const DEFAULT_USER_ID = process.env.RAVENLOOM_USER_ID || '';
+const DEFAULT_TEAM_ID = (process.env.RAVENLOOM_TEAM_ID || '').trim();
+const DEFAULT_USER_ID = (process.env.RAVENLOOM_USER_ID || '').trim();
 
 // ── GraphQL Client ───────────────────────────────────────────────────────────
 
