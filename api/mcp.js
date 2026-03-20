@@ -221,15 +221,10 @@ function createMcpServer() {
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
-
-const MCP_API_KEY = (process.env.MCP_API_KEY || '').trim();
-
-function checkAuth(req) {
-  if (!MCP_API_KEY) return true; // No key configured = open (dev mode)
-  const authHeader = req.headers['authorization'] || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '');
-  return token === MCP_API_KEY;
-}
+// Phase 4: Add OAuth for production multi-tenant.
+// For now, authless — claude.ai remote MCP only supports authless or OAuth.
+// The endpoint is scoped to a single team via env vars and only wraps
+// the existing GraphQL API, so the blast radius is limited.
 
 // ── Vercel Handler ───────────────────────────────────────────────────────────
 
@@ -247,12 +242,6 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     res.status(200).json({ status: 'ok', server: 'ravenloom-mcp', version: '1.0.0' });
-    return;
-  }
-
-  // Auth check for all non-GET requests
-  if (!checkAuth(req)) {
-    res.status(401).json({ error: 'Unauthorized. Provide Bearer token in Authorization header.' });
     return;
   }
 
