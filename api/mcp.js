@@ -222,7 +222,7 @@ function createMcpServer() {
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
-const MCP_API_KEY = process.env.MCP_API_KEY || '';
+const MCP_API_KEY = (process.env.MCP_API_KEY || '').trim();
 
 function checkAuth(req) {
   if (!MCP_API_KEY) return true; // No key configured = open (dev mode)
