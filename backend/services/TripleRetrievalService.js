@@ -14,10 +14,11 @@ import * as TripleService from './TripleService.js';
 // ============================================================================
 
 /**
- * Search triples using three strategies, merged and ranked:
+ * Search triples using four strategies, merged and ranked:
  * 1. Dual-embedding search (with-context and without-context)
  * 2. Concept-anchored search (find mentioned concepts, get ALL their triples)
- * 3. Results merged by max similarity per triple
+ * 3. LLM entity extraction (extract entity names from question for exact matching)
+ * 4. Results merged by max similarity per triple
  */
 export async function searchTriples(teamId, question, { scopeIds = [], topK = 15 } = {}) {
   const embedding = await generateEmbedding(question);
@@ -32,52 +33,93 @@ export async function searchTriples(teamId, question, { scopeIds = [], topK = 15
     : [embeddingStr, teamId];
   const limitParam = `$${baseParams.length + 1}`;
 
-  // Strategy 1: Embedding search on with-context column
-  const withCtxResults = await db.query(`
-    SELECT t.*, s.name AS subject_name, s.type AS subject_type,
-           o.name AS object_name, o.type AS object_type,
-           1 - (t.embedding_with_context <=> $1) AS similarity,
-           'with_context' AS match_type
-    FROM triples t
-    JOIN concepts s ON t.subject_id = s.id
-    JOIN concepts o ON t.object_id = o.id
-    WHERE t.team_id = $2 AND t.status = 'active'
-      AND t.embedding_with_context IS NOT NULL
-      ${scopeFilter}
-    ORDER BY t.embedding_with_context <=> $1
-    LIMIT ${limitParam}
-  `, [...baseParams, topK]);
+  // Run embedding searches and entity extraction in parallel
+  const [withCtxResults, withoutCtxResults, conceptResults, extractedEntities] = await Promise.all([
+    // Strategy 1: Embedding search on with-context column
+    db.query(`
+      SELECT t.*, s.name AS subject_name, s.type AS subject_type,
+             o.name AS object_name, o.type AS object_type,
+             1 - (t.embedding_with_context <=> $1) AS similarity,
+             'with_context' AS match_type
+      FROM triples t
+      JOIN concepts s ON t.subject_id = s.id
+      JOIN concepts o ON t.object_id = o.id
+      WHERE t.team_id = $2 AND t.status = 'active'
+        AND t.embedding_with_context IS NOT NULL
+        ${scopeFilter}
+      ORDER BY t.embedding_with_context <=> $1
+      LIMIT ${limitParam}
+    `, [...baseParams, topK]),
 
-  // Strategy 2: Embedding search on without-context column
-  const withoutCtxResults = await db.query(`
-    SELECT t.*, s.name AS subject_name, s.type AS subject_type,
-           o.name AS object_name, o.type AS object_type,
-           1 - (t.embedding_without_context <=> $1) AS similarity,
-           'without_context' AS match_type
-    FROM triples t
-    JOIN concepts s ON t.subject_id = s.id
-    JOIN concepts o ON t.object_id = o.id
-    WHERE t.team_id = $2 AND t.status = 'active'
-      AND t.embedding_without_context IS NOT NULL
-      ${scopeFilter}
-    ORDER BY t.embedding_without_context <=> $1
-    LIMIT ${limitParam}
-  `, [...baseParams, topK]);
+    // Strategy 2: Embedding search on without-context column
+    db.query(`
+      SELECT t.*, s.name AS subject_name, s.type AS subject_type,
+             o.name AS object_name, o.type AS object_type,
+             1 - (t.embedding_without_context <=> $1) AS similarity,
+             'without_context' AS match_type
+      FROM triples t
+      JOIN concepts s ON t.subject_id = s.id
+      JOIN concepts o ON t.object_id = o.id
+      WHERE t.team_id = $2 AND t.status = 'active'
+        AND t.embedding_without_context IS NOT NULL
+        ${scopeFilter}
+      ORDER BY t.embedding_without_context <=> $1
+      LIMIT ${limitParam}
+    `, [...baseParams, topK]),
 
-  // Strategy 3: Concept-anchored search
-  // Find concepts mentioned in the question, then get ALL their triples
-  const conceptResults = await db.query(`
-    SELECT id, name, 1 - (embedding <=> $1) AS similarity
-    FROM concepts
-    WHERE team_id = $2 AND embedding IS NOT NULL
-    ORDER BY embedding <=> $1
-    LIMIT 5
-  `, [embeddingStr, teamId]);
+    // Strategy 3a: Concept-anchored search by embedding
+    db.query(`
+      SELECT id, name, 1 - (embedding <=> $1) AS similarity
+      FROM concepts
+      WHERE team_id = $2 AND embedding IS NOT NULL
+      ORDER BY embedding <=> $1
+      LIMIT 5
+    `, [embeddingStr, teamId]),
+
+    // Strategy 3b: LLM entity extraction (lightweight)
+    extractEntitiesFromQuestion(question),
+  ]);
+
+  // Strategy 3c: Keyword matching on concept names
+  const questionWords = question.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  let keywordConcepts = [];
+  if (questionWords.length > 0) {
+    const patterns = questionWords.map(w => `%${w}%`);
+    const placeholders = patterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' OR ');
+    const keywordResult = await db.query(
+      `SELECT id, name, 0.85 AS similarity FROM concepts WHERE team_id = $1 AND (${placeholders}) LIMIT 5`,
+      [teamId, ...patterns]
+    );
+    keywordConcepts = keywordResult.rows;
+  }
+
+  // Strategy 3d: Match extracted entities against concept names (fuzzy)
+  let entityConcepts = [];
+  if (extractedEntities.length > 0) {
+    const entityPatterns = extractedEntities.map(e => `%${e}%`);
+    const entityPlaceholders = entityPatterns.map((_, i) => `canonical_name ILIKE $${i + 2} OR name ILIKE $${i + 2}`).join(' OR ');
+    try {
+      const entityResult = await db.query(
+        `SELECT id, name, 0.95 AS similarity FROM concepts WHERE team_id = $1 AND (${entityPlaceholders}) LIMIT 8`,
+        [teamId, ...entityPatterns]
+      );
+      entityConcepts = entityResult.rows;
+    } catch { /* ignore if query fails */ }
+  }
+
+  // Merge concept results (embedding + keyword + entity), dedup by ID
+  const conceptMap = new Map();
+  for (const c of [...conceptResults.rows, ...keywordConcepts, ...entityConcepts]) {
+    const existing = conceptMap.get(c.id);
+    if (!existing || parseFloat(c.similarity) > parseFloat(existing.similarity)) {
+      conceptMap.set(c.id, c);
+    }
+  }
 
   const anchoredTriples = [];
-  const topConcepts = conceptResults.rows.filter(c => parseFloat(c.similarity) > 0.5);
+  const topConcepts = Array.from(conceptMap.values()).filter(c => parseFloat(c.similarity) > 0.45);
 
-  for (const concept of topConcepts.slice(0, 3)) {
+  for (const concept of topConcepts.slice(0, 5)) {
     const conceptTriples = await db.query(`
       SELECT t.*, s.name AS subject_name, s.type AS subject_type,
              o.name AS object_name, o.type AS object_type,
@@ -90,15 +132,38 @@ export async function searchTriples(teamId, question, { scopeIds = [], topK = 15
     `, [teamId, concept.id]);
 
     for (const row of conceptTriples.rows) {
-      // Give concept-anchored triples a similarity boost
-      // based on concept similarity * 0.9 (high but not overriding)
-      row.similarity = parseFloat(concept.similarity) * 0.9;
+      // Concept-anchored triples get high similarity based on concept match quality
+      row.similarity = parseFloat(concept.similarity) * 0.95;
       anchoredTriples.push(row);
     }
   }
 
-  // Merge all three sources
+  // Merge all sources
   return mergeAndRank(withCtxResults.rows, withoutCtxResults.rows, anchoredTriples);
+}
+
+/**
+ * Extract entity names from a question using lightweight LLM call.
+ * "When does our chaos card game ship?" → ["chaos card game", "ship date"]
+ * "What's Hack Your Deck's release?" → ["Hack Your Deck", "release"]
+ */
+async function extractEntitiesFromQuestion(question) {
+  try {
+    const response = await callOpenAI([
+      {
+        role: 'system',
+        content: `Extract entity names, product names, and key nouns from this question. Return ONLY a JSON array of strings. Include proper nouns, product names, company names, and important concepts. Be generous — include anything that might be a named entity.
+Example: "When does our chaos card game ship?" → ["chaos card game"]
+Example: "What's the manufacturing lead time for Hack Your Deck?" → ["Hack Your Deck", "manufacturing"]`
+      },
+      { role: 'user', content: question }
+    ], { model: 'gpt-4o-mini', maxTokens: 100, temperature: 0 });
+
+    const parsed = JSON.parse(response.match(/\[[\s\S]*?\]/)?.[0] || '[]');
+    return parsed.filter(e => typeof e === 'string' && e.length > 2);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -370,14 +435,78 @@ export async function rewriteFollowUp(question, conversationHistory = []) {
 
 /**
  * Determine if multi-hop expansion is needed based on initial results.
+ * More conservative: only expand when the top result isn't strongly relevant,
+ * or when we have very few results.
  */
 export function shouldExpand(initialResults) {
-  if (initialResults.length < 3) return true;
+  if (initialResults.length === 0) return false; // Nothing to expand from
+  if (initialResults.length < 2) return true; // Too few, need more
 
-  const avgSimilarity = initialResults.reduce((sum, t) => sum + (t.similarity || 0), 0) / initialResults.length;
-  if (avgSimilarity < 0.5) return true;
+  // Check if top result is strong enough to answer directly
+  const topSimilarity = initialResults[0]?.similarity || 0;
+  if (topSimilarity >= 0.7) return false; // Strong direct match
 
-  return false;
+  // Check if we have enough concept-anchored results
+  const anchoredCount = initialResults.filter(t => t.matchType === 'concept_anchor').length;
+  if (anchoredCount >= 3) return false; // Plenty of anchored results
+
+  // Expand when top results are mediocre
+  const top3Avg = initialResults.slice(0, 3).reduce((sum, t) => sum + (t.similarity || 0), 0) / Math.min(initialResults.length, 3);
+  return top3Avg < 0.55;
+}
+
+// ============================================================================
+// LLM RE-RANKING
+// ============================================================================
+
+/**
+ * Re-rank retrieved triples using a lightweight LLM call.
+ * Asks the model which triples are most relevant to the question.
+ * Only called when we have enough candidates to warrant it.
+ */
+export async function rerankTriples(question, triples) {
+  if (triples.length <= 3) return triples; // Not enough to re-rank
+
+  const candidates = triples.slice(0, 12); // Cap candidates
+  const numbered = candidates.map((t, i) => `${i + 1}. ${t.displayText}`).join('\n');
+
+  const response = await callOpenAI([
+    {
+      role: 'system',
+      content: `You are ranking knowledge statements by relevance to a question.
+Return ONLY a JSON array of the statement numbers in order of relevance (most relevant first).
+Only include statements that are actually relevant. Exclude irrelevant ones.
+Example: [3, 1, 7]`
+    },
+    {
+      role: 'user',
+      content: `Question: ${question}\n\nStatements:\n${numbered}`
+    }
+  ], { model: 'gpt-4o-mini', maxTokens: 100, temperature: 0 });
+
+  try {
+    const parsed = JSON.parse(response.match(/\[[\d,\s]+\]/)?.[0] || '[]');
+    const reranked = [];
+    for (const idx of parsed) {
+      const i = idx - 1;
+      if (i >= 0 && i < candidates.length) {
+        const t = candidates[i];
+        t.similarity = 1.0 - (reranked.length * 0.05); // Assign descending similarity based on rank
+        reranked.push(t);
+      }
+    }
+    // Append any candidates not included by the ranker (with low similarity)
+    const rankedIds = new Set(reranked.map(t => t.id));
+    for (const t of candidates) {
+      if (!rankedIds.has(t.id)) {
+        t.similarity = 0.2;
+        reranked.push(t);
+      }
+    }
+    return reranked;
+  } catch {
+    return triples; // Fallback to original ranking
+  }
 }
 
 export default {
@@ -388,4 +517,5 @@ export default {
   looksLikeFollowUp,
   rewriteFollowUp,
   shouldExpand,
+  rerankTriples,
 };

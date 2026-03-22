@@ -14,7 +14,15 @@ const connectionString = process.env.DB_POSTGRES_URL || process.env.POSTGRES_URL
 
 const db = new Pool({
   connectionString,
-  ssl: process.env.NODE_ENV === 'production' || process.env.VERCEL ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' || process.env.VERCEL ? { rejectUnauthorized: false } : { rejectUnauthorized: false },
+  max: 3,
+  idleTimeoutMillis: 20000,
+  connectionTimeoutMillis: 10000,
+});
+
+// Prevent unhandled pool errors from crashing the process
+db.on('error', (err) => {
+  console.error('[DB Pool] Idle client error:', err.message);
 });
 
 export default db;

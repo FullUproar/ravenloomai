@@ -183,11 +183,14 @@ export async function pruneUniversalKnowledge(teamId) {
 Determine which statements are UNIVERSAL knowledge (any LLM would know them without being told)
 vs INSTITUTIONAL knowledge (specific to this organization, its people, products, or processes).
 
-Examples of UNIVERSAL: "Blue is a color", "A CEO runs a company", "JavaScript is a programming language"
-Examples of INSTITUTIONAL: "HYD works with card-based games", "Full Uproar launches on May 1, 2026"
+BE VERY CONSERVATIVE. Only mark something as universal if it is a TEXTBOOK FACT that adds zero value.
+If in doubt, keep it — false negatives (keeping a universal fact) cost nothing, but false positives (pruning an institutional fact) destroy knowledge.
 
-Return JSON: { "universal": [1, 5, 8] } — list the numbers of statements that are universal knowledge.
-If none are universal, return { "universal": [] }.`
+UNIVERSAL (prune these): "Blue is a color", "A CEO runs a company", "JavaScript is a programming language", "Games are played for fun"
+INSTITUTIONAL (keep these): anything mentioning specific people, products, companies, dates, targets, processes, or decisions. Even "Our company values creativity" is institutional — it's about a SPECIFIC company.
+
+Return JSON: { "universal": [1, 5, 8] } — list ONLY statements that are pure textbook facts with zero organizational specificity.
+If none are universal, return { "universal": [] }. It is BETTER to return an empty list than to prune useful knowledge.`
     },
     { role: 'user', content: `Evaluate these statements:\n${statements}` }
   ], { model: 'gpt-4o-mini', maxTokens: 200, temperature: 0 });

@@ -92,13 +92,13 @@ export async function generatePersonaStatements(personaKey) {
 
 /**
  * Generate ask questions for a persona, grounded in actual ingested triples.
- * Questions must be answerable from the data — otherwise evaluation is meaningless.
+ * Anti-nepotism: questions must use DIFFERENT WORDING than the stored triples.
+ * Also includes unanswerable questions to test "I don't know" honesty.
  */
 export async function generatePersonaQuestions(personaKey, existingTriples = []) {
   const persona = PERSONAS[personaKey];
   if (!persona) throw new Error(`Unknown persona: ${personaKey}`);
 
-  // Build a summary of what's in the graph so questions are grounded
   const triplesSummary = existingTriples.slice(0, 30).map(t =>
     `- ${t.displayText || t.display_text}`
   ).join('\n');
@@ -108,19 +108,30 @@ export async function generatePersonaQuestions(personaKey, existingTriples = [])
       role: 'system',
       content: `You are ${persona.name}, ${persona.description}
 
-Generate questions that can be ANSWERED from the knowledge below. Do NOT ask about things not in this knowledge base.
+Generate questions about a company knowledge base. The knowledge base contains the facts listed below.
 
-Some questions should be DIRECT (answered by a single triple).
-Some should require MULTI-HOP reasoning (connecting 2-3 triples to form an answer).
-Some should be broad enough to require gathering multiple related facts.
+CRITICAL RULES FOR REALISTIC TESTING:
+1. PARAPHRASE — do NOT copy wording from the facts. Ask the same thing using completely different words.
+   Bad: "What is the launch date for Fugly's Mayhem Machine?" (copies the fact)
+   Good: "When does our chaos card game ship?" (same question, different words)
+
+2. Include 1-2 UNANSWERABLE questions — things a reasonable person might ask but that are NOT in the knowledge base.
+   Mark these type: "unanswerable". The correct answer is "I don't know."
+
+3. Include 1-2 MULTI-HOP questions that require connecting 2+ facts to answer.
+   Example: if facts say "A works at B" and "B is in Chicago", ask "Where does A work?" (requires 2 hops)
+
+4. Include 2-3 DIRECT questions (answerable from a single fact, but paraphrased).
 
 KNOWLEDGE IN THE SYSTEM:
 ${triplesSummary || '(empty)'}
 
-Return JSON: { "questions": [{ "question": "...", "type": "direct|multi_hop|broad", "expectedAnswer": "brief expected answer" }] }
-Generate 4-6 questions.`
+Return JSON: { "questions": [
+  { "question": "...", "type": "direct|multi_hop|unanswerable", "expectedAnswer": "brief expected answer or 'should say I don't know'" }
+] }
+Generate exactly 6 questions: 3 direct, 1-2 multi-hop, 1-2 unanswerable.`
     }
-  ], { model: 'gpt-4o', maxTokens: 1000, temperature: 0.5 });
+  ], { model: 'gpt-4o', maxTokens: 1000, temperature: 0.7 });
 
   try {
     const parsed = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
@@ -135,32 +146,52 @@ Generate 4-6 questions.`
 // ============================================================================
 
 /**
- * Evaluate an answer against expectations.
+ * Evaluate an answer against the ACTUAL retrieved triples — not made-up expected answers.
+ * For "unanswerable" questions, saying "I don't know" scores 100%.
+ * For answerable questions, scores how well the answer uses the retrieved triples.
  */
 export async function evaluateAnswer(question, answer, triplesUsed, questionMeta = {}) {
+  const isUnanswerable = questionMeta.type === 'unanswerable';
+  const isMultiHop = questionMeta.type === 'multi_hop';
+  const triplesText = (triplesUsed || []).map(t => {
+    const display = t.displayText || t.content || '';
+    const source = t.sourceText ? ` (source: "${t.sourceText.substring(0, 150)}")` : '';
+    return `${display}${source}`;
+  }).join('\n') || 'none';
+
   const response = await callOpenAI([
     {
       role: 'system',
-      content: `You are evaluating a knowledge system's answer quality.
-Score each dimension 0.0-1.0:
-- accuracy: Does the answer correctly use the provided triples?
-- completeness: Does the answer cover the question fully?
-- relevance: Are the retrieved triples relevant to the question?
-- multiHopSuccess: If the question required connecting multiple facts, did it succeed? (N/A if direct question)
+      content: `You are a STRICT evaluator of a knowledge retrieval system.
 
-Return JSON: { "accuracy": 0.0-1.0, "completeness": 0.0-1.0, "relevance": 0.0-1.0, "multiHopSuccess": 0.0-1.0 | null, "reasoning": "brief explanation" }`
+${isUnanswerable ? `This question is UNANSWERABLE — the knowledge base should NOT have the answer.
+- If the system says "I don't know" or "I don't have information": accuracy=1.0, completeness=1.0, relevance=1.0
+- If the system makes up an answer or guesses: accuracy=0.0, completeness=0.0, relevance=0.0
+` : `This question is ANSWERABLE from the knowledge base.
+Evaluate STRICTLY:
+- accuracy: Does the answer ONLY contain information from the provided triples? Penalize any fabricated details not in the triples. 1.0 = perfect match, 0.0 = fabricated.
+- completeness: Does the answer cover all relevant triples? 1.0 = uses all relevant triples, 0.0 = misses everything.
+- relevance: Are the retrieved triples actually relevant to the question? 1.0 = all relevant, 0.0 = none relevant.
+${isMultiHop ? '- multiHopSuccess: Did the answer successfully CHAIN multiple triples together to form a composite answer? 1.0 = yes, 0.0 = no.' : '- multiHopSuccess: null (not a multi-hop question)'}
+
+KEY: The "expected answer" is approximate. Judge primarily by whether the answer correctly uses the RETRIEVED TRIPLES, not whether it matches the expected answer word-for-word.
+`}
+Return JSON only: { "accuracy": 0.0-1.0, "completeness": 0.0-1.0, "relevance": 0.0-1.0, "multiHopSuccess": 0.0-1.0 | null, "reasoning": "1 sentence" }`
     },
     {
       role: 'user',
       content: `Question: ${question}
-Type: ${questionMeta.type || 'unknown'}
-Expected concepts: ${(questionMeta.expectedConcepts || []).join(', ') || 'none specified'}
+Question type: ${questionMeta.type || 'direct'}
+Expected answer (approximate): ${questionMeta.expectedAnswer || 'not specified'}
 
-Answer: ${answer}
+System's answer: ${answer}
 
-Triples used: ${(triplesUsed || []).map(t => t.displayText || t.content).join('; ') || 'none'}`
+Retrieved knowledge (these are the statements the system had access to):
+${triplesText}
+
+NOTE: The system may paraphrase or combine information from the retrieved knowledge. If the answer's claims are SUPPORTED BY the retrieved knowledge (even if worded differently), score accuracy high. Only penalize for claims that have NO basis in the retrieved knowledge.`
     }
-  ], { model: 'gpt-4o-mini', maxTokens: 300, temperature: 0 });
+  ], { model: 'gpt-4o', maxTokens: 200, temperature: 0 });
 
   try {
     return JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');

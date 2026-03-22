@@ -76,11 +76,12 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     triples = [...triples, ...newTriples].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
   }
 
-  // Step 5: Take top results, filtering out low-similarity noise
-  // Only include triples with similarity > 0.3 (prevents noise from diluting context)
-  const topTriples = triples
-    .filter(t => (t.similarity || 0) > 0.3)
-    .slice(0, 8); // Fewer, more relevant triples = better LLM answers
+  // Step 5: Filter low-similarity noise, then re-rank with LLM
+  const filteredTriples = triples.filter(t => (t.similarity || 0) > 0.3);
+
+  // Re-rank with lightweight LLM to ensure most relevant triples are first
+  const reranked = await TripleRetrievalService.rerankTriples(standaloneQuestion, filteredTriples);
+  const topTriples = reranked.slice(0, 8);
 
   // Step 6: Build answer context (combining triples + legacy facts)
   let answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
@@ -101,7 +102,7 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   return {
     answer: answer.text,
     confidence: answer.confidence,
-    triplesUsed: topTriples.slice(0, 5).map(t => ({
+    triplesUsed: topTriples.map(t => ({
       id: t.id,
       displayText: t.displayText,
       subjectName: t.subjectName,
@@ -136,7 +137,7 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
  * Generate answer from triple-based context.
  */
 async function generateTripleBasedAnswer(question, answerContext, triples) {
-  if (!answerContext || triples.length === 0) {
+  if (!answerContext && triples.length === 0) {
     return {
       text: "I don't have any confirmed knowledge about that yet.",
       confidence: 0,
@@ -144,23 +145,30 @@ async function generateTripleBasedAnswer(question, answerContext, triples) {
     };
   }
 
+  // If we have triples but no rendered context, build it now
+  if (!answerContext && triples.length > 0) {
+    answerContext = triples.map(t => `- ${t.displayText}`).join('\n');
+  }
+
   const systemPrompt = `You are Raven, the institutional knowledge assistant.
 
-RULES:
-1. Answer using ONLY the knowledge provided below. Never invent information.
-2. If the knowledge doesn't fully answer the question, say what you DO know and acknowledge the gap.
-3. Cite specific facts naturally (don't use brackets or footnotes — weave them into your answer).
-4. When knowledge comes from multi-hop connections, explain the reasoning chain briefly.
-5. If contexts are listed on facts, mention them when relevant ("as of Q1 2026..." or "for the Full Uproar product line...").
-6. Be concise and direct. No filler.
+STRICT RULES — FOLLOW EXACTLY:
+1. Answer using ONLY the knowledge statements listed below. Do NOT add information from your training data.
+2. If NONE of the knowledge below is relevant to the question, say "I don't have confirmed knowledge about that." But if ANY statements are relevant, use them to answer — even partial answers are better than "I don't know".
+3. Every claim in your answer must be traceable to a specific knowledge statement below. If you can't point to it, don't say it.
+4. CRITICAL: Do NOT merge or connect statements about different entities. "Company A has target X" and "Company B makes product Y" does NOT mean Company B has target X. Each statement is about the specific entities it names.
+5. When connecting multiple facts (multi-hop), the connection must share a COMMON entity: "X is Y" + "Y is Z" → "X is Z" is valid. "X is Y" + "A is B" → nothing, different entities.
+6. If contexts are listed, mention them: "as of [date]..." or "in the context of [context]..."
+7. Be concise. No filler. No hedging beyond what's warranted by the data.
 
-KNOWLEDGE:
+KNOWLEDGE STATEMENTS:
 ${answerContext}
 
 After your answer, on a new line, return a JSON object:
 {"confidence": 0.0-1.0, "followups": ["question 1", "question 2"]}
 
-Where confidence = how well the provided knowledge answers the question.`;
+confidence = 0.0 if none of the knowledge is relevant, 1.0 if the knowledge fully answers the question.
+If you said "I don't have confirmed knowledge", confidence should be 0.0-0.1.`;
 
   const response = await AIService.callOpenAI([
     { role: 'system', content: systemPrompt },
