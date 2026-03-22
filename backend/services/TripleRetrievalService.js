@@ -93,11 +93,13 @@ export async function searchTriples(teamId, question, { scopeIds = [], topK = 15
     keywordConcepts = keywordResult.rows;
   }
 
-  // Strategy 3d: Match extracted entities against concept names (fuzzy)
+  // Strategy 3d: Match extracted entities against concept names AND aliases (fuzzy)
   let entityConcepts = [];
   if (extractedEntities.length > 0) {
     const entityPatterns = extractedEntities.map(e => `%${e}%`);
-    const entityPlaceholders = entityPatterns.map((_, i) => `canonical_name ILIKE $${i + 2} OR name ILIKE $${i + 2}`).join(' OR ');
+    const entityPlaceholders = entityPatterns.map((_, i) =>
+      `canonical_name ILIKE $${i + 2} OR name ILIKE $${i + 2} OR EXISTS (SELECT 1 FROM unnest(aliases) alias WHERE alias ILIKE $${i + 2})`
+    ).join(' OR ');
     try {
       const entityResult = await db.query(
         `SELECT id, name, 0.95 AS similarity FROM concepts WHERE team_id = $1 AND (${entityPlaceholders}) LIMIT 8`,

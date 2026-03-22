@@ -58,10 +58,15 @@ RULES:
    ${conceptList || '(none yet)'}
    Match by name (case-insensitive). If an existing concept fits, use its exact name.
 
-7. It's OK to produce "chunky" triples (compound statements). They can be decomposed later.
-   But prefer atomic triples when the decomposition is obvious.
+7. EXTRACT EVERY FACT, even from dense lists. If input says "Products: A ($10), B ($20), C ($30)"
+   you should produce separate triples for EACH product and EACH price:
+   - A is a product, A is priced at $10, B is a product, B is priced at $20, etc.
+   Don't summarize or skip items in a list. Each item = separate triples.
 
-8. Relationships should be natural verb phrases, not uppercase codes.
+8. Prefer atomic triples. Split compound statements:
+   "A is X and Y" → two triples: "A is X" and "A is Y"
+
+9. Relationships should be natural verb phrases, not uppercase codes.
    Good: "launches on", "is manufactured by", "includes"
    Bad: "LAUNCHES_ON", "IS_A", "HAS"
 
@@ -247,22 +252,38 @@ export async function detectConflicts(teamId, extractedTriples) {
  * Classify conflict type: contradiction, update, duplicate, or none.
  */
 function classifyConflict(newTriple, existingRow, similarity) {
-  const existingDisplay = existingRow.display_text.toLowerCase();
-  const newDisplay = newTriple.displayText.toLowerCase();
-
   // Very high similarity = likely duplicate
   if (similarity > 0.95) return 'duplicate';
 
-  // Same subject, same relationship type, different object = potential update/contradiction
-  const sameSubject = newTriple.subject.name.toLowerCase() === existingRow.subject_name?.toLowerCase();
-  const sameRelationship = newTriple.relationship.toLowerCase() === existingRow.relationship?.toLowerCase();
+  const newSubject = (typeof newTriple.subject === 'object' ? newTriple.subject.name : newTriple.subject || '').toLowerCase();
+  const existSubject = (existingRow.subject_name || '').toLowerCase();
 
-  if (sameSubject && sameRelationship && similarity > 0.75) {
+  // Check subject overlap (fuzzy — one contains the other)
+  const sameSubject = newSubject === existSubject
+    || newSubject.includes(existSubject) || existSubject.includes(newSubject);
+
+  // Check relationship overlap (fuzzy — similar verb phrases)
+  const newRel = (newTriple.relationship || '').toLowerCase();
+  const existRel = (existingRow.relationship || '').toLowerCase();
+  const sameRelationship = newRel === existRel
+    || newRel.includes(existRel) || existRel.includes(newRel)
+    || (newRel.includes('launch') && existRel.includes('launch'))
+    || (newRel.includes('manufactur') && existRel.includes('manufactur'))
+    || (newRel.includes('price') && existRel.includes('price'))
+    || (newRel.includes('schedul') && existRel.includes('schedul'));
+
+  // Same subject + similar relationship = update (most common)
+  if (sameSubject && sameRelationship && similarity > 0.7) {
+    return 'update';
+  }
+
+  // Same subject, different relationship but high similarity = potential update
+  if (sameSubject && similarity > 0.8) {
     return 'update';
   }
 
   // High similarity but different meaning = contradiction
-  if (similarity > 0.82) return 'contradiction';
+  if (similarity > 0.85) return 'contradiction';
 
   return 'none';
 }

@@ -114,6 +114,10 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     topics: topTriples.slice(0, 3).map(t => t.subjectName).filter(Boolean),
   }).catch(() => {});
 
+  // Step 10: Learn aliases from the query (fire-and-forget)
+  // If the question used different words than the matched concepts, learn the mapping
+  learnAliasesFromQuery(teamId, standaloneQuestion, topTriples).catch(() => {});
+
   return {
     answer: answer.text,
     confidence: answer.confidence,
@@ -146,6 +150,56 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
         })),
     suggestedFollowups: answer.followups || []
   };
+}
+
+/**
+ * Learn concept aliases from how users phrase questions.
+ * If "chaos card game" matches concept "Fugly's Mayhem Machine",
+ * store "chaos card game" as an alias with lower trust.
+ */
+async function learnAliasesFromQuery(teamId, question, matchedTriples) {
+  if (!matchedTriples || matchedTriples.length === 0) return;
+
+  const questionLower = question.toLowerCase();
+  const seenConcepts = new Set();
+
+  for (const triple of matchedTriples.slice(0, 5)) {
+    for (const conceptName of [triple.subjectName, triple.objectName]) {
+      if (!conceptName || seenConcepts.has(conceptName)) continue;
+      seenConcepts.add(conceptName);
+
+      const nameLower = conceptName.toLowerCase();
+      // If the question doesn't contain the concept name, the system found it
+      // through embedding/entity extraction — the question phrasing is an alias
+      if (!questionLower.includes(nameLower) && nameLower.length > 3) {
+        // Extract what the user called this concept
+        try {
+          const response = await AIService.callOpenAI([
+            {
+              role: 'system',
+              content: `The user asked a question and the system matched it to a concept called "${conceptName}".
+Extract the SHORT PHRASE from the question that the user used to refer to "${conceptName}".
+Return ONLY the phrase (2-5 words) or "NONE" if the question doesn't clearly refer to this concept.`
+            },
+            { role: 'user', content: question }
+          ], { model: 'gpt-4o-mini', maxTokens: 30, temperature: 0, teamId, operation: 'alias_learn' });
+
+          const alias = response?.trim();
+          if (alias && alias !== 'NONE' && alias.length > 2 && alias.length < 60) {
+            // Store as alias on the concept (low confidence — implied, not stated)
+            await db.query(
+              `UPDATE concepts SET aliases = array_append(
+                 CASE WHEN $2 = ANY(aliases) THEN aliases ELSE aliases END, $2
+               ), updated_at = NOW()
+               WHERE team_id = $1 AND canonical_name = $3 AND NOT ($2 = ANY(COALESCE(aliases, '{}')))`,
+              [teamId, alias.toLowerCase(), nameLower]
+            );
+            console.log(`[AliasLearn] Learned: "${alias}" → "${conceptName}"`);
+          }
+        } catch { /* alias learning is best-effort */ }
+      }
+    }
+  }
 }
 
 /**
