@@ -49,7 +49,13 @@ const PREVIEW_REMEMBER = gql`
         trustTier
         displayText
         isNew
+        challengeFlags {
+          type
+          detail
+          severity
+        }
       }
+      triageLevel
       conflicts {
         existingDisplayText
         conflictType
@@ -137,14 +143,17 @@ function ThinkingIndicator({ mode }) {
 }
 
 /**
- * TripleCard - Renders a single extracted triple
+ * TripleCard - Renders a single extracted triple with trust indicators
  */
 function TripleCard({ triple, index }) {
   const confPct = triple.confidence != null ? Math.round(triple.confidence * 100) : null;
   const confLevel = confPct >= 80 ? 'high' : confPct >= 60 ? 'medium' : 'low';
+  const flags = triple.challengeFlags || [];
+  const hasHardFlag = flags.some(f => f.severity === 'hard');
+  const hasSoftFlag = flags.some(f => f.severity === 'soft');
 
   return (
-    <div className="preview-triple">
+    <div className={`preview-triple ${hasHardFlag ? 'preview-triple--flagged-hard' : hasSoftFlag ? 'preview-triple--flagged-soft' : ''}`}>
       <div className="triple-structure">
         <span className="triple-subject" title={triple.subjectType}>
           {triple.subject}
@@ -156,19 +165,38 @@ function TripleCard({ triple, index }) {
           {triple.object}
         </span>
       </div>
-      {triple.contexts?.length > 0 && (
-        <div className="triple-contexts">
-          {triple.contexts.map((ctx, i) => (
-            <span key={i} className="context-badge" title={ctx.type}>
-              {ctx.name}
+      <div className="triple-meta">
+        {triple.contexts?.length > 0 && (
+          <div className="triple-contexts">
+            {triple.contexts.map((ctx, i) => (
+              <span key={i} className="context-badge" title={ctx.type}>
+                {ctx.name}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="triple-badges">
+          {triple.trustTier && (
+            <span className={`trust-tier-badge trust-tier-badge--${triple.trustTier}`}>
+              {triple.trustTier === 'official' ? 'Official' : 'Tribal'}
             </span>
+          )}
+          {confPct != null && (
+            <span className={`triple-confidence triple-confidence--${confLevel}`}>
+              {confPct}%
+            </span>
+          )}
+        </div>
+      </div>
+      {flags.length > 0 && (
+        <div className="triple-challenge-flags">
+          {flags.map((flag, i) => (
+            <div key={i} className={`challenge-flag challenge-flag--${flag.severity}`}>
+              <span className="challenge-flag-icon">{flag.severity === 'hard' ? '!' : '?'}</span>
+              <span className="challenge-flag-detail">{flag.detail}</span>
+            </div>
           ))}
         </div>
-      )}
-      {confPct != null && (
-        <span className={`triple-confidence triple-confidence--${confLevel}`}>
-          {confPct}%
-        </span>
       )}
     </div>
   );
@@ -368,6 +396,18 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
           <div className="preview-header">
             <h3>Review Before Saving</h3>
             <p className="preview-source">From: "{rememberPreview.sourceText.substring(0, 200)}{rememberPreview.sourceText.length > 200 ? '...' : ''}"</p>
+            {rememberPreview.triageLevel === 'auto_confirm' && (
+              <div className="triage-banner triage-banner--auto">
+                <span className="triage-icon">&#10003;</span>
+                Trusted source — auto-confirmed
+              </div>
+            )}
+            {rememberPreview.triageLevel === 'requires_decision' && (
+              <div className="triage-banner triage-banner--decision">
+                <span className="triage-icon">!</span>
+                Needs your attention — potential issues detected
+              </div>
+            )}
           </div>
 
           {/* Extracted triples */}

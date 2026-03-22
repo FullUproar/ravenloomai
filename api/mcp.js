@@ -104,6 +104,16 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'raven_get_usage_stats',
+    description: 'Get AI token usage and estimated cost breakdown for the team.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        teamId: { type: 'string', description: 'Team UUID (optional)' },
+      },
+    },
+  },
 ];
 
 // ── Tool Handlers ────────────────────────────────────────────────────────────
@@ -224,6 +234,29 @@ async function handleTool(name, args) {
       if (!scopes.length) return [{ type: 'text', text: 'No scopes found.' }];
       let output = '**Scopes:**\n';
       for (const s of scopes) output += `\n- **${s.name}** (${s.type}) — ID: \`${s.id}\``;
+      return [{ type: 'text', text: output }];
+    }
+
+    case 'raven_get_usage_stats': {
+      const tid = args.teamId || DEFAULT_TEAM_ID;
+      if (!tid) return [{ type: 'text', text: 'Error: No teamId provided.' }];
+      const data = await gql(
+        `query GetTokenUsage($teamId: ID!) {
+          getTokenUsage(teamId: $teamId) {
+            totalInputTokens totalOutputTokens totalEstimatedCostUsd totalCalls
+            byOperation { operation inputTokens outputTokens estimatedCostUsd callCount }
+          }
+        }`,
+        { teamId: tid }
+      );
+      const r = data.getTokenUsage;
+      let output = `**Token Usage**\nCalls: ${r.totalCalls} | Tokens: ${(r.totalInputTokens + r.totalOutputTokens).toLocaleString()} | Cost: $${r.totalEstimatedCostUsd.toFixed(4)}`;
+      if (r.byOperation?.length > 0) {
+        output += '\n\n**By Operation:**';
+        for (const op of r.byOperation) {
+          output += `\n- ${op.operation}: ${op.callCount} calls, $${op.estimatedCostUsd.toFixed(4)}`;
+        }
+      }
       return [{ type: 'text', text: output }];
     }
 

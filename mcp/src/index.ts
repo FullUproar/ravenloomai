@@ -384,6 +384,60 @@ server.tool(
   }
 );
 
+// ── Tool 6: raven_get_usage_stats ────────────────────────────────────────────
+
+server.tool(
+  "raven_get_usage_stats",
+  "Get AI token usage and estimated cost for the team. Shows usage breakdown by operation (ask, extract, embed, groom, etc.) and total estimated cost in USD.",
+  {
+    teamId: z.string().optional().describe("Team UUID (uses default if not provided)"),
+  },
+  async ({ teamId }) => {
+    const tid = teamId || DEFAULT_TEAM_ID;
+    if (!tid) {
+      return { content: [{ type: "text", text: "Error: No teamId provided and RAVENLOOM_TEAM_ID not set." }] };
+    }
+
+    try {
+      const data = await gql(
+        `query GetTokenUsage($teamId: ID!) {
+          getTokenUsage(teamId: $teamId) {
+            totalInputTokens
+            totalOutputTokens
+            totalEstimatedCostUsd
+            totalCalls
+            byOperation {
+              operation
+              inputTokens
+              outputTokens
+              estimatedCostUsd
+              callCount
+            }
+          }
+        }`,
+        { teamId: tid }
+      );
+
+      const r = data.getTokenUsage;
+      let output = `**Token Usage Summary**\n`;
+      output += `Total calls: ${r.totalCalls}\n`;
+      output += `Total tokens: ${(r.totalInputTokens + r.totalOutputTokens).toLocaleString()} (${r.totalInputTokens.toLocaleString()} in, ${r.totalOutputTokens.toLocaleString()} out)\n`;
+      output += `Estimated cost: $${r.totalEstimatedCostUsd.toFixed(4)}\n`;
+
+      if (r.byOperation?.length > 0) {
+        output += `\n**By Operation:**`;
+        for (const op of r.byOperation) {
+          output += `\n- ${op.operation}: ${op.callCount} calls, ${(op.inputTokens + op.outputTokens).toLocaleString()} tokens, $${op.estimatedCostUsd.toFixed(4)}`;
+        }
+      }
+
+      return { content: [{ type: "text", text: output }] };
+    } catch (err: any) {
+      return { content: [{ type: "text", text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
 // ── Start Server ─────────────────────────────────────────────────────────────
 
 const MCP_PORT = parseInt(process.env.MCP_PORT || "0", 10);
