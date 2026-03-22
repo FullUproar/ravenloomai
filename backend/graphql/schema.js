@@ -247,6 +247,24 @@ export default gql`
     universalTriples: Int!
   }
 
+  type TripleGroomReport {
+    decomposed: Int!
+    mergeProposals: [ConceptMergeProposal!]
+    autoMerged: JSON
+    pruned: Int!
+    contextsDiscovered: Int!
+    inferences: JSON
+    relationshipsRefined: Int!
+    stats: TripleGraphStats
+  }
+
+  type ConceptMergeProposal {
+    conceptA: Concept!
+    conceptB: Concept!
+    similarity: Float!
+    suggestedCanonical: String!
+  }
+
   # Backward compat types (still used by MCP and frontend during transition)
   type ExtractedFact {
     content: String!
