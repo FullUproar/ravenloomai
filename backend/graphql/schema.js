@@ -131,11 +131,123 @@ export default gql`
   type AskResponse {
     answer: String!
     confidence: Float
-    factsUsed: [Fact!]!
+    factsUsed: [Fact!]!             # backward compat (triples rendered as facts)
+    triplesUsed: [Triple!]          # new: structured triples
     suggestedFollowups: [String!]
   }
 
-  # A fact extracted from a Remember statement (for preview)
+  # ============================================================================
+  # TRIPLE-BASED KNOWLEDGE TYPES
+  # ============================================================================
+
+  # A concept node in the knowledge graph
+  type Concept {
+    id: ID!
+    teamId: ID!
+    name: String!
+    type: String!
+    description: String
+    aliases: [String!]
+    mentionCount: Int!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  # The atom of knowledge: (Subject --relationship--> Object) [Contexts]
+  type Triple {
+    id: ID!
+    teamId: ID!
+    scopeId: ID
+    subject: Concept!
+    relationship: String!
+    object: Concept!
+    displayText: String!
+    contexts: [ContextNode!]!
+    confidence: Float!
+    trustTier: String!
+    status: String!
+    sourceText: String
+    sourceUrl: String
+    isChunky: Boolean
+    isUniversal: Boolean
+    createdBy: User
+    createdAt: DateTime!
+  }
+
+  # A node in the hierarchical context taxonomy
+  type ContextNode {
+    id: ID!
+    name: String!
+    type: String!
+    parent: ContextNode
+    children: [ContextNode!]!
+    isDynamic: Boolean!
+  }
+
+  # Extracted triple from Remember preview
+  type ExtractedTriple {
+    subject: String!
+    subjectType: String!
+    relationship: String!
+    object: String!
+    objectType: String!
+    contexts: [ExtractedContext!]!
+    confidence: Float!
+    trustTier: String!
+    displayText: String!
+    isNew: Boolean!
+  }
+
+  type ExtractedContext {
+    name: String!
+    type: String!
+  }
+
+  # Conflict between extracted and existing triple
+  type TripleConflict {
+    existingTriple: Triple
+    existingDisplayText: String
+    conflictType: String!
+    explanation: String!
+    similarity: Float
+  }
+
+  # Preview response from Remember
+  type RememberPreview {
+    previewId: ID!
+    sourceText: String!
+    extractedTriples: [ExtractedTriple!]!
+    extractedFacts: [ExtractedFact!]!  # backward compat
+    conflicts: [TripleConflict!]!
+    isMismatch: Boolean!
+    mismatchSuggestion: String
+  }
+
+  # Result after confirming a Remember
+  type RememberResult {
+    success: Boolean!
+    triplesCreated: [Triple!]
+    triplesUpdated: [Triple!]
+    conceptsCreated: [Concept!]
+    factsCreated: [Fact!]!             # backward compat
+    factsUpdated: [Fact!]!             # backward compat
+    nodeCreated: KnowledgeNode         # backward compat
+    attachedToNodeId: ID               # backward compat
+    message: String
+  }
+
+  # Graph statistics
+  type TripleGraphStats {
+    totalConcepts: Int!
+    totalTriples: Int!
+    totalContexts: Int!
+    avgContextsPerTriple: Float!
+    orphanConcepts: Int!
+    chunkyTriples: Int!
+    universalTriples: Int!
+  }
+
+  # Backward compat types (still used by MCP and frontend during transition)
   type ExtractedFact {
     content: String!
     entityType: String
@@ -144,55 +256,13 @@ export default gql`
     value: String
     category: String
     confidenceScore: Float
-    contextTags: [String!]  # Context scoping inferred from statement
+    contextTags: [String!]
   }
 
-  # Potential conflict with existing knowledge
   type FactConflict {
-    existingFact: Fact!
-    conflictType: String!  # contradiction, update, duplicate
+    existingFact: Fact
+    conflictType: String!
     explanation: String!
-  }
-
-  # Suggested parent node for hierarchy placement
-  type SuggestedParent {
-    action: String!  # attach_to_existing, create_container, standalone
-    node: KnowledgeNode
-    suggestedName: String
-    suggestedType: String
-    alternativeName: String
-    confidence: Float
-  }
-
-  # Preview response from Remember (requires confirmation)
-  type RememberPreview {
-    previewId: ID!
-    sourceText: String!
-    extractedFacts: [ExtractedFact!]!
-    conflicts: [FactConflict!]!
-    isMismatch: Boolean!  # True if input looks like a question
-    mismatchSuggestion: String
-    # Hierarchy placement suggestions
-    suggestedParent: SuggestedParent
-    hierarchyAction: String  # attach_to_existing, create_container, standalone
-  }
-
-  # Options for hierarchy placement when confirming remember
-  input HierarchyOptions {
-    parentNodeId: ID         # Attach facts to existing node
-    createContainer: Boolean # Create a new container node
-    containerName: String    # Name for new container
-    containerType: String    # Type for new container (event, project, etc.)
-  }
-
-  # Result after confirming a Remember
-  type RememberResult {
-    success: Boolean!
-    factsCreated: [Fact!]!
-    factsUpdated: [Fact!]!
-    nodeCreated: KnowledgeNode      # If a container was created
-    attachedToNodeId: ID            # Node facts were attached to
-    message: String
   }
 
   # Source attribution for facts
@@ -799,11 +869,20 @@ export default gql`
     getMessages(channelId: ID!, limit: Int, before: ID): [Message!]!
     getThreadMessages(threadId: ID!, limit: Int): [Message!]!
 
-    # Knowledge
+    # Knowledge (backward compat)
     getFactCount(teamId: ID!): Int!
     getFacts(teamId: ID!, category: String, entityType: String, limit: Int): [Fact!]!
     getDecisions(teamId: ID!, limit: Int): [Decision!]!
     searchKnowledge(teamId: ID!, query: String!): KnowledgeResult!
+
+    # Triple-based knowledge
+    getTriples(teamId: ID!, scopeId: ID, conceptId: ID, limit: Int): [Triple!]!
+    getTriple(tripleId: ID!): Triple
+    getConcepts(teamId: ID!, type: String, limit: Int): [Concept!]!
+    getConcept(conceptId: ID!): Concept
+    searchConcepts(teamId: ID!, query: String!, limit: Int): [Concept!]!
+    getContextNodes(teamId: ID!, type: String, parentId: ID): [ContextNode!]!
+    getTripleGraphStats(teamId: ID!): TripleGraphStats!
 
     # Ask the Company (AI Q&A)
     askCompany(teamId: ID!, input: AskCompanyInput!): AskCompanyResponse!
@@ -1040,12 +1119,11 @@ export default gql`
     # ASK/REMEMBER (Clean Knowledge Interface)
     # ============================================================================
 
-    # Preview a Remember statement - extracts facts, detects conflicts
+    # Preview a Remember statement - extracts triples, detects conflicts
     previewRemember(scopeId: ID!, statement: String!, sourceUrl: String): RememberPreview!
 
-    # Confirm and save facts from a preview
-    # hierarchyOptions allows attaching facts to knowledge graph nodes
-    confirmRemember(previewId: ID!, skipConflictIds: [ID!], hierarchyOptions: HierarchyOptions): RememberResult!
+    # Confirm and save triples from a preview
+    confirmRemember(previewId: ID!, skipConflictIds: [ID!]): RememberResult!
 
     # Cancel a Remember preview (cleanup)
     cancelRemember(previewId: ID!): Boolean!
@@ -1099,10 +1177,30 @@ export default gql`
     # Set valid time range for a fact
     setFactValidRange(factId: ID!, validFrom: DateTime, validUntil: DateTime): Fact!
 
-    # Graph Grooming (on-demand)
+    # Graph Grooming (on-demand) — legacy
     groomKnowledgeGraph(teamId: ID!): GraphGroomReport!
     mergeNodes(teamId: ID!, canonicalNodeId: ID!, duplicateNodeId: ID!): MergeResult!
     deleteOrphanNodes(teamId: ID!, nodeIds: [ID!]!): DeleteResult!
+
+    # Triple-based grooming
+    groomTripleGraph(teamId: ID!): TripleGroomReport!
+    mergeConcepts(teamId: ID!, canonicalId: ID!, duplicateId: ID!): Concept!
+
+    # Simulation
+    runSimulation(teamId: ID!, personas: [String!], cycles: Int): SimulationReport!
+  }
+
+  type SimulationReport {
+    persona: String!
+    cycles: Int!
+    rememberedCount: Int!
+    questionsAsked: Int!
+    correctAnswers: Int!
+    multiHopSuccesses: Int!
+    multiHopAttempts: Int!
+    overallScore: Float!
+    evaluations: JSON
+    graphStats: TripleGraphStats
   }
 
   type GraphGroomReport {

@@ -146,17 +146,23 @@ server.tool(
           previewRemember(scopeId: $scopeId, statement: $statement) {
             previewId
             sourceText
-            extractedFacts {
-              content
-              entityType
-              entityName
-              category
-              confidenceScore
+            extractedTriples {
+              subject
+              subjectType
+              relationship
+              object
+              objectType
+              contexts { name type }
+              confidence
+              trustTier
+              displayText
+              isNew
             }
             conflicts {
-              existingFact { id content }
+              existingDisplayText
               conflictType
               explanation
+              similarity
             }
             isMismatch
             mismatchSuggestion
@@ -166,21 +172,24 @@ server.tool(
       );
 
       const r = data.previewRemember;
+      const triples = r.extractedTriples || [];
       let output = `**Preview ID:** \`${r.previewId}\`\n`;
-      output += `**Extracted ${r.extractedFacts.length} facts:**\n`;
+      output += `**Extracted ${triples.length} knowledge triples:**\n`;
 
-      r.extractedFacts.forEach((fact: any, i: number) => {
-        const cat = fact.category ? `[${fact.category.toUpperCase()}]` : "";
-        const entity = fact.entityName ? `${fact.entityName} →` : "";
-        const conf = fact.confidenceScore != null ? ` (confidence: ${Math.round(fact.confidenceScore * 100)}%)` : "";
-        output += `\n${i + 1}. ${cat} ${entity} "${fact.content}"${conf}`;
+      triples.forEach((t: any, i: number) => {
+        const ctxStr = t.contexts?.length > 0
+          ? ` [${t.contexts.map((c: any) => c.name).join(', ')}]`
+          : '';
+        const conf = t.confidence != null ? ` (confidence: ${Math.round(t.confidence * 100)}%)` : '';
+        const newStr = t.isNew ? ' 🆕' : '';
+        output += `\n${i + 1}. **${t.subject}** → _${t.relationship}_ → **${t.object}**${ctxStr}${conf}${newStr}`;
       });
 
       if (r.conflicts?.length > 0) {
         output += `\n\n**Conflicts detected:**`;
         for (const c of r.conflicts) {
           output += `\n⚠ ${c.conflictType}: ${c.explanation}`;
-          output += `\n  Existing: "${c.existingFact.content}"`;
+          if (c.existingDisplayText) output += `\n  Existing: "${c.existingDisplayText}"`;
         }
       }
 
@@ -188,7 +197,7 @@ server.tool(
         output += `\n\n⚠ ${r.mismatchSuggestion || "This looks like a question — did you mean to use raven_ask instead?"}`;
       }
 
-      output += `\n\n**To save these facts**, call \`raven_remember_confirm\` with preview ID \`${r.previewId}\`.`;
+      output += `\n\n**To save these triples**, call \`raven_remember_confirm\` with preview ID \`${r.previewId}\`.`;
 
       return { content: [{ type: "text", text: output }] };
     } catch (err: any) {
@@ -201,10 +210,10 @@ server.tool(
 
 server.tool(
   "raven_remember_confirm",
-  "Confirm and save facts from a remember preview. Pass the preview ID from raven_remember_preview. Optionally skip specific conflict IDs to keep existing facts instead of overwriting.",
+  "Confirm and save knowledge triples from a remember preview. Pass the preview ID from raven_remember_preview. Optionally skip specific conflict IDs to keep existing knowledge instead of overwriting.",
   {
     previewId: z.string().describe("The preview ID from raven_remember_preview"),
-    skipConflictIds: z.array(z.string()).optional().describe("IDs of existing facts to keep (don't overwrite)"),
+    skipConflictIds: z.array(z.string()).optional().describe("IDs of existing triples to keep (don't overwrite)"),
   },
   async ({ previewId, skipConflictIds }) => {
     try {
@@ -214,8 +223,6 @@ server.tool(
             success
             factsCreated { id content }
             factsUpdated { id content }
-            nodeCreated { id name type }
-            attachedToNodeId
             message
           }
         }`,
@@ -227,21 +234,17 @@ server.tool(
       if (r.message) output += `${r.message}\n`;
 
       if (r.factsCreated?.length > 0) {
-        output += `\n**New facts saved (${r.factsCreated.length}):**`;
+        output += `\n**New triples saved (${r.factsCreated.length}):**`;
         for (const f of r.factsCreated) {
           output += `\n- ${f.content}`;
         }
       }
 
       if (r.factsUpdated?.length > 0) {
-        output += `\n\n**Updated facts (${r.factsUpdated.length}):**`;
+        output += `\n\n**Updated triples (${r.factsUpdated.length}):**`;
         for (const f of r.factsUpdated) {
           output += `\n- ${f.content}`;
         }
-      }
-
-      if (r.nodeCreated) {
-        output += `\n\n**Knowledge graph:** Created/updated node "${r.nodeCreated.name}" (${r.nodeCreated.type})`;
       }
 
       return { content: [{ type: "text", text: output }] };

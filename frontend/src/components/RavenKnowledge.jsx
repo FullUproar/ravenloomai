@@ -1,11 +1,10 @@
 /**
- * RavenKnowledge - Clean Ask/Remember Interface
+ * RavenKnowledge - Clean Ask/Remember Interface (Triple-based)
  *
- * Clean knowledge interface with dual action buttons:
- * - Ask: Instant AI response (read-only)
- * - Remember: Preview → Confirm flow (supervised learning)
+ * Ask: Instant AI response with dual-embedding search + multi-hop
+ * Remember: Preview → Confirm flow producing structured triples
  *
- * Resets between interactions (not continuous chat).
+ * The atom of knowledge: (Subject --relationship--> Object) [Contexts]
  */
 
 import { useState, useRef, useEffect } from 'react';
@@ -36,44 +35,35 @@ const PREVIEW_REMEMBER = gql`
     previewRemember(scopeId: $scopeId, statement: $statement, sourceUrl: $sourceUrl) {
       previewId
       sourceText
-      extractedFacts {
-        content
-        entityType
-        entityName
-        category
-        confidenceScore
+      extractedTriples {
+        subject
+        subjectType
+        relationship
+        object
+        objectType
+        contexts {
+          name
+          type
+        }
+        confidence
+        trustTier
+        displayText
+        isNew
       }
       conflicts {
-        existingFact {
-          id
-          content
-          createdAt
-        }
+        existingDisplayText
         conflictType
         explanation
       }
       isMismatch
       mismatchSuggestion
-      hierarchyAction
-      suggestedParent {
-        action
-        node {
-          id
-          name
-          type
-          scaleLevel
-        }
-        suggestedName
-        suggestedType
-        confidence
-      }
     }
   }
 `;
 
 const CONFIRM_REMEMBER = gql`
-  mutation ConfirmRemember($previewId: ID!, $skipConflictIds: [ID!], $hierarchyOptions: HierarchyOptions) {
-    confirmRemember(previewId: $previewId, skipConflictIds: $skipConflictIds, hierarchyOptions: $hierarchyOptions) {
+  mutation ConfirmRemember($previewId: ID!, $skipConflictIds: [ID!]) {
+    confirmRemember(previewId: $previewId, skipConflictIds: $skipConflictIds) {
       success
       factsCreated {
         id
@@ -83,12 +73,6 @@ const CONFIRM_REMEMBER = gql`
         id
         content
       }
-      nodeCreated {
-        id
-        name
-        type
-      }
-      attachedToNodeId
       message
     }
   }
@@ -102,7 +86,6 @@ const CANCEL_REMEMBER = gql`
 
 /**
  * ConfidenceBadge - Shows answer confidence in plain English
- * Dana trusts honesty more than false confidence.
  */
 function ConfidenceBadge({ confidence }) {
   if (confidence == null) return null;
@@ -129,14 +112,13 @@ function ConfidenceBadge({ confidence }) {
 
 /**
  * ThinkingIndicator - Contextual progress messages
- * Shows what Raven is actually doing, not just a spinner.
  */
 function ThinkingIndicator({ mode }) {
   const [messageIdx, setMessageIdx] = useState(0);
 
   const messages = mode === 'asking'
     ? ['Searching your knowledge base...', 'Analyzing connections...', 'Composing answer...']
-    : ['Reading your input...', 'Extracting key facts...', 'Checking for conflicts...'];
+    : ['Reading your input...', 'Extracting knowledge triples...', 'Checking for conflicts...'];
 
   useEffect(() => {
     setMessageIdx(0);
@@ -154,6 +136,44 @@ function ThinkingIndicator({ mode }) {
   );
 }
 
+/**
+ * TripleCard - Renders a single extracted triple
+ */
+function TripleCard({ triple, index }) {
+  const confPct = triple.confidence != null ? Math.round(triple.confidence * 100) : null;
+  const confLevel = confPct >= 80 ? 'high' : confPct >= 60 ? 'medium' : 'low';
+
+  return (
+    <div className="preview-triple">
+      <div className="triple-structure">
+        <span className="triple-subject" title={triple.subjectType}>
+          {triple.subject}
+        </span>
+        <span className="triple-relationship">
+          {triple.relationship}
+        </span>
+        <span className="triple-object" title={triple.objectType}>
+          {triple.object}
+        </span>
+      </div>
+      {triple.contexts?.length > 0 && (
+        <div className="triple-contexts">
+          {triple.contexts.map((ctx, i) => (
+            <span key={i} className="context-badge" title={ctx.type}>
+              {ctx.name}
+            </span>
+          ))}
+        </div>
+      )}
+      {confPct != null && (
+        <span className={`triple-confidence triple-confidence--${confLevel}`}>
+          {confPct}%
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [input, setInput] = useState('');
   const [followUpInput, setFollowUpInput] = useState('');
@@ -162,8 +182,6 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [rememberPreview, setRememberPreview] = useState(null);
   const [rememberResult, setRememberResult] = useState(null);
   const [skipConflictIds, setSkipConflictIds] = useState([]);
-  const [hierarchyOption, setHierarchyOption] = useState('suggested'); // 'suggested', 'standalone', 'custom'
-  const [customContainerName, setCustomContainerName] = useState('');
   const [error, setError] = useState(null);
   const inputRef = useRef(null);
   const followUpRef = useRef(null);
@@ -176,12 +194,8 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [confirmRemember, { loading: confirmLoading }] = useMutation(CONFIRM_REMEMBER);
   const [cancelRemember] = useMutation(CANCEL_REMEMBER);
 
-  // Focus input on mount
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
-  // Reset when scope changes (prevent cross-scope data blending)
   useEffect(() => {
     setInput('');
     setFollowUpInput('');
@@ -194,7 +208,6 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     inputRef.current?.focus();
   }, [scopeId]);
 
-  // Reset to idle state
   const reset = () => {
     setInput('');
     setFollowUpInput('');
@@ -203,24 +216,16 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     setRememberPreview(null);
     setRememberResult(null);
     setSkipConflictIds([]);
-    setHierarchyOption('suggested');
-    setCustomContainerName('');
     setError(null);
     inputRef.current?.focus();
   };
 
-  // Handle Ask action
   const handleAsk = async () => {
     if (!input.trim() || !scopeId) return;
-
     setMode('asking');
     setError(null);
-
     try {
-      const { data } = await askRaven({
-        variables: { scopeId, question: input.trim() }
-      });
-
+      const { data } = await askRaven({ variables: { scopeId, question: input.trim() } });
       setAskResult(data.askRaven);
       setMode('result');
     } catch (err) {
@@ -230,19 +235,13 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     }
   };
 
-  // Handle Remember action (shows preview)
   const handleRemember = async (overrideText = null) => {
     const text = overrideText || input;
     if (!text.trim() || !scopeId) return;
-
     setMode('remembering');
     setError(null);
-
     try {
-      const { data } = await previewRemember({
-        variables: { scopeId, statement: text.trim() }
-      });
-
+      const { data } = await previewRemember({ variables: { scopeId, statement: text.trim() } });
       setRememberPreview(data.previewRemember);
       setMode('preview');
     } catch (err) {
@@ -252,42 +251,15 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     }
   };
 
-  // Handle Confirm (save the facts)
   const handleConfirm = async () => {
     if (!rememberPreview?.previewId) return;
-
     try {
-      // Build hierarchy options based on user selection
-      let hierarchyOptions = null;
-      const suggested = rememberPreview.suggestedParent;
-
-      if (hierarchyOption === 'suggested' && suggested) {
-        if (suggested.action === 'attach_to_existing' && suggested.node) {
-          hierarchyOptions = { parentNodeId: suggested.node.id };
-        } else if (suggested.action === 'create_container' && suggested.suggestedName) {
-          hierarchyOptions = {
-            createContainer: true,
-            containerName: suggested.suggestedName,
-            containerType: suggested.suggestedType || 'concept'
-          };
-        }
-      } else if (hierarchyOption === 'custom' && customContainerName.trim()) {
-        hierarchyOptions = {
-          createContainer: true,
-          containerName: customContainerName.trim(),
-          containerType: 'concept'
-        };
-      }
-      // If 'standalone', hierarchyOptions stays null
-
       const { data } = await confirmRemember({
         variables: {
           previewId: rememberPreview.previewId,
           skipConflictIds,
-          hierarchyOptions
         }
       });
-
       setRememberResult(data.confirmRemember);
       setMode('result');
       onFactsChanged?.();
@@ -297,45 +269,30 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     }
   };
 
-  // Handle Cancel (discard the preview)
   const handleCancel = async () => {
     if (rememberPreview?.previewId) {
-      await cancelRemember({
-        variables: { previewId: rememberPreview.previewId }
-      });
+      await cancelRemember({ variables: { previewId: rememberPreview.previewId } });
     }
     reset();
   };
 
-  // Toggle a conflict to be skipped
-  const toggleSkipConflict = (factId) => {
+  const toggleSkipConflict = (id) => {
     setSkipConflictIds(prev =>
-      prev.includes(factId)
-        ? prev.filter(id => id !== factId)
-        : [...prev, factId]
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
 
-  // Handle mismatch detection (user typed question but clicked Remember)
-  const handleSwitchToAsk = () => {
-    handleAsk();
-  };
+  const handleSwitchToAsk = () => { handleAsk(); };
 
-  // Handle follow-up question from result view
   const handleFollowUp = async () => {
     if (!followUpInput.trim() || !scopeId) return;
-
     setInput(followUpInput);
     setFollowUpInput('');
     setMode('asking');
     setAskResult(null);
     setError(null);
-
     try {
-      const { data } = await askRaven({
-        variables: { scopeId, question: followUpInput.trim() }
-      });
-
+      const { data } = await askRaven({ variables: { scopeId, question: followUpInput.trim() } });
       setAskResult(data.askRaven);
       setMode('result');
     } catch (err) {
@@ -345,7 +302,6 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     }
   };
 
-  // Handle correction - switch to Remember mode with the correction text
   const handleCorrection = () => {
     if (!followUpInput.trim()) return;
     const correctionText = followUpInput.trim();
@@ -353,7 +309,6 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     setFollowUpInput('');
     setAskResult(null);
     setRememberResult(null);
-    // Pass text directly — no setTimeout race condition
     handleRemember(correctionText);
   };
 
@@ -361,11 +316,9 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
 
   return (
     <div className="raven-knowledge">
-      {/* Input area (shown only when idle - not during results) */}
+      {/* Input area */}
       {mode === 'idle' && (
         <div className="raven-knowledge-input-section">
-          {/* Scope label hidden — shown in RavenHome toolbar via ScopeToggle */}
-
           <div className="raven-knowledge-input-container">
             <textarea
               ref={inputRef}
@@ -376,183 +329,79 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  // Default to Ask when pressing Enter
                   handleAsk();
                 }
               }}
               rows={3}
             />
-
             <div className="raven-knowledge-actions">
-              <button
-                className="raven-knowledge-btn ask"
-                onClick={handleAsk}
-                disabled={!input.trim() || isLoading}
-              >
+              <button className="raven-knowledge-btn ask" onClick={handleAsk} disabled={!input.trim() || isLoading}>
                 {askLoading ? 'Asking...' : 'Ask'}
               </button>
-              <button
-                className="raven-knowledge-btn remember"
-                onClick={handleRemember}
-                disabled={!input.trim() || isLoading}
-              >
+              <button className="raven-knowledge-btn remember" onClick={() => handleRemember()} disabled={!input.trim() || isLoading}>
                 {previewLoading ? 'Checking...' : 'Remember'}
               </button>
             </div>
           </div>
-
-          {error && (
-            <div className="raven-knowledge-error">
-              {error}
-            </div>
-          )}
+          {error && <div className="raven-knowledge-error">{error}</div>}
         </div>
       )}
 
-      {/* Contextual loading indicator */}
+      {/* Loading */}
       {(mode === 'asking' || mode === 'remembering') && (
         <ThinkingIndicator mode={mode} />
       )}
 
-      {/* Remember Preview */}
+      {/* Remember Preview — Triple-based */}
       {mode === 'preview' && rememberPreview && (
         <div className="raven-knowledge-preview">
-          {/* Mismatch warning */}
           {rememberPreview.isMismatch && (
             <div className="raven-knowledge-mismatch">
               <div className="mismatch-icon">?</div>
               <div className="mismatch-content">
                 <p>{rememberPreview.mismatchSuggestion}</p>
-                <button className="mismatch-switch" onClick={handleSwitchToAsk}>
-                  Switch to Ask
-                </button>
+                <button className="mismatch-switch" onClick={handleSwitchToAsk}>Switch to Ask</button>
               </div>
             </div>
           )}
 
           <div className="preview-header">
             <h3>Review Before Saving</h3>
-            <p className="preview-source">From: "{rememberPreview.sourceText}"</p>
+            <p className="preview-source">From: "{rememberPreview.sourceText.substring(0, 200)}{rememberPreview.sourceText.length > 200 ? '...' : ''}"</p>
           </div>
 
-          {/* Extracted facts */}
+          {/* Extracted triples */}
           <div className="preview-facts">
-            <h4>Facts to be saved:</h4>
-            {rememberPreview.extractedFacts.map((fact, i) => (
-              <div key={i} className="preview-fact">
-                <span className="fact-content">{fact.content}</span>
-                {fact.category && (
-                  <span className="fact-category">{fact.category}</span>
-                )}
-              </div>
+            <h4>Knowledge to be saved:</h4>
+            {(rememberPreview.extractedTriples || []).map((triple, i) => (
+              <TripleCard key={i} triple={triple} index={i} />
             ))}
           </div>
 
           {/* Conflicts */}
-          {rememberPreview.conflicts.length > 0 && (
+          {rememberPreview.conflicts?.length > 0 && (
             <div className="preview-conflicts">
               <h4>Potential conflicts:</h4>
               {rememberPreview.conflicts.map((conflict, i) => (
                 <div key={i} className="preview-conflict">
                   <div className="conflict-type">{conflict.conflictType}</div>
                   <div className="conflict-explanation">{conflict.explanation}</div>
-                  <div className="conflict-existing">
-                    Existing: {(conflict.existingFact.content || '').substring(0, 100)}...
-                  </div>
-                  <label className="conflict-skip">
-                    <input
-                      type="checkbox"
-                      checked={!skipConflictIds.includes(conflict.existingFact.id)}
-                      onChange={() => toggleSkipConflict(conflict.existingFact.id)}
-                    />
-                    Replace with new info
-                  </label>
+                  {conflict.existingDisplayText && (
+                    <div className="conflict-existing">
+                      Existing: {conflict.existingDisplayText.substring(0, 100)}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Hierarchy placement options */}
-          {rememberPreview.suggestedParent && (
-            <div className="preview-hierarchy">
-              <h4>Where should this go?</h4>
-              <div className="hierarchy-options">
-                <label className={`hierarchy-option ${hierarchyOption === 'suggested' ? 'selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="hierarchy"
-                    value="suggested"
-                    checked={hierarchyOption === 'suggested'}
-                    onChange={(e) => setHierarchyOption(e.target.value)}
-                  />
-                  <div className="option-content">
-                    {rememberPreview.suggestedParent.action === 'attach_to_existing' ? (
-                      <>
-                        <span className="option-label">Group with:</span>
-                        <span className="option-value">{rememberPreview.suggestedParent.node?.name}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="option-label">Create new group:</span>
-                        <span className="option-value">{rememberPreview.suggestedParent.suggestedName}</span>
-                      </>
-                    )}
-                  </div>
-                </label>
-
-                <label className={`hierarchy-option ${hierarchyOption === 'standalone' ? 'selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="hierarchy"
-                    value="standalone"
-                    checked={hierarchyOption === 'standalone'}
-                    onChange={(e) => setHierarchyOption(e.target.value)}
-                  />
-                  <div className="option-content">
-                    <span className="option-label">Don't group — save on its own</span>
-                  </div>
-                </label>
-
-                <label className={`hierarchy-option ${hierarchyOption === 'custom' ? 'selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="hierarchy"
-                    value="custom"
-                    checked={hierarchyOption === 'custom'}
-                    onChange={(e) => setHierarchyOption(e.target.value)}
-                  />
-                  <div className="option-content">
-                    <span className="option-label">Create my own group:</span>
-                    {hierarchyOption === 'custom' && (
-                      <input
-                        type="text"
-                        className="custom-container-input"
-                        placeholder="Group name..."
-                        value={customContainerName}
-                        onChange={(e) => setCustomContainerName(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    )}
-                  </div>
-                </label>
-              </div>
-            </div>
-          )}
-
-          {/* Preview actions */}
+          {/* Actions */}
           <div className="preview-actions">
-            <button
-              className="raven-knowledge-btn cancel"
-              onClick={handleCancel}
-              disabled={confirmLoading}
-            >
+            <button className="raven-knowledge-btn cancel" onClick={handleCancel} disabled={confirmLoading}>
               Cancel
             </button>
-            <button
-              className="raven-knowledge-btn confirm"
-              onClick={handleConfirm}
-              disabled={confirmLoading}
-            >
+            <button className="raven-knowledge-btn confirm" onClick={handleConfirm} disabled={confirmLoading}>
               {confirmLoading ? 'Saving...' : 'Confirm & Save'}
             </button>
           </div>
@@ -562,7 +411,6 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
       {/* Result display */}
       {mode === 'result' && (
         <div className="raven-knowledge-result">
-          {/* Show what was asked/remembered */}
           <div className="result-query">
             <span className="result-query-label">{askResult ? 'You asked:' : 'You remembered:'}</span>
             <span className="result-query-text">{input}</span>
@@ -575,15 +423,14 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                 <ReactMarkdown>{askResult.answer}</ReactMarkdown>
               </div>
 
-              {/* Confidence badge */}
               <ConfidenceBadge confidence={askResult.confidence} />
 
-              {askResult.factsUsed.length > 0 && (
+              {askResult.factsUsed?.length > 0 && (
                 <div className="result-sources">
                   <h4>Sources:</h4>
                   {askResult.factsUsed.map(fact => (
                     <div key={fact.id} className="result-source">
-                      <span className="source-content">{fact.content.substring(0, 100)}...</span>
+                      <span className="source-content">{(fact.content || '').substring(0, 120)}</span>
                       {fact.sourceUrl && (
                         <a href={fact.sourceUrl} target="_blank" rel="noopener noreferrer" className="source-link">
                           View source
@@ -598,18 +445,14 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                 <div className="result-followups">
                   <h4>Related questions:</h4>
                   {askResult.suggestedFollowups.map((q, i) => (
-                    <button
-                      key={i}
-                      className="followup-btn"
-                      onClick={() => setFollowUpInput(q)}
-                    >
+                    <button key={i} className="followup-btn" onClick={() => setFollowUpInput(q)}>
                       {q}
                     </button>
                   ))}
                 </div>
               )}
 
-              {/* Follow-up input area */}
+              {/* Follow-up input */}
               <div className="result-followup-input">
                 <input
                   ref={followUpRef}
@@ -626,20 +469,10 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                   }}
                 />
                 <div className="followup-actions">
-                  <button
-                    className="followup-action-btn ask"
-                    onClick={handleFollowUp}
-                    disabled={!followUpInput.trim() || isLoading}
-                    title="Ask follow-up question"
-                  >
+                  <button className="followup-action-btn ask" onClick={handleFollowUp} disabled={!followUpInput.trim() || isLoading}>
                     Ask
                   </button>
-                  <button
-                    className="followup-action-btn correct"
-                    onClick={handleCorrection}
-                    disabled={!followUpInput.trim() || isLoading}
-                    title="Save as correction"
-                  >
+                  <button className="followup-action-btn correct" onClick={handleCorrection} disabled={!followUpInput.trim() || isLoading}>
                     Correct
                   </button>
                 </div>
@@ -655,34 +488,27 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
                 <div className="success-message">{rememberResult.message}</div>
               </div>
 
-              {rememberResult.factsCreated.length > 0 && (
+              {rememberResult.factsCreated?.length > 0 && (
                 <div className="result-created">
-                  <h4>New facts:</h4>
+                  <h4>New knowledge:</h4>
                   {rememberResult.factsCreated.map(fact => (
-                    <div key={fact.id} className="result-fact">
-                      {fact.content}
-                    </div>
+                    <div key={fact.id} className="result-fact">{fact.content}</div>
                   ))}
                 </div>
               )}
 
-              {rememberResult.factsUpdated.length > 0 && (
+              {rememberResult.factsUpdated?.length > 0 && (
                 <div className="result-updated">
-                  <h4>Updated facts:</h4>
+                  <h4>Updated:</h4>
                   {rememberResult.factsUpdated.map(fact => (
-                    <div key={fact.id} className="result-fact">
-                      {fact.content}
-                    </div>
+                    <div key={fact.id} className="result-fact">{fact.content}</div>
                   ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* New interaction button */}
-          <button className="raven-knowledge-new" onClick={reset}>
-            Start New
-          </button>
+          <button className="raven-knowledge-new" onClick={reset}>Start New</button>
         </div>
       )}
     </div>

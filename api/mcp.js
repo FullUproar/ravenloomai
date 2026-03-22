@@ -145,17 +145,19 @@ async function handleTool(name, args) {
         `mutation PreviewRemember($scopeId: ID!, $statement: String!) {
           previewRemember(scopeId: $scopeId, statement: $statement) {
             previewId sourceText
-            extractedFacts { content entityType entityName category confidenceScore }
-            conflicts { existingFact { id content } conflictType explanation }
+            extractedTriples { subject subjectType relationship object objectType contexts { name type } confidence displayText isNew }
+            conflicts { existingDisplayText conflictType explanation }
             isMismatch mismatchSuggestion
           }
         }`,
         { scopeId: sid, statement: args.text }
       );
       const r = data.previewRemember;
-      let output = `**Preview ID:** \`${r.previewId}\`\n**Extracted ${r.extractedFacts.length} facts:**\n`;
-      r.extractedFacts.forEach((f, i) => {
-        output += `\n${i + 1}. [${(f.category || 'general').toUpperCase()}] "${f.content}"`;
+      const triples = r.extractedTriples || [];
+      let output = `**Preview ID:** \`${r.previewId}\`\n**Extracted ${triples.length} triples:**\n`;
+      triples.forEach((t, i) => {
+        const ctx = t.contexts?.length ? ` [${t.contexts.map(c => c.name).join(', ')}]` : '';
+        output += `\n${i + 1}. **${t.subject}** → _${t.relationship}_ → **${t.object}**${ctx}`;
       });
       if (r.conflicts?.length) {
         output += `\n\n**Conflicts:**`;
@@ -172,7 +174,6 @@ async function handleTool(name, args) {
             success message
             factsCreated { id content }
             factsUpdated { id content }
-            nodeCreated { id name type }
           }
         }`,
         { previewId: args.previewId, skipConflictIds: args.skipConflictIds || [] }
@@ -181,7 +182,7 @@ async function handleTool(name, args) {
       let output = r.success ? '**Confirmed!**\n' : '**Failed.**\n';
       if (r.message) output += `${r.message}\n`;
       if (r.factsCreated?.length) {
-        output += `\n**New facts (${r.factsCreated.length}):**`;
+        output += `\n**New triples (${r.factsCreated.length}):**`;
         for (const f of r.factsCreated) output += `\n- ${f.content}`;
       }
       if (r.factsUpdated?.length) {

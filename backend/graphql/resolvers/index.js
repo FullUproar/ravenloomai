@@ -27,6 +27,9 @@ import * as RateLimiterService from '../../services/RateLimiterService.js';
 import * as ScopeService from '../../services/ScopeService.js';
 import * as RavenService from '../../services/RavenService.js';
 import * as GraphGroomingService from '../../services/GraphGroomingService.js';
+import * as TripleService from '../../services/TripleService.js';
+import * as TripleGroomingService from '../../services/TripleGroomingService.js';
+import * as SimulationService from '../../services/SimulationService.js';
 // SlackImportService temporarily disabled - needs adm-zip dependency
 // import * as SlackImportService from '../../services/SlackImportService.js';
 
@@ -472,9 +475,53 @@ const resolvers = {
       return RavenService.ask(scopeId, userId, question);
     },
 
+    // Triple-based queries
+    getTriples: async (_, { teamId, scopeId, conceptId, limit }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      if (conceptId) {
+        return TripleService.getTriplesByConcept(conceptId, { limit: limit || 50 });
+      }
+      return TripleService.getTriples(teamId, { scopeId, limit: limit || 100 });
+    },
+
+    getTriple: async (_, { tripleId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TripleService.getTriple(tripleId);
+    },
+
+    getConcepts: async (_, { teamId, type, limit }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TripleService.getConcepts(teamId, { type, limit: limit || 500 });
+    },
+
+    getConcept: async (_, { conceptId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TripleService.getConcept(conceptId);
+    },
+
+    searchConcepts: async (_, { teamId, query, limit }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TripleService.searchConcepts(teamId, query, limit || 10);
+    },
+
+    getContextNodes: async (_, { teamId, type, parentId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TripleService.getContextNodes(teamId, { type, parentId });
+    },
+
+    getTripleGraphStats: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TripleService.getGraphStats(teamId);
+    },
+
     getFactAttribution: async (_, { factId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      return RavenService.getFactAttribution(factId);
+      // Backward compat — try to find as triple
+      const triple = await TripleService.getTriple(factId);
+      if (triple) {
+        return { sourceQuote: triple.sourceText, sourceUrl: triple.sourceUrl, sourceType: triple.sourceType, createdAt: triple.createdAt };
+      }
+      return null;
     },
 
     // ============================================================================
@@ -1005,9 +1052,9 @@ const resolvers = {
       return RavenService.previewRemember(scopeId, userId, statement, sourceUrl);
     },
 
-    confirmRemember: async (_, { previewId, skipConflictIds, hierarchyOptions }, { userId }) => {
+    confirmRemember: async (_, { previewId, skipConflictIds }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      return RavenService.confirmRemember(previewId, skipConflictIds, hierarchyOptions || {}, userId);
+      return RavenService.confirmRemember(previewId, skipConflictIds, userId);
     },
 
     cancelRemember: async (_, { previewId }, { userId }) => {
@@ -1136,7 +1183,30 @@ const resolvers = {
     // Graph Grooming (on-demand)
     groomKnowledgeGraph: async (_, { teamId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      return GraphGroomingService.groomGraph(teamId);
+      // Use new triple-based grooming
+      return TripleGroomingService.groomGraph(teamId);
+    },
+
+    // Triple-based grooming
+    groomTripleGraph: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TripleGroomingService.groomGraph(teamId);
+    },
+
+    mergeConcepts: async (_, { teamId, canonicalId, duplicateId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return TripleService.mergeConcepts(teamId, canonicalId, duplicateId);
+    },
+
+    // Simulation
+    runSimulation: async (_, { teamId, personas, cycles }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const scope = await ScopeService.getTeamScope(teamId);
+      return SimulationService.runSimulation(teamId, scope.id, {
+        personas: personas || ['dana', 'shawn', 'alex'],
+        cycles: cycles || 1,
+        groomBetweenCycles: true
+      });
     },
 
     mergeNodes: async (_, { teamId, canonicalNodeId, duplicateNodeId }, { userId }) => {
@@ -1255,6 +1325,54 @@ const resolvers = {
       if (!fact.scopeId) return null;
       return ScopeService.getScopeById(fact.scopeId);
     }
+  },
+
+  // Triple-based knowledge type resolvers
+  Triple: {
+    subject: async (triple) => {
+      if (triple.subjectName) return { id: triple.subjectId, name: triple.subjectName, type: triple.subjectType, mentionCount: 0 };
+      return TripleService.getConcept(triple.subjectId);
+    },
+    object: async (triple) => {
+      if (triple.objectName) return { id: triple.objectId, name: triple.objectName, type: triple.objectType, mentionCount: 0 };
+      return TripleService.getConcept(triple.objectId);
+    },
+    contexts: async (triple) => {
+      return TripleService.getContextsForTriple(triple.id);
+    },
+    createdBy: async (triple) => {
+      if (!triple.createdBy) return null;
+      return UserService.getUserById(triple.createdBy);
+    },
+    teamId: (t) => t.team_id || t.teamId,
+    scopeId: (t) => t.scope_id || t.scopeId,
+    displayText: (t) => t.display_text || t.displayText,
+    trustTier: (t) => t.trust_tier || t.trustTier,
+    sourceText: (t) => t.source_text || t.sourceText,
+    sourceUrl: (t) => t.source_url || t.sourceUrl,
+    isChunky: (t) => t.is_chunky ?? t.isChunky ?? false,
+    isUniversal: (t) => t.is_universal ?? t.isUniversal ?? false,
+    createdAt: (t) => t.created_at || t.createdAt,
+  },
+
+  Concept: {
+    teamId: (c) => c.team_id || c.teamId,
+    mentionCount: (c) => c.mention_count ?? c.mentionCount ?? 0,
+    createdAt: (c) => c.created_at || c.createdAt,
+    updatedAt: (c) => c.updated_at || c.updatedAt,
+  },
+
+  ContextNode: {
+    parent: async (ctx) => {
+      const parentId = ctx.parent_id || ctx.parentId;
+      if (!parentId) return null;
+      const result = await pool.query('SELECT * FROM context_nodes WHERE id = $1', [parentId]);
+      return result.rows[0] || null;
+    },
+    children: async (ctx) => {
+      return TripleService.getContextChildren(ctx.id);
+    },
+    isDynamic: (ctx) => ctx.is_dynamic ?? ctx.isDynamic ?? false,
   },
 
   KnowledgeNode: {
