@@ -10,18 +10,14 @@ import { generateEmbedding, callOpenAI } from './AIService.js';
 import * as TripleService from './TripleService.js';
 
 // ============================================================================
-// DUAL-EMBEDDING SEARCH
+// DUAL-EMBEDDING SEARCH + CONCEPT-ANCHORED RETRIEVAL
 // ============================================================================
 
 /**
- * Search triples using BOTH embedding columns, merge results by max similarity.
- *
- * @param {string} teamId
- * @param {string} question - the user's question
- * @param {Object} options
- * @param {string[]} options.scopeIds - scope pre-filter
- * @param {number} options.topK - max results per embedding column
- * @returns {Array} ranked triples with similarity scores
+ * Search triples using three strategies, merged and ranked:
+ * 1. Dual-embedding search (with-context and without-context)
+ * 2. Concept-anchored search (find mentioned concepts, get ALL their triples)
+ * 3. Results merged by max similarity per triple
  */
 export async function searchTriples(teamId, question, { scopeIds = [], topK = 15 } = {}) {
   const embedding = await generateEmbedding(question);
@@ -36,7 +32,7 @@ export async function searchTriples(teamId, question, { scopeIds = [], topK = 15
     : [embeddingStr, teamId];
   const limitParam = `$${baseParams.length + 1}`;
 
-  // Search with-context embedding
+  // Strategy 1: Embedding search on with-context column
   const withCtxResults = await db.query(`
     SELECT t.*, s.name AS subject_name, s.type AS subject_type,
            o.name AS object_name, o.type AS object_type,
@@ -52,7 +48,7 @@ export async function searchTriples(teamId, question, { scopeIds = [], topK = 15
     LIMIT ${limitParam}
   `, [...baseParams, topK]);
 
-  // Search without-context embedding
+  // Strategy 2: Embedding search on without-context column
   const withoutCtxResults = await db.query(`
     SELECT t.*, s.name AS subject_name, s.type AS subject_type,
            o.name AS object_name, o.type AS object_type,
@@ -68,17 +64,50 @@ export async function searchTriples(teamId, question, { scopeIds = [], topK = 15
     LIMIT ${limitParam}
   `, [...baseParams, topK]);
 
-  // Merge: for each unique triple, take the max similarity across both searches
-  return mergeAndRank(withCtxResults.rows, withoutCtxResults.rows);
+  // Strategy 3: Concept-anchored search
+  // Find concepts mentioned in the question, then get ALL their triples
+  const conceptResults = await db.query(`
+    SELECT id, name, 1 - (embedding <=> $1) AS similarity
+    FROM concepts
+    WHERE team_id = $2 AND embedding IS NOT NULL
+    ORDER BY embedding <=> $1
+    LIMIT 5
+  `, [embeddingStr, teamId]);
+
+  const anchoredTriples = [];
+  const topConcepts = conceptResults.rows.filter(c => parseFloat(c.similarity) > 0.5);
+
+  for (const concept of topConcepts.slice(0, 3)) {
+    const conceptTriples = await db.query(`
+      SELECT t.*, s.name AS subject_name, s.type AS subject_type,
+             o.name AS object_name, o.type AS object_type,
+             'concept_anchor' AS match_type
+      FROM triples t
+      JOIN concepts s ON t.subject_id = s.id
+      JOIN concepts o ON t.object_id = o.id
+      WHERE t.team_id = $1 AND t.status = 'active'
+        AND (t.subject_id = $2 OR t.object_id = $2)
+    `, [teamId, concept.id]);
+
+    for (const row of conceptTriples.rows) {
+      // Give concept-anchored triples a similarity boost
+      // based on concept similarity * 0.9 (high but not overriding)
+      row.similarity = parseFloat(concept.similarity) * 0.9;
+      anchoredTriples.push(row);
+    }
+  }
+
+  // Merge all three sources
+  return mergeAndRank(withCtxResults.rows, withoutCtxResults.rows, anchoredTriples);
 }
 
 /**
- * Merge results from both embedding searches, keeping max similarity per triple.
+ * Merge results from multiple search strategies, keeping max similarity per triple.
  */
-function mergeAndRank(withCtxRows, withoutCtxRows) {
+function mergeAndRank(...rowArrays) {
   const byId = new Map();
 
-  for (const row of [...withCtxRows, ...withoutCtxRows]) {
+  for (const row of rowArrays.flat()) {
     const existing = byId.get(row.id);
     const similarity = parseFloat(row.similarity);
 
@@ -120,14 +149,15 @@ function mergeAndRank(withCtxRows, withoutCtxRows) {
  * Each hop follows subject_id/object_id connections.
  * Confidence decays by 0.8 per hop.
  *
- * Triggered when initial retrieval is sparse or low confidence.
+ * Only expands from the TOP results (highest similarity) to avoid noise.
  */
 export async function multiHopExpand(teamId, initialTriples, maxHops = 2) {
   const visitedTripleIds = new Set(initialTriples.map(t => t.id));
   const visitedConceptIds = new Set();
 
-  // Collect concept IDs from initial results
-  for (const t of initialTriples) {
+  // Only use top 5 results as seeds for expansion (prevents noise)
+  const seeds = initialTriples.slice(0, 5);
+  for (const t of seeds) {
     visitedConceptIds.add(t.subjectId);
     visitedConceptIds.add(t.objectId);
   }
@@ -251,30 +281,35 @@ export async function filterByContexts(triples, activeContextIds) {
 
 /**
  * Render triples as natural language context for the LLM answer prompt.
+ * Groups by concept for coherent context.
  */
 export async function buildAnswerContext(triples) {
   if (triples.length === 0) return '';
 
-  const lines = [];
+  // Group triples by their primary concept (subject)
+  const bySubject = new Map();
   for (const t of triples) {
-    const contexts = await TripleService.getContextsForTriple(t.id);
-    const ctxStr = contexts.length > 0
-      ? ` [context: ${contexts.map(c => c.name).join(', ')}]`
-      : '';
-
-    const trustStr = t.trustTier === 'official' ? ' (Official)' : '';
-    const confStr = t.similarity ? ` (relevance: ${Math.round(t.similarity * 100)}%)` : '';
-    const hopStr = t.hopDistance ? ` (${t.hopDistance}-hop connection)` : '';
-
-    lines.push(`- ${t.displayText}${ctxStr}${trustStr}${confStr}${hopStr}`);
-
-    // Include source text if different from display text
-    if (t.sourceText && t.sourceText !== t.displayText) {
-      lines.push(`  Source: "${t.sourceText.substring(0, 200)}"`);
-    }
+    const key = t.subjectName || 'General';
+    if (!bySubject.has(key)) bySubject.set(key, []);
+    bySubject.get(key).push(t);
   }
 
-  return lines.join('\n');
+  const sections = [];
+  for (const [subject, subjectTriples] of bySubject) {
+    const lines = [];
+    for (const t of subjectTriples) {
+      const contexts = await TripleService.getContextsForTriple(t.id);
+      const ctxStr = contexts.length > 0
+        ? ` [context: ${contexts.map(c => c.name).join(', ')}]`
+        : '';
+      const hopStr = t.hopDistance ? ` (via ${t.hopDistance}-hop connection)` : '';
+
+      lines.push(`  - ${t.displayText}${ctxStr}${hopStr}`);
+    }
+    sections.push(`${subject}:\n${lines.join('\n')}`);
+  }
+
+  return sections.join('\n\n');
 }
 
 // ============================================================================

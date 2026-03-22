@@ -76,8 +76,11 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     triples = [...triples, ...newTriples].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
   }
 
-  // Step 5: Take top results
-  const topTriples = triples.slice(0, 10);
+  // Step 5: Take top results, filtering out low-similarity noise
+  // Only include triples with similarity > 0.3 (prevents noise from diluting context)
+  const topTriples = triples
+    .filter(t => (t.similarity || 0) > 0.3)
+    .slice(0, 8); // Fewer, more relevant triples = better LLM answers
 
   // Step 6: Build answer context (combining triples + legacy facts)
   let answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
