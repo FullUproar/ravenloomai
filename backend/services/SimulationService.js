@@ -91,15 +91,36 @@ export async function generatePersonaStatements(personaKey) {
 }
 
 /**
- * Generate ask questions for a persona.
+ * Generate ask questions for a persona, grounded in actual ingested triples.
+ * Questions must be answerable from the data — otherwise evaluation is meaningless.
  */
-export async function generatePersonaQuestions(personaKey) {
+export async function generatePersonaQuestions(personaKey, existingTriples = []) {
   const persona = PERSONAS[personaKey];
   if (!persona) throw new Error(`Unknown persona: ${personaKey}`);
 
+  // Build a summary of what's in the graph so questions are grounded
+  const triplesSummary = existingTriples.slice(0, 30).map(t =>
+    `- ${t.displayText || t.display_text}`
+  ).join('\n');
+
   const response = await callOpenAI([
-    { role: 'system', content: persona.askPrompt }
-  ], { model: 'gpt-4o', maxTokens: 1000, temperature: 0.8 });
+    {
+      role: 'system',
+      content: `You are ${persona.name}, ${persona.description}
+
+Generate questions that can be ANSWERED from the knowledge below. Do NOT ask about things not in this knowledge base.
+
+Some questions should be DIRECT (answered by a single triple).
+Some should require MULTI-HOP reasoning (connecting 2-3 triples to form an answer).
+Some should be broad enough to require gathering multiple related facts.
+
+KNOWLEDGE IN THE SYSTEM:
+${triplesSummary || '(empty)'}
+
+Return JSON: { "questions": [{ "question": "...", "type": "direct|multi_hop|broad", "expectedAnswer": "brief expected answer" }] }
+Generate 4-6 questions.`
+    }
+  ], { model: 'gpt-4o', maxTokens: 1000, temperature: 0.5 });
 
   try {
     const parsed = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
@@ -205,9 +226,10 @@ export async function runSimulation(teamId, scopeId, config = {}) {
       await TripleGroomingService.groomGraph(teamId);
     }
 
-    // ASK PHASE
+    // ASK PHASE — generate questions grounded in actual data
+    const currentTriples = await TripleService.getTriples(teamId, { limit: 50 });
     for (const personaKey of personas) {
-      const questions = await generatePersonaQuestions(personaKey);
+      const questions = await generatePersonaQuestions(personaKey, currentTriples);
       console.log(`[Simulation] ${personaKey} asking ${questions.length} questions`);
 
       for (const qMeta of questions) {
