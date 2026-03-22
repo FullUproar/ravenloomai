@@ -165,11 +165,14 @@ export default gql`
     contexts: [ContextNode!]!
     confidence: Float!
     trustTier: String!
+    trustScore: Float
     status: String!
     sourceText: String
     sourceUrl: String
     isChunky: Boolean
     isUniversal: Boolean
+    autoConfirmed: Boolean
+    challengeFlags: [ChallengeFlag!]
     createdBy: User
     createdAt: DateTime!
   }
@@ -196,6 +199,53 @@ export default gql`
     trustTier: String!
     displayText: String!
     isNew: Boolean!
+    challengeFlags: [ChallengeFlag!]
+  }
+
+  # Challenge flag from trust pipeline
+  type ChallengeFlag {
+    type: String!        # contradiction, low_source_trust, fantastical
+    detail: String!
+    severity: String!    # hard, soft
+  }
+
+  # Trust score for a source x topic pair
+  type TrustScore {
+    sourceId: String!
+    sourceType: String!
+    topicId: ID
+    topicName: String
+    score: Float!
+    alpha: Float!
+    beta: Float!
+    sampleCount: Int!
+    level: String!       # high, medium, low, unknown
+  }
+
+  # Token usage report
+  type TokenUsageReport {
+    totalInputTokens: Int!
+    totalOutputTokens: Int!
+    totalEstimatedCostUsd: Float!
+    totalCalls: Int!
+    byOperation: [OperationUsage!]!
+  }
+
+  type OperationUsage {
+    operation: String!
+    inputTokens: Int!
+    outputTokens: Int!
+    estimatedCostUsd: Float!
+    callCount: Int!
+  }
+
+  # User model trait
+  type UserModelTrait {
+    id: ID!
+    relationship: String!
+    objectName: String!
+    confidence: Float!
+    displayText: String!
   }
 
   type ExtractedContext {
@@ -221,6 +271,7 @@ export default gql`
     conflicts: [TripleConflict!]!
     isMismatch: Boolean!
     mismatchSuggestion: String
+    triageLevel: String           # auto_confirm, review, requires_decision
   }
 
   # Result after confirming a Remember
@@ -987,6 +1038,11 @@ export default gql`
 
     # Ask a question - instant AI response (read-only)
     askRaven(scopeId: ID!, question: String!): AskResponse!
+
+    # Trust model
+    getTrustScores(teamId: ID!, sourceId: String): [TrustScore!]!
+    getTokenUsage(teamId: ID!, startDate: DateTime, endDate: DateTime): TokenUsageReport!
+    getUserModel(teamId: ID!, userId: String!): [UserModelTrait!]!
 
     # Get fact attribution/provenance
     getFactAttribution(factId: ID!): FactAttribution

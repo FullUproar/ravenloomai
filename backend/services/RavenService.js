@@ -15,6 +15,8 @@ import * as TripleService from './TripleService.js';
 import * as TripleExtractionService from './TripleExtractionService.js';
 import * as TripleRetrievalService from './TripleRetrievalService.js';
 import * as ConfirmationEventService from './ConfirmationEventService.js';
+import * as TrustService from './TrustService.js';
+import * as UserModelService from './UserModelService.js';
 
 // ============================================================================
 // ASK (Instant read-only response)
@@ -96,8 +98,21 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
       : legacyLines.join('\n');
   }
 
-  // Step 7: Generate answer
-  const answer = await generateTripleBasedAnswer(standaloneQuestion, answerContext, topTriples);
+  // Step 7: Apply user model to answer generation
+  let userModelPrompt = '';
+  try {
+    const userModel = await UserModelService.getUserModel(teamId, userId);
+    userModelPrompt = UserModelService.applyUserModel(userModel);
+  } catch { /* user model is best-effort */ }
+
+  // Step 8: Generate answer
+  const answer = await generateTripleBasedAnswer(standaloneQuestion, answerContext, topTriples, userModelPrompt);
+
+  // Step 9: Extract user model traits from this interaction (fire-and-forget)
+  UserModelService.extractUserTraits(teamId, userId, {
+    type: 'ask', content: question,
+    topics: topTriples.slice(0, 3).map(t => t.subjectName).filter(Boolean),
+  }).catch(() => {});
 
   return {
     answer: answer.text,
@@ -136,7 +151,7 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
 /**
  * Generate answer from triple-based context.
  */
-async function generateTripleBasedAnswer(question, answerContext, triples) {
+async function generateTripleBasedAnswer(question, answerContext, triples, userModelPrompt = '') {
   if (!answerContext && triples.length === 0) {
     return {
       text: "I don't have any confirmed knowledge about that yet.",
@@ -168,7 +183,7 @@ After your answer, on a new line, return a JSON object:
 {"confidence": 0.0-1.0, "followups": ["question 1", "question 2"]}
 
 confidence = 0.0 if none of the knowledge is relevant, 1.0 if the knowledge fully answers the question.
-If you said "I don't have confirmed knowledge", confidence should be 0.0-0.1.`;
+If you said "I don't have confirmed knowledge", confidence should be 0.0-0.1.${userModelPrompt}`;
 
   const response = await AIService.callOpenAI([
     { role: 'system', content: systemPrompt },
@@ -233,11 +248,30 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
     extractedTriples[i] = await TripleExtractionService.resolveConceptReferences(teamId, extractedTriples[i]);
   }
 
-  // Step 5: Detect conflicts
-  const conflicts = await TripleExtractionService.detectConflicts(teamId, extractedTriples);
+  // Step 5: Challenge pipeline — check for contradictions, plausibility, source trust
+  let challengedTriples = extractedTriples;
+  let triageLevel = 'review'; // default
+  try {
+    challengedTriples = await TrustService.challengeTriples(teamId, extractedTriples, userId, 'user');
+    const globalTrust = await TrustService.getTrustScore(teamId, userId, 'user', null);
+    const allFlags = challengedTriples.flatMap(t => t.challengeFlags || []);
+    triageLevel = TrustService.computeTriageLevel(allFlags, globalTrust.level);
+    console.log(`[RavenService.previewRemember] Challenge: ${allFlags.length} flags, triage=${triageLevel}`);
+  } catch (err) {
+    console.error('[RavenService.previewRemember] Challenge error:', err.message);
+  }
+
+  // Step 6: Detect conflicts
+  const conflicts = await TripleExtractionService.detectConflicts(teamId, challengedTriples);
   console.log(`[RavenService.previewRemember] Found ${conflicts.length} conflicts`);
 
-  // Step 6: Persist preview
+  // Step 7: Seed trust tier for official sources
+  const trustTier = challengedTriples[0]?.trustTier || 'tribal';
+  if (trustTier === 'official') {
+    TrustService.seedTrustTier(teamId, userId, 'user', 'official').catch(() => {});
+  }
+
+  // Step 8: Persist preview
   const result = await db.query(
     `INSERT INTO remember_previews
        (scope_id, team_id, user_id, source_text, source_url,
@@ -246,7 +280,7 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
      RETURNING id`,
     [
       scopeId, teamId, userId, statement, sourceUrl,
-      JSON.stringify(extractedTriples), JSON.stringify(conflicts),
+      JSON.stringify(challengedTriples), JSON.stringify(conflicts),
       mismatch.isMismatch, mismatch.suggestion
     ]
   );
@@ -254,9 +288,10 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
   return {
     previewId: result.rows[0].id,
     sourceText: statement,
-    extractedTriples,
+    extractedTriples: challengedTriples,
+    triageLevel,
     // Backward compat: render triples as extractedFacts for old consumers
-    extractedFacts: extractedTriples.map(t => ({
+    extractedFacts: challengedTriples.map(t => ({
       content: t.displayText,
       entityType: typeof t.subject === 'object' ? t.subject.type : t.subjectType,
       entityName: typeof t.subject === 'object' ? t.subject.name : t.subject,
@@ -383,7 +418,19 @@ export async function confirmRemember(previewId, skipConflictIds = [], confirmin
       outcome: 'confirmed', originalContent: extracted.displayText,
       responseTimeMs: Date.now() - new Date(row.created_at).getTime()
     }).catch(err => console.error('[confirmRemember] Event logging error:', err.message));
+
+    // Step 6: Update trust scores for source×topic
+    TrustService.updateTrustForTriple(teamId, userId, 'user', triple.id, 'confirmed')
+      .catch(err => console.error('[confirmRemember] Trust update error:', err.message));
   }
+
+  // Extract user model traits passively (fire-and-forget)
+  UserModelService.extractUserTraits(teamId, confirmer, {
+    type: 'confirm',
+    content: triplesCreated.map(t => t.displayText || t.display_text).join('; '),
+    responseTimeMs: Date.now() - new Date(row.created_at).getTime(),
+    topics: triplesCreated.flatMap(t => (t.contexts || []).map(c => c.name)).filter(Boolean),
+  }).catch(() => {});
 
   // Log skipped conflicts
   for (const skipId of skipIds) {

@@ -475,6 +475,39 @@ const resolvers = {
       return RavenService.ask(scopeId, userId, question);
     },
 
+    // Trust + usage queries
+    getTrustScores: async (_, { teamId, sourceId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const TrustService = (await import('../../services/TrustService.js')).default;
+      return TrustService.getSourceTrustProfile(teamId, sourceId || userId, 'user');
+    },
+
+    getTokenUsage: async (_, { teamId, startDate, endDate }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const TokenTrackingService = (await import('../../services/TokenTrackingService.js')).default;
+      const summary = await TokenTrackingService.getUsageSummary(teamId, { startDate, endDate });
+      const byOperation = await TokenTrackingService.getTokenUsage(teamId, { startDate, endDate, groupBy: 'operation' });
+      return {
+        totalInputTokens: parseInt(summary.total_input_tokens) || 0,
+        totalOutputTokens: parseInt(summary.total_output_tokens) || 0,
+        totalEstimatedCostUsd: parseFloat(summary.total_estimated_cost_usd) || 0,
+        totalCalls: parseInt(summary.total_calls) || 0,
+        byOperation: byOperation.map(r => ({
+          operation: r.operation,
+          inputTokens: parseInt(r.input_tokens) || 0,
+          outputTokens: parseInt(r.output_tokens) || 0,
+          estimatedCostUsd: parseFloat(r.estimated_cost_usd) || 0,
+          callCount: parseInt(r.call_count) || 0,
+        })),
+      };
+    },
+
+    getUserModel: async (_, { teamId, userId: targetUserId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const UserModelService = (await import('../../services/UserModelService.js')).default;
+      return UserModelService.getUserModel(teamId, targetUserId || userId);
+    },
+
     // Triple-based queries
     getTriples: async (_, { teamId, scopeId, conceptId, limit }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');

@@ -952,20 +952,43 @@ Return ONLY valid JSON array.`
 /**
  * Call OpenAI with messages (generic helper)
  */
-export async function callOpenAI(messages, { maxTokens = 500, temperature = 0.7 } = {}) {
+export async function callOpenAI(messages, { maxTokens = 500, temperature = 0.7, model = 'gpt-4o', teamId = null, userId = null, operation = 'unknown' } = {}) {
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model,
       messages,
       max_tokens: maxTokens,
       temperature
     });
 
-    return response.choices[0].message.content;
+    const content = response.choices[0].message.content;
+
+    // Token tracking (fire-and-forget)
+    if (response.usage) {
+      _trackTokens(teamId, userId, operation, model, response.usage).catch(() => {});
+    }
+
+    return content;
   } catch (error) {
     console.error('OpenAI call error:', error);
     throw error;
   }
+}
+
+// Lazy-loaded token tracking to avoid circular imports
+let _tokenTracker = null;
+async function _trackTokens(teamId, userId, operation, model, usage) {
+  if (!teamId) return; // Skip if no team context
+  try {
+    if (!_tokenTracker) {
+      _tokenTracker = await import('./TokenTrackingService.js');
+    }
+    await _tokenTracker.logTokenUsage({
+      teamId, userId, operation, model,
+      inputTokens: usage.prompt_tokens || 0,
+      outputTokens: usage.completion_tokens || usage.total_tokens || 0,
+    });
+  } catch { /* never block on tracking failures */ }
 }
 
 /**
@@ -1238,13 +1261,18 @@ Return ONLY valid JSON.`
 /**
  * Generate an embedding vector for text using OpenAI's embedding model
  */
-export async function generateEmbedding(text) {
+export async function generateEmbedding(text, { teamId = null, userId = null, operation = 'embed' } = {}) {
   try {
     const response = await openai.embeddings.create({
       model: 'text-embedding-3-small',
       input: text,
       dimensions: 1536
     });
+
+    // Token tracking (fire-and-forget)
+    if (response.usage && teamId) {
+      _trackTokens(teamId, userId, operation, 'text-embedding-3-small', response.usage).catch(() => {});
+    }
 
     return response.data[0].embedding;
   } catch (error) {

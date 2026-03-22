@@ -139,7 +139,25 @@ export async function searchTriples(teamId, question, { scopeIds = [], topK = 15
   }
 
   // Merge all sources
-  return mergeAndRank(withCtxResults.rows, withoutCtxResults.rows, anchoredTriples);
+  const merged = mergeAndRank(withCtxResults.rows, withoutCtxResults.rows, anchoredTriples);
+
+  // Apply trust-weighted scoring (best-effort, never blocks)
+  try {
+    const TrustService = await import('./TrustService.js');
+    for (const triple of merged) {
+      if (triple.createdBy) {
+        const trust = await TrustService.getTrustScore(teamId, triple.createdBy, 'user', null);
+        triple.trustScore = trust.score;
+        triple.trustLevel = trust.level;
+        // Blend: 80% similarity + 20% trust (trust is a tiebreaker, not a dominant signal)
+        triple.similarity = (triple.similarity * 0.8) + (trust.score * 0.2);
+      }
+    }
+    // Re-sort by blended score
+    merged.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+  } catch { /* trust weighting is best-effort */ }
+
+  return merged;
 }
 
 /**
