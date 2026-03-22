@@ -42,37 +42,57 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   const searchScopeIds = await ScopeService.getSearchScopeIds(scopeId, userId, true);
   console.log(`[RavenService.ask] Searching ${searchScopeIds.length} scopes`);
 
-  // Step 3: Dual-embedding search
+  // Step 3: Dual-embedding search on triples table
   let triples = await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
     scopeIds: searchScopeIds,
     topK: 15
   });
   console.log(`[RavenService.ask] Dual-embedding search found ${triples.length} triples`);
 
+  // Step 3b: Fallback to old facts table if no triples found
+  // (transitional — until all knowledge is migrated to triples)
+  let legacyFacts = [];
+  if (triples.length < 3) {
+    try {
+      const { default: KnowledgeService } = await import('./KnowledgeService.js');
+      const knowledge = await KnowledgeService.getKnowledgeContext(teamId, standaloneQuestion);
+      if (knowledge.facts?.length > 0) {
+        legacyFacts = knowledge.facts;
+        console.log(`[RavenService.ask] Legacy fallback found ${legacyFacts.length} facts`);
+      }
+    } catch (err) {
+      console.error('[RavenService.ask] Legacy fallback error:', err.message);
+    }
+  }
+
   // Step 4: Multi-hop expansion if initial results are sparse
-  if (TripleRetrievalService.shouldExpand(triples)) {
+  if (triples.length > 0 && TripleRetrievalService.shouldExpand(triples)) {
     console.log(`[RavenService.ask] Expanding with multi-hop...`);
     const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 2);
     console.log(`[RavenService.ask] Multi-hop found ${expanded.length} additional triples`);
 
-    // Merge and re-rank
     const existingIds = new Set(triples.map(t => t.id));
     const newTriples = expanded.filter(t => !existingIds.has(t.id));
     triples = [...triples, ...newTriples].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
   }
 
-  // Step 5: Context post-filter (if active contexts set)
-  // For now, no active context filtering until UI supports it
-  // TODO: const activeContextIds = await getActiveContextIds(scopeId);
-  // TODO: triples = await TripleRetrievalService.filterByContexts(triples, activeContextIds);
-
-  // Step 6: Take top results
+  // Step 5: Take top results
   const topTriples = triples.slice(0, 10);
 
-  // Step 7: Build answer context
-  const answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
+  // Step 6: Build answer context (combining triples + legacy facts)
+  let answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
 
-  // Step 8: Generate answer
+  // Append legacy facts if we have them
+  if (legacyFacts.length > 0) {
+    const legacyLines = legacyFacts.slice(0, 10).map(f =>
+      `- ${f.content}${f.sourceQuote ? ` (Source: "${f.sourceQuote.substring(0, 100)}")` : ''}`
+    );
+    answerContext = answerContext
+      ? `${answerContext}\n\nAdditional confirmed facts:\n${legacyLines.join('\n')}`
+      : legacyLines.join('\n');
+  }
+
+  // Step 7: Generate answer
   const answer = await generateTripleBasedAnswer(standaloneQuestion, answerContext, topTriples);
 
   return {
@@ -89,13 +109,22 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
       createdAt: t.createdAt,
     })),
     // Backward compat: render triples as "facts" for existing consumers
-    factsUsed: topTriples.slice(0, 5).map(t => ({
-      id: t.id,
-      content: t.displayText,
-      sourceQuote: t.sourceText,
-      sourceUrl: t.sourceUrl,
-      createdAt: t.createdAt,
-    })),
+    // If no triples, use legacy facts
+    factsUsed: topTriples.length > 0
+      ? topTriples.slice(0, 5).map(t => ({
+          id: t.id,
+          content: t.displayText,
+          sourceQuote: t.sourceText,
+          sourceUrl: t.sourceUrl,
+          createdAt: t.createdAt,
+        }))
+      : legacyFacts.slice(0, 5).map(f => ({
+          id: f.id,
+          content: f.content,
+          sourceQuote: f.sourceQuote || f.source_quote,
+          sourceUrl: f.sourceUrl || f.source_url,
+          createdAt: f.createdAt || f.created_at,
+        })),
     suggestedFollowups: answer.followups || []
   };
 }
@@ -215,7 +244,24 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
     previewId: result.rows[0].id,
     sourceText: statement,
     extractedTriples,
-    conflicts,
+    // Backward compat: render triples as extractedFacts for old consumers
+    extractedFacts: extractedTriples.map(t => ({
+      content: t.displayText,
+      entityType: typeof t.subject === 'object' ? t.subject.type : t.subjectType,
+      entityName: typeof t.subject === 'object' ? t.subject.name : t.subject,
+      category: null,
+      confidenceScore: t.confidence,
+      contextTags: (t.contexts || []).map(c => typeof c === 'object' ? c.name : c),
+    })),
+    conflicts: conflicts.map(c => ({
+      ...c,
+      // Backward compat: map existingTriple to existingFact
+      existingFact: c.existingTriple ? {
+        id: c.existingTriple.id,
+        content: c.existingTriple.displayText,
+        createdAt: c.existingTriple.createdAt,
+      } : null,
+    })),
     isMismatch: mismatch.isMismatch,
     mismatchSuggestion: mismatch.suggestion
   };
