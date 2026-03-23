@@ -1,39 +1,28 @@
 /**
- * RavenKnowledge - Clean Ask/Remember Interface (Triple-based)
+ * RavenKnowledge - Chat-style Ask/Remember Interface
  *
- * Ask: Instant AI response with dual-embedding search + multi-hop
- * Remember: Preview → Confirm flow producing structured triples
- *
- * The atom of knowledge: (Subject --relationship--> Object) [Contexts]
+ * Conversational flow:
+ * - Input always visible at bottom
+ * - Messages scroll up, newest at bottom
+ * - Auto-detect correction vs question
+ * - Remember previews appear inline with confirm/cancel
+ * - Seamless topic switching — no scrolling needed
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { gql, useMutation, useLazyQuery } from '@apollo/client';
 import ReactMarkdown from 'react-markdown';
 import './RavenKnowledge.css';
 
-// GraphQL Operations
+// ── GraphQL ─────────────────────────────────────────────────────────────────
+
 const ASK_RAVEN = gql`
   query AskRaven($scopeId: ID!, $question: String!, $conversationHistory: [ConversationMessageInput!]) {
     askRaven(scopeId: $scopeId, question: $question, conversationHistory: $conversationHistory) {
       answer
       confidence
-      factsUsed {
-        id
-        content
-        sourceQuote
-        sourceUrl
-        createdAt
-      }
+      factsUsed { id content sourceQuote sourceUrl createdAt }
       suggestedFollowups
-    }
-  }
-`;
-
-const LOG_CORRECTION = gql`
-  mutation LogCorrection($teamId: ID!, $question: String!, $wrongAnswer: String!, $correctInfo: String, $tripleIds: [ID!]) {
-    logCorrection(teamId: $teamId, question: $question, wrongAnswer: $wrongAnswer, correctInfo: $correctInfo, tripleIds: $tripleIds) {
-      success
     }
   }
 `;
@@ -44,33 +33,14 @@ const PREVIEW_REMEMBER = gql`
       previewId
       sourceText
       extractedTriples {
-        subject
-        subjectType
-        relationship
-        object
-        objectType
-        contexts {
-          name
-          type
-        }
-        confidence
-        trustTier
-        displayText
-        isNew
-        challengeFlags {
-          type
-          detail
-          severity
-        }
+        subject subjectType relationship object objectType
+        contexts { name type }
+        confidence trustTier displayText isNew
+        challengeFlags { type detail severity }
       }
       triageLevel
-      conflicts {
-        existingDisplayText
-        conflictType
-        explanation
-      }
-      isMismatch
-      mismatchSuggestion
+      conflicts { existingDisplayText conflictType explanation }
+      isMismatch mismatchSuggestion
     }
   }
 `;
@@ -79,575 +49,451 @@ const CONFIRM_REMEMBER = gql`
   mutation ConfirmRemember($previewId: ID!, $skipConflictIds: [ID!]) {
     confirmRemember(previewId: $previewId, skipConflictIds: $skipConflictIds) {
       success
-      factsCreated {
-        id
-        content
-      }
-      factsUpdated {
-        id
-        content
-      }
+      factsCreated { id content }
+      factsUpdated { id content }
       message
     }
   }
 `;
 
 const CANCEL_REMEMBER = gql`
-  mutation CancelRemember($previewId: ID!) {
-    cancelRemember(previewId: $previewId)
+  mutation CancelRemember($previewId: ID!) { cancelRemember(previewId: $previewId) }
+`;
+
+const LOG_CORRECTION = gql`
+  mutation LogCorrection($teamId: ID!, $question: String!, $wrongAnswer: String!, $correctInfo: String, $tripleIds: [ID!]) {
+    logCorrection(teamId: $teamId, question: $question, wrongAnswer: $wrongAnswer, correctInfo: $correctInfo, tripleIds: $tripleIds) { success }
   }
 `;
 
-/**
- * ConfidenceBadge - Shows answer confidence in plain English
- */
-function ConfidenceBadge({ confidence }) {
-  if (confidence == null) return null;
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-  let level, label;
-  if (confidence >= 0.7) {
-    level = 'high';
-    label = 'Strong match from your saved knowledge';
-  } else if (confidence >= 0.4) {
-    level = 'medium';
-    label = 'Partial match — some info may be missing';
-  } else {
-    level = 'low';
-    label = 'Not much to go on — double-check this';
-  }
-
-  return (
-    <div className={`confidence-badge confidence-badge--${level}`}>
-      <span className="confidence-dot" />
-      <span>{label}</span>
-    </div>
-  );
+function looksLikeCorrection(text) {
+  const t = text.trim().toLowerCase();
+  if (/^(no[,. ]|nope|wrong|incorrect|actually|that's not|thats not|not quite|correction|update:|fyi |the answer is|it's actually|its actually|should be|it is )/.test(t)) return true;
+  if (!/[?]$/.test(t) && !/^(what|when|where|who|why|how|is |are |do |does |can |will |should |tell )/.test(t)) return true;
+  return false;
 }
 
-/**
- * ThinkingIndicator - Contextual progress messages
- */
-function ThinkingIndicator({ mode }) {
-  const [messageIdx, setMessageIdx] = useState(0);
+// ── Sub-components ──────────────────────────────────────────────────────────
 
-  const messages = mode === 'asking'
-    ? ['Searching your knowledge base...', 'Analyzing connections...', 'Composing answer...']
-    : ['Reading your input...', 'Extracting knowledge triples...', 'Checking for conflicts...'];
+function ThinkingBubble({ mode }) {
+  const [idx, setIdx] = useState(0);
+  const msgs = mode === 'asking'
+    ? ['Searching your knowledge...', 'Analyzing connections...', 'Composing answer...']
+    : ['Reading your input...', 'Extracting knowledge...', 'Checking for conflicts...'];
 
   useEffect(() => {
-    setMessageIdx(0);
-    const interval = setInterval(() => {
-      setMessageIdx(prev => Math.min(prev + 1, messages.length - 1));
-    }, 2000);
+    setIdx(0);
+    const interval = setInterval(() => setIdx(p => Math.min(p + 1, msgs.length - 1)), 2000);
     return () => clearInterval(interval);
   }, [mode]);
 
   return (
-    <div className="raven-knowledge-loading">
-      <div className="raven-thinking-dot" />
-      <span className="raven-thinking-text">{messages[messageIdx]}</span>
+    <div className="chat-msg chat-msg--raven">
+      <div className="chat-bubble chat-bubble--raven chat-bubble--thinking">
+        <div className="thinking-dot" />
+        <span>{msgs[idx]}</span>
+      </div>
     </div>
   );
 }
 
-/**
- * TripleCard - Renders a single extracted triple with trust indicators
- */
-function TripleCard({ triple, index }) {
-  const confPct = triple.confidence != null ? Math.round(triple.confidence * 100) : null;
-  const confLevel = confPct >= 80 ? 'high' : confPct >= 60 ? 'medium' : 'low';
-  const flags = triple.challengeFlags || [];
-  const hasHardFlag = flags.some(f => f.severity === 'hard');
-  const hasSoftFlag = flags.some(f => f.severity === 'soft');
-
+function ConfidenceBadge({ confidence }) {
+  if (confidence == null) return null;
+  let level, label;
+  if (confidence >= 0.7) { level = 'high'; label = 'Strong match'; }
+  else if (confidence >= 0.4) { level = 'medium'; label = 'Partial match'; }
+  else { level = 'low'; label = 'Low confidence'; }
   return (
-    <div className={`preview-triple ${hasHardFlag ? 'preview-triple--flagged-hard' : hasSoftFlag ? 'preview-triple--flagged-soft' : ''}`}>
+    <span className={`confidence-badge confidence-badge--${level}`}>
+      <span className="confidence-dot" />
+      {label}
+    </span>
+  );
+}
+
+function TriplePreview({ triple }) {
+  const flags = triple.challengeFlags || [];
+  const hasFlag = flags.length > 0;
+  return (
+    <div className={`triple-preview ${hasFlag ? 'triple-preview--flagged' : ''}`}>
       <div className="triple-structure">
-        <span className="triple-subject" title={triple.subjectType}>
-          {triple.subject}
-        </span>
-        <span className="triple-relationship">
-          {triple.relationship}
-        </span>
-        <span className="triple-object" title={triple.objectType}>
-          {triple.object}
-        </span>
+        <span className="triple-subject">{triple.subject}</span>
+        <span className="triple-rel">{triple.relationship}</span>
+        <span className="triple-object">{triple.object}</span>
       </div>
-      <div className="triple-meta">
-        {triple.contexts?.length > 0 && (
-          <div className="triple-contexts">
-            {triple.contexts.map((ctx, i) => (
-              <span key={i} className="context-badge" title={ctx.type}>
-                {ctx.name}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="triple-badges">
-          {triple.trustTier && (
-            <span className={`trust-tier-badge trust-tier-badge--${triple.trustTier}`}>
-              {triple.trustTier === 'official' ? 'Official' : 'Tribal'}
-            </span>
-          )}
-          {confPct != null && (
-            <span className={`triple-confidence triple-confidence--${confLevel}`}>
-              {confPct}%
-            </span>
-          )}
-        </div>
-      </div>
-      {flags.length > 0 && (
-        <div className="triple-challenge-flags">
-          {flags.map((flag, i) => (
-            <div key={i} className={`challenge-flag challenge-flag--${flag.severity}`}>
-              <span className="challenge-flag-icon">{flag.severity === 'hard' ? '!' : '?'}</span>
-              <span className="challenge-flag-detail">{flag.detail}</span>
-            </div>
-          ))}
+      {triple.contexts?.length > 0 && (
+        <div className="triple-contexts">
+          {triple.contexts.map((c, i) => <span key={i} className="ctx-badge">{c.name}</span>)}
         </div>
       )}
+      {flags.map((f, i) => (
+        <div key={i} className={`challenge-flag challenge-flag--${f.severity}`}>
+          {f.severity === 'hard' ? '!' : '?'} {f.detail}
+        </div>
+      ))}
     </div>
   );
 }
+
+// ── Main Component ──────────────────────────────────────────────────────────
 
 export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, teamId }) {
   const [input, setInput] = useState('');
-  const [followUpInput, setFollowUpInput] = useState('');
-  const [mode, setMode] = useState('idle'); // idle, asking, remembering, preview, result
-  const [askResult, setAskResult] = useState(null);
-  const [rememberPreview, setRememberPreview] = useState(null);
-  const [rememberResult, setRememberResult] = useState(null);
-  const [skipConflictIds, setSkipConflictIds] = useState([]);
-  const [error, setError] = useState(null);
-  const [conversationHistory, setConversationHistory] = useState([]);
-  const inputRef = useRef(null);
-  const followUpRef = useRef(null);
+  const [messages, setMessages] = useState([]); // { id, role, type, content, data }
+  const [pendingPreview, setPendingPreview] = useState(null); // active remember preview
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMode, setLoadingMode] = useState(null); // 'asking' | 'remembering'
 
-  // GraphQL operations
-  const [askRaven, { loading: askLoading }] = useLazyQuery(ASK_RAVEN, {
-    fetchPolicy: 'network-only',
-    errorPolicy: 'all', // Return both data and errors so we can see what went wrong
-  });
-  const [previewRemember, { loading: previewLoading }] = useMutation(PREVIEW_REMEMBER);
-  const [confirmRemember, { loading: confirmLoading }] = useMutation(CONFIRM_REMEMBER);
+  const inputRef = useRef(null);
+  const chatEndRef = useRef(null);
+  const msgIdRef = useRef(0);
+
+  const [askRaven] = useLazyQuery(ASK_RAVEN, { fetchPolicy: 'network-only', errorPolicy: 'all' });
+  const [previewRemember] = useMutation(PREVIEW_REMEMBER);
+  const [confirmRemember] = useMutation(CONFIRM_REMEMBER);
   const [cancelRemember] = useMutation(CANCEL_REMEMBER);
   const [logCorrectionMutation] = useMutation(LOG_CORRECTION);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  const nextId = () => ++msgIdRef.current;
 
+  // Auto-scroll to bottom when new messages appear
   useEffect(() => {
-    setInput('');
-    setFollowUpInput('');
-    setMode('idle');
-    setAskResult(null);
-    setRememberPreview(null);
-    setRememberResult(null);
-    setSkipConflictIds([]);
-    setError(null);
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading, pendingPreview]);
+
+  // Focus input on mount and scope change
+  useEffect(() => {
     inputRef.current?.focus();
+    setMessages([]);
+    setPendingPreview(null);
   }, [scopeId]);
 
-  const reset = (clearHistory = true) => {
+  // Add a message to the chat
+  const addMsg = useCallback((role, type, content, data = null) => {
+    const msg = { id: nextId(), role, type, content, data };
+    setMessages(prev => [...prev, msg]);
+    return msg;
+  }, []);
+
+  // Build conversation history for backend context
+  const getConversationHistory = useCallback(() => {
+    return messages
+      .filter(m => m.type === 'ask' || m.type === 'answer')
+      .slice(-6)
+      .map(m => ({ role: m.role === 'raven' ? 'assistant' : 'user', content: m.content }));
+  }, [messages]);
+
+  // ── Ask ──────────────────────────────────────────────────────────────────
+
+  const doAsk = useCallback(async (question) => {
+    if (!question.trim() || !scopeId || isLoading) return;
+    const q = question.trim();
+
+    addMsg('user', 'ask', q);
     setInput('');
-    setFollowUpInput('');
-    setMode('idle');
-    setAskResult(null);
-    setRememberPreview(null);
-    setRememberResult(null);
-    setSkipConflictIds([]);
-    setError(null);
-    if (clearHistory) setConversationHistory([]);
-    inputRef.current?.focus();
-  };
+    setIsLoading(true);
+    setLoadingMode('asking');
 
-  const handleAsk = async (questionOverride = null) => {
-    const question = (questionOverride || input).trim();
-    if (!question || !scopeId) return;
-    setMode('asking');
-    setError(null);
     try {
-      // Pass conversation history for follow-up context resolution
-      const historyForBackend = conversationHistory.slice(-6).map(h => ({
-        role: h.role,
-        content: h.content,
-      }));
-
+      const history = getConversationHistory();
       const result = await askRaven({
         variables: {
-          scopeId,
-          question,
-          conversationHistory: historyForBackend.length > 0 ? historyForBackend : undefined,
+          scopeId, question: q,
+          conversationHistory: history.length > 0 ? history : undefined,
         }
       });
 
       if (result.error) throw result.error;
       if (!result.data?.askRaven) throw new Error('No response from Raven');
-      setAskResult(result.data.askRaven);
 
-      // Append to conversation history
-      const askData = result.data.askRaven;
-      setConversationHistory(prev => [
-        ...prev,
-        { role: 'user', content: question },
-        { role: 'assistant', content: askData.answer, confidence: askData.confidence },
-      ]);
-
-      setMode('result');
+      const r = result.data.askRaven;
+      addMsg('raven', 'answer', r.answer, {
+        confidence: r.confidence,
+        factsUsed: r.factsUsed,
+        suggestedFollowups: r.suggestedFollowups,
+        originalQuestion: q,
+      });
     } catch (err) {
       console.error('Ask error:', err);
-      const msg = err?.graphQLErrors?.[0]?.message || err?.message || '';
-      if (msg.includes('timeout') || msg.includes('FUNCTION_INVOCATION_TIMEOUT')) {
-        setError('That took too long — the AI is warming up. Try again in a moment.');
-      } else {
-        setError(`Something went wrong: ${msg || 'Unknown error'}. Try again?`);
-      }
-      setMode('idle');
+      const msg = err?.graphQLErrors?.[0]?.message || err?.message || 'Unknown error';
+      addMsg('raven', 'error', msg.includes('timeout')
+        ? 'That took too long — try again in a moment.'
+        : `Something went wrong: ${msg}`);
+    } finally {
+      setIsLoading(false);
+      setLoadingMode(null);
+      inputRef.current?.focus();
     }
-  };
+  }, [scopeId, isLoading, addMsg, getConversationHistory, askRaven]);
 
-  const handleRemember = async (overrideText = null) => {
-    const text = overrideText || input;
-    if (!text.trim() || !scopeId) return;
-    setMode('remembering');
-    setError(null);
+  // ── Remember ─────────────────────────────────────────────────────────────
+
+  const doRemember = useCallback(async (text) => {
+    if (!text.trim() || !scopeId || isLoading) return;
+    const t = text.trim();
+
+    addMsg('user', 'remember', t);
+    setInput('');
+    setIsLoading(true);
+    setLoadingMode('remembering');
+
     try {
-      const { data } = await previewRemember({ variables: { scopeId, statement: text.trim() } });
-      setRememberPreview(data.previewRemember);
-      setMode('preview');
+      const { data } = await previewRemember({ variables: { scopeId, statement: t } });
+      setPendingPreview(data.previewRemember);
     } catch (err) {
-      console.error('Remember preview error:', err);
-      setError('Something went wrong reading that. Try again?');
-      setMode('idle');
+      console.error('Remember error:', err);
+      addMsg('raven', 'error', 'Something went wrong reading that. Try again?');
+    } finally {
+      setIsLoading(false);
+      setLoadingMode(null);
     }
-  };
+  }, [scopeId, isLoading, addMsg, previewRemember]);
 
-  const handleConfirm = async () => {
-    if (!rememberPreview?.previewId) return;
+  const doConfirm = useCallback(async (skipIds = []) => {
+    if (!pendingPreview?.previewId) return;
+    setIsLoading(true);
+
     try {
       const { data } = await confirmRemember({
-        variables: {
-          previewId: rememberPreview.previewId,
-          skipConflictIds,
-        }
+        variables: { previewId: pendingPreview.previewId, skipConflictIds: skipIds }
       });
-      setRememberResult(data.confirmRemember);
-      setMode('result');
+      const r = data.confirmRemember;
+      const saved = [...(r.factsCreated || []), ...(r.factsUpdated || [])];
+      addMsg('raven', 'confirmed', r.message || `Saved ${saved.length} knowledge triples.`, { saved });
       onFactsChanged?.();
     } catch (err) {
       console.error('Confirm error:', err);
-      setError('Something went wrong saving. Try again?');
+      addMsg('raven', 'error', 'Something went wrong saving. Try again?');
+    } finally {
+      setPendingPreview(null);
+      setIsLoading(false);
+      inputRef.current?.focus();
     }
-  };
+  }, [pendingPreview, addMsg, confirmRemember, onFactsChanged]);
 
-  const handleCancel = async () => {
-    if (rememberPreview?.previewId) {
-      await cancelRemember({ variables: { previewId: rememberPreview.previewId } });
+  const doCancel = useCallback(async () => {
+    if (pendingPreview?.previewId) {
+      cancelRemember({ variables: { previewId: pendingPreview.previewId } }).catch(() => {});
     }
-    reset();
-  };
+    addMsg('raven', 'system', 'Cancelled — nothing saved.');
+    setPendingPreview(null);
+    inputRef.current?.focus();
+  }, [pendingPreview, addMsg, cancelRemember]);
 
-  const toggleSkipConflict = (id) => {
-    setSkipConflictIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  };
+  // ── Correction (follow-up that corrects a previous answer) ───────────
 
-  const handleSwitchToAsk = () => { handleAsk(); };
-
-  /**
-   * Detect if a follow-up is a correction/addition vs a new question.
-   * Corrections: "actually it's July", "no, the price is $20", "that's wrong, it should be..."
-   * Questions: "what about...", "when does...", "how many..."
-   */
-  function looksLikeCorrection(text) {
-    const t = text.trim().toLowerCase();
-    // Explicit correction signals
-    if (/^(no[,. ]|nope|wrong|incorrect|actually|that's not|thats not|not quite|correction|update:|fyi |the answer is|it's actually|its actually|should be|it is )/.test(t)) return true;
-    // Statements (not questions) after an answer are likely corrections/additions
-    if (!/[?]$/.test(t) && !/^(what|when|where|who|why|how|is |are |do |does |can |will |should )/.test(t)) return true;
-    return false;
-  }
-
-  const handleFollowUp = async () => {
-    if (!followUpInput.trim() || !scopeId) return;
-    const text = followUpInput.trim();
-
-    // Auto-detect: correction or question?
-    if (looksLikeCorrection(text)) {
-      handleCorrection();
-      return;
+  const doCorrection = useCallback(async (text) => {
+    // Find the last answer to get context
+    const lastAnswer = [...messages].reverse().find(m => m.type === 'answer');
+    if (lastAnswer?.data && teamId) {
+      logCorrectionMutation({
+        variables: {
+          teamId,
+          question: lastAnswer.data.originalQuestion || '',
+          wrongAnswer: lastAnswer.content,
+          correctInfo: text,
+          tripleIds: (lastAnswer.data.factsUsed || []).map(f => f.id).filter(Boolean),
+        }
+      }).catch(() => {});
     }
+    // Treat the correction as a Remember
+    doRemember(text);
+  }, [messages, teamId, logCorrectionMutation, doRemember]);
 
-    setInput(text);
-    setFollowUpInput('');
-    setAskResult(null);
-    setError(null);
-    // Don't clear conversation history — this IS a follow-up
-    await handleAsk(text);
-  };
+  // ── Input handler ────────────────────────────────────────────────────────
 
-  const handleCorrection = async () => {
-    if (!followUpInput.trim()) return;
-    const correctionText = followUpInput.trim();
+  const handleSubmit = useCallback((mode = 'auto') => {
+    const text = input.trim();
+    if (!text || isLoading) return;
 
-    // Log the correction signal for trust model learning
-    if (teamId && askResult) {
-      try {
-        await logCorrectionMutation({
-          variables: {
-            teamId,
-            question: input,
-            wrongAnswer: askResult.answer,
-            correctInfo: correctionText,
-            tripleIds: (askResult.factsUsed || []).map(f => f.id).filter(Boolean),
-          }
-        });
-      } catch { /* correction logging is best-effort */ }
+    if (mode === 'remember') {
+      doRemember(text);
+    } else if (mode === 'ask') {
+      doAsk(text);
+    } else {
+      // Auto-detect: if there's a previous answer, check for correction
+      const hasAnswer = messages.some(m => m.type === 'answer');
+      if (hasAnswer && looksLikeCorrection(text)) {
+        doCorrection(text);
+      } else {
+        doAsk(text);
+      }
     }
+  }, [input, isLoading, doAsk, doRemember, doCorrection, messages]);
 
-    // Add correction to conversation history
-    setConversationHistory(prev => [
-      ...prev,
-      { role: 'user', content: `Correction: ${correctionText}` },
-    ]);
-
-    setInput(correctionText);
-    setFollowUpInput('');
-    setAskResult(null);
-    setRememberResult(null);
-    handleRemember(correctionText);
-  };
-
-  const isLoading = askLoading || previewLoading || confirmLoading;
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="raven-knowledge">
-      {/* Input area */}
-      {mode === 'idle' && (
-        <div className="raven-knowledge-input-section">
-          <div className="raven-knowledge-input-container">
-            <textarea
-              ref={inputRef}
-              className="raven-knowledge-input"
-              placeholder="Tell me something, or ask me anything..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleAsk();
-                }
-              }}
-              rows={3}
-            />
-            <div className="raven-knowledge-actions">
-              <button className="raven-knowledge-btn ask" onClick={() => handleAsk()} disabled={!input.trim() || isLoading}>
-                {askLoading ? 'Asking...' : 'Ask'}
-              </button>
-              <button className="raven-knowledge-btn remember" onClick={() => handleRemember()} disabled={!input.trim() || isLoading}>
-                {previewLoading ? 'Checking...' : 'Remember'}
-              </button>
-            </div>
+    <div className="raven-chat">
+      {/* Chat messages */}
+      <div className="raven-chat-messages">
+        {messages.length === 0 && !isLoading && (
+          <div className="raven-chat-empty">
+            <div className="raven-chat-empty-icon">&#x1F56E;</div>
+            <p>Ask me anything, or tell me something to remember.</p>
+            {scopeName && <p className="raven-chat-scope">Scope: {scopeName}</p>}
           </div>
-          {error && <div className="raven-knowledge-error">{error}</div>}
-        </div>
-      )}
+        )}
 
-      {/* Loading */}
-      {(mode === 'asking' || mode === 'remembering') && (
-        <ThinkingIndicator mode={mode} />
-      )}
-
-      {/* Remember Preview — Triple-based */}
-      {mode === 'preview' && rememberPreview && (
-        <div className="raven-knowledge-preview">
-          {rememberPreview.isMismatch && (
-            <div className="raven-knowledge-mismatch">
-              <div className="mismatch-icon">?</div>
-              <div className="mismatch-content">
-                <p>{rememberPreview.mismatchSuggestion}</p>
-                <button className="mismatch-switch" onClick={handleSwitchToAsk}>Switch to Ask</button>
+        {messages.map(msg => {
+          if (msg.role === 'user') {
+            return (
+              <div key={msg.id} className="chat-msg chat-msg--user">
+                <div className="chat-bubble chat-bubble--user">
+                  <span className="chat-mode-label">{msg.type === 'remember' ? 'Remember' : msg.type === 'ask' ? 'Ask' : ''}</span>
+                  {msg.content}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          }
 
-          <div className="preview-header">
-            <h3>Review Before Saving</h3>
-            <p className="preview-source">From: "{rememberPreview.sourceText.substring(0, 200)}{rememberPreview.sourceText.length > 200 ? '...' : ''}"</p>
-            {rememberPreview.triageLevel === 'auto_confirm' && (
-              <div className="triage-banner triage-banner--auto">
-                <span className="triage-icon">&#10003;</span>
-                Trusted source — auto-confirmed
-              </div>
-            )}
-            {rememberPreview.triageLevel === 'requires_decision' && (
-              <div className="triage-banner triage-banner--decision">
-                <span className="triage-icon">!</span>
-                Needs your attention — potential issues detected
-              </div>
-            )}
-          </div>
+          if (msg.type === 'answer') {
+            return (
+              <div key={msg.id} className="chat-msg chat-msg--raven">
+                <div className="chat-bubble chat-bubble--raven">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <ConfidenceBadge confidence={msg.data?.confidence} />
 
-          {/* Extracted triples */}
-          <div className="preview-facts">
-            <h4>Knowledge to be saved:</h4>
-            {(rememberPreview.extractedTriples || []).map((triple, i) => (
-              <TripleCard key={i} triple={triple} index={i} />
-            ))}
-          </div>
+                  {msg.data?.factsUsed?.length > 0 && (
+                    <details className="chat-sources">
+                      <summary>{msg.data.factsUsed.length} source{msg.data.factsUsed.length !== 1 ? 's' : ''}</summary>
+                      {msg.data.factsUsed.map(f => (
+                        <div key={f.id} className="chat-source-item">{(f.content || '').substring(0, 150)}</div>
+                      ))}
+                    </details>
+                  )}
 
-          {/* Conflicts */}
-          {rememberPreview.conflicts?.length > 0 && (
-            <div className="preview-conflicts">
-              <h4>Potential conflicts:</h4>
-              {rememberPreview.conflicts.map((conflict, i) => (
-                <div key={i} className="preview-conflict">
-                  <div className="conflict-type">{conflict.conflictType}</div>
-                  <div className="conflict-explanation">{conflict.explanation}</div>
-                  {conflict.existingDisplayText && (
-                    <div className="conflict-existing">
-                      Existing: {conflict.existingDisplayText.substring(0, 100)}
+                  {msg.data?.suggestedFollowups?.length > 0 && (
+                    <div className="chat-followups">
+                      {msg.data.suggestedFollowups.map((q, i) => (
+                        <button key={i} className="chat-followup-btn" onClick={() => setInput(q)}>{q}</button>
+                      ))}
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="preview-actions">
-            <button className="raven-knowledge-btn cancel" onClick={handleCancel} disabled={confirmLoading}>
-              Cancel
-            </button>
-            <button className="raven-knowledge-btn confirm" onClick={handleConfirm} disabled={confirmLoading}>
-              {confirmLoading ? 'Saving...' : 'Confirm & Save'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Result display */}
-      {mode === 'result' && (
-        <div className="raven-knowledge-result">
-          {/* Conversation thread (previous exchanges) */}
-          {conversationHistory.length > 2 && askResult && (
-            <div className="conversation-thread">
-              {conversationHistory.slice(0, -2).map((msg, i) => (
-                <div key={i} className={`conversation-msg conversation-msg--${msg.role}`}>
-                  <span className="conversation-msg-label">{msg.role === 'user' ? 'You' : 'Raven'}</span>
-                  <span className="conversation-msg-text">{msg.content.substring(0, 150)}{msg.content.length > 150 ? '...' : ''}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="result-query">
-            <span className="result-query-label">{askResult ? 'You asked:' : 'You remembered:'}</span>
-            <span className="result-query-text">{input}</span>
-          </div>
-
-          {/* Ask result */}
-          {askResult && (
-            <div className="result-ask">
-              <div className="result-answer">
-                <ReactMarkdown>{askResult.answer}</ReactMarkdown>
               </div>
+            );
+          }
 
-              <ConfidenceBadge confidence={askResult.confidence} />
+          if (msg.type === 'confirmed') {
+            return (
+              <div key={msg.id} className="chat-msg chat-msg--raven">
+                <div className="chat-bubble chat-bubble--raven chat-bubble--success">
+                  <span className="confirmed-icon">&#10003;</span> {msg.content}
+                  {msg.data?.saved?.length > 0 && (
+                    <div className="confirmed-list">
+                      {msg.data.saved.map(f => <div key={f.id} className="confirmed-fact">{f.content}</div>)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
 
-              {askResult.factsUsed?.length > 0 && (
-                <div className="result-sources">
-                  <h4>Sources:</h4>
-                  {askResult.factsUsed.map(fact => (
-                    <div key={fact.id} className="result-source">
-                      <span className="source-content">{(fact.content || '').substring(0, 120)}</span>
-                      {fact.sourceUrl && (
-                        <a href={fact.sourceUrl} target="_blank" rel="noopener noreferrer" className="source-link">
-                          View source
-                        </a>
-                      )}
+          if (msg.type === 'error') {
+            return (
+              <div key={msg.id} className="chat-msg chat-msg--raven">
+                <div className="chat-bubble chat-bubble--raven chat-bubble--error">{msg.content}</div>
+              </div>
+            );
+          }
+
+          if (msg.type === 'system') {
+            return (
+              <div key={msg.id} className="chat-msg chat-msg--system">
+                <span>{msg.content}</span>
+              </div>
+            );
+          }
+
+          return null;
+        })}
+
+        {/* Loading indicator */}
+        {isLoading && !pendingPreview && (
+          <ThinkingBubble mode={loadingMode} />
+        )}
+
+        {/* Inline remember preview */}
+        {pendingPreview && (
+          <div className="chat-msg chat-msg--raven">
+            <div className="chat-bubble chat-bubble--raven chat-bubble--preview">
+              {pendingPreview.isMismatch && (
+                <div className="preview-mismatch">
+                  <p>{pendingPreview.mismatchSuggestion || "This looks like a question."}</p>
+                  <button className="preview-switch-btn" onClick={() => {
+                    const txt = pendingPreview.sourceText;
+                    doCancel();
+                    doAsk(txt);
+                  }}>Switch to Ask</button>
+                </div>
+              )}
+
+              <div className="preview-label">Review before saving:</div>
+
+              {(pendingPreview.extractedTriples || []).map((t, i) => (
+                <TriplePreview key={i} triple={t} />
+              ))}
+
+              {pendingPreview.conflicts?.length > 0 && (
+                <div className="preview-conflicts">
+                  {pendingPreview.conflicts.map((c, i) => (
+                    <div key={i} className="preview-conflict">
+                      <span className="conflict-type">{c.conflictType}:</span> {c.explanation}
                     </div>
                   ))}
                 </div>
               )}
 
-              {askResult.suggestedFollowups?.length > 0 && (
-                <div className="result-followups">
-                  <h4>Related questions:</h4>
-                  {askResult.suggestedFollowups.map((q, i) => (
-                    <button key={i} className="followup-btn" onClick={() => setFollowUpInput(q)}>
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Follow-up input */}
-              <div className="result-followup-input">
-                <input
-                  ref={followUpRef}
-                  type="text"
-                  className="followup-input"
-                  placeholder="Follow up, or correct: 'Actually, it's...'"
-                  value={followUpInput}
-                  onChange={(e) => setFollowUpInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleFollowUp();
-                    }
-                  }}
-                />
-                <div className="followup-actions">
-                  <button className="followup-action-btn ask" onClick={() => { const t = followUpInput.trim(); setInput(t); setFollowUpInput(''); setAskResult(null); handleAsk(t); }} disabled={!followUpInput.trim() || isLoading}>
-                    Ask
-                  </button>
-                  <button className="followup-action-btn correct" onClick={handleCorrection} disabled={!followUpInput.trim() || isLoading}>
-                    Correct
-                  </button>
-                </div>
+              <div className="preview-actions">
+                <button className="preview-btn preview-btn--cancel" onClick={doCancel} disabled={isLoading}>Cancel</button>
+                <button className="preview-btn preview-btn--confirm" onClick={() => doConfirm([])} disabled={isLoading}>
+                  {isLoading ? 'Saving...' : 'Confirm'}
+                </button>
               </div>
             </div>
-          )}
-
-          {/* Remember result */}
-          {rememberResult && (
-            <div className="result-remember">
-              <div className="result-success">
-                <div className="success-icon">✓</div>
-                <div className="success-message">{rememberResult.message}</div>
-              </div>
-
-              {rememberResult.factsCreated?.length > 0 && (
-                <div className="result-created">
-                  <h4>New knowledge:</h4>
-                  {rememberResult.factsCreated.map(fact => (
-                    <div key={fact.id} className="result-fact">{fact.content}</div>
-                  ))}
-                </div>
-              )}
-
-              {rememberResult.factsUpdated?.length > 0 && (
-                <div className="result-updated">
-                  <h4>Updated:</h4>
-                  {rememberResult.factsUpdated.map(fact => (
-                    <div key={fact.id} className="result-fact">{fact.content}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="result-new-actions">
-            <button className="raven-knowledge-new" onClick={() => reset(true)}>New Topic</button>
-            {conversationHistory.length > 0 && askResult && (
-              <button className="raven-knowledge-continue" onClick={() => { setMode('idle'); setInput(''); setFollowUpInput(''); setAskResult(null); inputRef.current?.focus(); }}>
-                Continue Conversation
-              </button>
-            )}
           </div>
+        )}
+
+        <div ref={chatEndRef} />
+      </div>
+
+      {/* Input — always visible at bottom */}
+      <div className="raven-chat-input">
+        <textarea
+          ref={inputRef}
+          className="chat-input-field"
+          placeholder="Ask something, or tell Raven to remember..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit('auto');
+            }
+          }}
+          rows={1}
+          disabled={isLoading || !!pendingPreview}
+        />
+        <div className="chat-input-actions">
+          <button
+            className="chat-action-btn chat-action-btn--ask"
+            onClick={() => handleSubmit('ask')}
+            disabled={!input.trim() || isLoading || !!pendingPreview}
+          >
+            Ask
+          </button>
+          <button
+            className="chat-action-btn chat-action-btn--remember"
+            onClick={() => handleSubmit('remember')}
+            disabled={!input.trim() || isLoading || !!pendingPreview}
+          >
+            Remember
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
