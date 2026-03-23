@@ -244,7 +244,7 @@ function expandTypeVariants(type) {
  * 3. LLM entity extraction (extract entity names from question for exact matching)
  * 4. Results merged by max similarity per triple
  */
-export async function searchTriples(teamId, question, { scopeIds = [], topK = 15 } = {}) {
+export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId = null, topK = 15 } = {}) {
   const embedding = await generateEmbedding(question);
   if (!embedding) return [];
 
@@ -382,6 +382,17 @@ export async function searchTriples(teamId, question, { scopeIds = [], topK = 15
     // Re-sort by blended score
     merged.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
   } catch { /* trust weighting is best-effort */ }
+
+  // SST scope boost: triples tagged with the routed SST node get a similarity bump
+  if (sstNodeId) {
+    for (const triple of merged) {
+      if (triple.sst_node_id === sstNodeId) {
+        triple.similarity = Math.min((triple.similarity || 0) + 0.1, 1.0);
+        triple.sstMatch = true;
+      }
+    }
+    merged.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+  }
 
   return merged;
 }

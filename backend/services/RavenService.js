@@ -17,6 +17,7 @@ import * as TripleRetrievalService from './TripleRetrievalService.js';
 import * as ConfirmationEventService from './ConfirmationEventService.js';
 import * as TrustService from './TrustService.js';
 import * as UserModelService from './UserModelService.js';
+import * as SSTService from './SSTService.js';
 
 // ============================================================================
 // ASK (Instant read-only response)
@@ -44,6 +45,18 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   const searchScopeIds = await ScopeService.getSearchScopeIds(scopeId, userId, true);
   console.log(`[RavenService.ask] Searching ${searchScopeIds.length} scopes`);
 
+  // Step 2a: SST routing — narrow search to the most relevant part of the graph
+  let sstNode = null;
+  try {
+    const route = await SSTService.routeQuery(teamId, standaloneQuestion);
+    if (route && route.confidence > 0.45) {
+      sstNode = route.node;
+      console.log(`[RavenService.ask] SST routed to "${sstNode.name}" (${route.method}, confidence ${route.confidence.toFixed(2)})`);
+    }
+  } catch (err) {
+    console.error('[RavenService.ask] SST routing error:', err.message);
+  }
+
   // Step 2b: Query execution planning (ONLY for counting/listing/comparison queries)
   // Skip for simple factual queries to save cost and latency
   let queryPlan = null;
@@ -62,6 +75,7 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   // Step 3: Dual-embedding search on triples table
   let triples = await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
     scopeIds: searchScopeIds,
+    sstNodeId: sstNode?.id || null,
     topK: 15
   });
   console.log(`[RavenService.ask] Dual-embedding search found ${triples.length} triples`);
@@ -583,6 +597,16 @@ export async function confirmRemember(previewId, skipConflictIds = [], confirmin
         userDecision: 'keep_existing', userId: confirmer
       }).catch(() => {});
     }
+  }
+
+  // Place confirmed triples in the SST (fire-and-forget)
+  for (const triple of [...triplesCreated, ...triplesUpdated]) {
+    SSTService.placeTriple(teamId, {
+      subjectName: triple.subjectName || triple.subject_name,
+      objectName: triple.objectName || triple.object_name,
+      relationship: triple.relationship,
+      displayText: triple.displayText || triple.display_text,
+    }, triple.id).catch(err => console.error('[confirmRemember] SST placement error:', err.message));
   }
 
   // Mark preview as confirmed
