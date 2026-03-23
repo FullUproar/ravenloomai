@@ -14,7 +14,7 @@ import './RavenKnowledge.css';
 
 // GraphQL Operations
 const ASK_RAVEN = gql`
-  query AskRaven($scopeId: ID!, $question: String!, $conversationHistory: [ConversationMessage!]) {
+  query AskRaven($scopeId: ID!, $question: String!, $conversationHistory: [ConversationMessageInput!]) {
     askRaven(scopeId: $scopeId, question: $question, conversationHistory: $conversationHistory) {
       answer
       confidence
