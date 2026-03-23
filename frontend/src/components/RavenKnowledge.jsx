@@ -354,15 +354,36 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
 
   const handleSwitchToAsk = () => { handleAsk(); };
 
+  /**
+   * Detect if a follow-up is a correction/addition vs a new question.
+   * Corrections: "actually it's July", "no, the price is $20", "that's wrong, it should be..."
+   * Questions: "what about...", "when does...", "how many..."
+   */
+  function looksLikeCorrection(text) {
+    const t = text.trim().toLowerCase();
+    // Explicit correction signals
+    if (/^(no[,. ]|nope|wrong|incorrect|actually|that's not|thats not|not quite|correction|update:|fyi |the answer is|it's actually|its actually|should be|it is )/.test(t)) return true;
+    // Statements (not questions) after an answer are likely corrections/additions
+    if (!/[?]$/.test(t) && !/^(what|when|where|who|why|how|is |are |do |does |can |will |should )/.test(t)) return true;
+    return false;
+  }
+
   const handleFollowUp = async () => {
     if (!followUpInput.trim() || !scopeId) return;
-    const question = followUpInput.trim();
-    setInput(question);
+    const text = followUpInput.trim();
+
+    // Auto-detect: correction or question?
+    if (looksLikeCorrection(text)) {
+      handleCorrection();
+      return;
+    }
+
+    setInput(text);
     setFollowUpInput('');
     setAskResult(null);
     setError(null);
     // Don't clear conversation history — this IS a follow-up
-    await handleAsk(question);
+    await handleAsk(text);
   };
 
   const handleCorrection = async () => {
@@ -567,7 +588,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
                   ref={followUpRef}
                   type="text"
                   className="followup-input"
-                  placeholder="Ask a follow-up or correct this..."
+                  placeholder="Follow up, or correct: 'Actually, it's...'"
                   value={followUpInput}
                   onChange={(e) => setFollowUpInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -578,7 +599,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
                   }}
                 />
                 <div className="followup-actions">
-                  <button className="followup-action-btn ask" onClick={handleFollowUp} disabled={!followUpInput.trim() || isLoading}>
+                  <button className="followup-action-btn ask" onClick={() => { const t = followUpInput.trim(); setInput(t); setFollowUpInput(''); setAskResult(null); handleAsk(t); }} disabled={!followUpInput.trim() || isLoading}>
                     Ask
                   </button>
                   <button className="followup-action-btn correct" onClick={handleCorrection} disabled={!followUpInput.trim() || isLoading}>
