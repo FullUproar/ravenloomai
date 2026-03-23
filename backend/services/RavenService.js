@@ -363,7 +363,7 @@ export async function previewRemember(scopeId, userId, statement, sourceUrl = nu
   }
 
   // Step 6: Detect conflicts
-  const conflicts = await TripleExtractionService.detectConflicts(teamId, challengedTriples);
+  const conflicts = await TripleExtractionService.detectConflicts(teamId, challengedTriples, userId);
   console.log(`[RavenService.previewRemember] Found ${conflicts.length} conflicts`);
 
   // Step 7: Seed trust tier for official sources

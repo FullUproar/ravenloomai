@@ -208,7 +208,7 @@ async function fuzzyConceptMatch(teamId, name, type) {
  * Detect conflicts between extracted triples and existing knowledge.
  * Searches for existing triples with similar subject+object but different values.
  */
-export async function detectConflicts(teamId, extractedTriples) {
+export async function detectConflicts(teamId, extractedTriples, userId = null) {
   const conflicts = [];
 
   for (const triple of extractedTriples) {
@@ -233,6 +233,8 @@ export async function detectConflicts(teamId, extractedTriples) {
       const similarity = parseFloat(existing.similarity);
       if (similarity < 0.7) continue;
 
+      // Tag triple with userId for conflict classification
+      triple._userId = userId;
       // Classify the conflict
       const conflictType = classifyConflict(triple, existing, similarity);
       if (conflictType !== 'none') {
@@ -290,12 +292,21 @@ function classifyConflict(newTriple, existingRow, similarity) {
     || (newRel.includes('schedul') && existRel.includes('schedul'));
 
   // Same subject + similar relationship = update (most common)
+  // BUT: if different users stated this, it's a contradiction (not an update)
+  const newUserId = newTriple._userId || null;
+  const existUserId = existingRow.created_by || null;
+  const sameUser = newUserId && existUserId && newUserId === existUserId;
+  const differentUser = newUserId && existUserId && newUserId !== existUserId;
+
   if (sameSubject && sameRelationship && similarity > 0.7) {
+    // Different users disagree = contradiction, not update
+    if (differentUser) return 'contradiction';
     return 'update';
   }
 
   // Same subject, different relationship but high similarity = potential update
   if (sameSubject && similarity > 0.8) {
+    if (differentUser) return 'contradiction';
     return 'update';
   }
 
