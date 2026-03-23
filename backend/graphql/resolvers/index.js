@@ -470,9 +470,9 @@ const resolvers = {
     // ASK/REMEMBER
     // ============================================================================
 
-    askRaven: async (_, { scopeId, question }, { userId }) => {
+    askRaven: async (_, { scopeId, question, conversationHistory }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      return RavenService.ask(scopeId, userId, question);
+      return RavenService.ask(scopeId, userId, question, conversationHistory || []);
     },
 
     // Trust + usage queries
@@ -1093,6 +1093,11 @@ const resolvers = {
     cancelRemember: async (_, { previewId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return RavenService.cancelRemember(previewId);
+    },
+
+    logCorrection: async (_, { teamId, question, wrongAnswer, correctInfo, tripleIds }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return RavenService.logCorrection(teamId, userId, { question, wrongAnswer, correctInfo, triplesUsedIds: tripleIds });
     },
 
     processDocumentContent: async (_, { teamId, title, content, url }, { userId }) => {

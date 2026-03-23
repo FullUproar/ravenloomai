@@ -46,6 +46,7 @@ export default function RavenHome({
       {/* The core: Ask + Remember */}
       <div className="raven-home-main">
         <RavenKnowledge
+          teamId={teamId}
           scopeId={scopeId}
           scopeName={scopeName}
           onFactsChanged={onFactsChanged}

@@ -14,8 +14,8 @@ import './RavenKnowledge.css';
 
 // GraphQL Operations
 const ASK_RAVEN = gql`
-  query AskRaven($scopeId: ID!, $question: String!) {
-    askRaven(scopeId: $scopeId, question: $question) {
+  query AskRaven($scopeId: ID!, $question: String!, $conversationHistory: [ConversationMessage!]) {
+    askRaven(scopeId: $scopeId, question: $question, conversationHistory: $conversationHistory) {
       answer
       confidence
       factsUsed {
@@ -26,6 +26,14 @@ const ASK_RAVEN = gql`
         createdAt
       }
       suggestedFollowups
+    }
+  }
+`;
+
+const LOG_CORRECTION = gql`
+  mutation LogCorrection($teamId: ID!, $question: String!, $wrongAnswer: String!, $correctInfo: String, $tripleIds: [ID!]) {
+    logCorrection(teamId: $teamId, question: $question, wrongAnswer: $wrongAnswer, correctInfo: $correctInfo, tripleIds: $tripleIds) {
+      success
     }
   }
 `;
@@ -202,7 +210,7 @@ function TripleCard({ triple, index }) {
   );
 }
 
-export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
+export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, teamId }) {
   const [input, setInput] = useState('');
   const [followUpInput, setFollowUpInput] = useState('');
   const [mode, setMode] = useState('idle'); // idle, asking, remembering, preview, result
@@ -211,6 +219,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [rememberResult, setRememberResult] = useState(null);
   const [skipConflictIds, setSkipConflictIds] = useState([]);
   const [error, setError] = useState(null);
+  const [conversationHistory, setConversationHistory] = useState([]);
   const inputRef = useRef(null);
   const followUpRef = useRef(null);
 
@@ -221,6 +230,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
   const [previewRemember, { loading: previewLoading }] = useMutation(PREVIEW_REMEMBER);
   const [confirmRemember, { loading: confirmLoading }] = useMutation(CONFIRM_REMEMBER);
   const [cancelRemember] = useMutation(CANCEL_REMEMBER);
+  const [logCorrectionMutation] = useMutation(LOG_CORRECTION);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -236,7 +246,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     inputRef.current?.focus();
   }, [scopeId]);
 
-  const reset = () => {
+  const reset = (clearHistory = true) => {
     setInput('');
     setFollowUpInput('');
     setMode('idle');
@@ -245,16 +255,38 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
     setRememberResult(null);
     setSkipConflictIds([]);
     setError(null);
+    if (clearHistory) setConversationHistory([]);
     inputRef.current?.focus();
   };
 
-  const handleAsk = async () => {
-    if (!input.trim() || !scopeId) return;
+  const handleAsk = async (questionOverride = null) => {
+    const question = (questionOverride || input).trim();
+    if (!question || !scopeId) return;
     setMode('asking');
     setError(null);
     try {
-      const { data } = await askRaven({ variables: { scopeId, question: input.trim() } });
+      // Pass conversation history for follow-up context resolution
+      const historyForBackend = conversationHistory.slice(-6).map(h => ({
+        role: h.role,
+        content: h.content,
+      }));
+
+      const { data } = await askRaven({
+        variables: {
+          scopeId,
+          question,
+          conversationHistory: historyForBackend.length > 0 ? historyForBackend : undefined,
+        }
+      });
       setAskResult(data.askRaven);
+
+      // Append to conversation history
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', content: question },
+        { role: 'assistant', content: data.askRaven.answer, confidence: data.askRaven.confidence },
+      ]);
+
       setMode('result');
     } catch (err) {
       console.error('Ask error:', err);
@@ -314,25 +346,40 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
 
   const handleFollowUp = async () => {
     if (!followUpInput.trim() || !scopeId) return;
-    setInput(followUpInput);
+    const question = followUpInput.trim();
+    setInput(question);
     setFollowUpInput('');
-    setMode('asking');
     setAskResult(null);
     setError(null);
-    try {
-      const { data } = await askRaven({ variables: { scopeId, question: followUpInput.trim() } });
-      setAskResult(data.askRaven);
-      setMode('result');
-    } catch (err) {
-      console.error('Follow-up error:', err);
-      setError('Something went wrong. Try again?');
-      setMode('result');
-    }
+    // Don't clear conversation history — this IS a follow-up
+    await handleAsk(question);
   };
 
-  const handleCorrection = () => {
+  const handleCorrection = async () => {
     if (!followUpInput.trim()) return;
     const correctionText = followUpInput.trim();
+
+    // Log the correction signal for trust model learning
+    if (teamId && askResult) {
+      try {
+        await logCorrectionMutation({
+          variables: {
+            teamId,
+            question: input,
+            wrongAnswer: askResult.answer,
+            correctInfo: correctionText,
+            tripleIds: (askResult.factsUsed || []).map(f => f.id).filter(Boolean),
+          }
+        });
+      } catch { /* correction logging is best-effort */ }
+    }
+
+    // Add correction to conversation history
+    setConversationHistory(prev => [
+      ...prev,
+      { role: 'user', content: `Correction: ${correctionText}` },
+    ]);
+
     setInput(correctionText);
     setFollowUpInput('');
     setAskResult(null);
@@ -451,6 +498,18 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
       {/* Result display */}
       {mode === 'result' && (
         <div className="raven-knowledge-result">
+          {/* Conversation thread (previous exchanges) */}
+          {conversationHistory.length > 2 && askResult && (
+            <div className="conversation-thread">
+              {conversationHistory.slice(0, -2).map((msg, i) => (
+                <div key={i} className={`conversation-msg conversation-msg--${msg.role}`}>
+                  <span className="conversation-msg-label">{msg.role === 'user' ? 'You' : 'Raven'}</span>
+                  <span className="conversation-msg-text">{msg.content.substring(0, 150)}{msg.content.length > 150 ? '...' : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="result-query">
             <span className="result-query-label">{askResult ? 'You asked:' : 'You remembered:'}</span>
             <span className="result-query-text">{input}</span>
@@ -548,7 +607,14 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged }) {
             </div>
           )}
 
-          <button className="raven-knowledge-new" onClick={reset}>Start New</button>
+          <div className="result-new-actions">
+            <button className="raven-knowledge-new" onClick={() => reset(true)}>New Topic</button>
+            {conversationHistory.length > 0 && askResult && (
+              <button className="raven-knowledge-continue" onClick={() => { setMode('idle'); setInput(''); setFollowUpInput(''); setAskResult(null); inputRef.current?.focus(); }}>
+                Continue Conversation
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

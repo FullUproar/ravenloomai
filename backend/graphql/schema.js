@@ -127,6 +127,17 @@ export default gql`
   # ASK/REMEMBER TYPES (Clean Knowledge Management)
   # ============================================================================
 
+  # Input for conversation context (follow-up questions)
+  input ConversationMessageInput {
+    role: String!
+    content: String!
+  }
+
+  # Response from correction logging
+  type CorrectionResponse {
+    success: Boolean!
+  }
+
   # Response from Ask query (instant, no confirmation needed)
   type AskResponse {
     answer: String!
@@ -1037,7 +1048,7 @@ export default gql`
     # ============================================================================
 
     # Ask a question - instant AI response (read-only)
-    askRaven(scopeId: ID!, question: String!): AskResponse!
+    askRaven(scopeId: ID!, question: String!, conversationHistory: [ConversationMessageInput!]): AskResponse!
 
     # Trust model
     getTrustScores(teamId: ID!, sourceId: String): [TrustScore!]!
@@ -1201,6 +1212,9 @@ export default gql`
 
     # Cancel a Remember preview (cleanup)
     cancelRemember(previewId: ID!): Boolean!
+
+    # Log a correction (user says an answer was wrong)
+    logCorrection(teamId: ID!, question: String!, wrongAnswer: String!, correctInfo: String, tripleIds: [ID!]): CorrectionResponse!
 
     # Process document content into knowledge graph
     # Accepts raw text content or a URL (Google Docs, web pages)
