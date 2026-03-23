@@ -410,7 +410,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
               rows={3}
             />
             <div className="raven-knowledge-actions">
-              <button className="raven-knowledge-btn ask" onClick={handleAsk} disabled={!input.trim() || isLoading}>
+              <button className="raven-knowledge-btn ask" onClick={() => handleAsk()} disabled={!input.trim() || isLoading}>
                 {askLoading ? 'Asking...' : 'Ask'}
               </button>
               <button className="raven-knowledge-btn remember" onClick={() => handleRemember()} disabled={!input.trim() || isLoading}>
