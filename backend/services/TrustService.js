@@ -96,6 +96,10 @@ export async function updateTrust(teamId, sourceId, sourceType, topicId, outcome
       alphaInc = 0.5;
       betaInc = 0.5;
       break;
+    case 'corrected':
+      // User explicitly said this was wrong — stronger negative signal than rejection
+      betaInc = 2;
+      break;
     default:
       return;
   }

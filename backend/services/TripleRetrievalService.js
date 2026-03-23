@@ -10,6 +10,230 @@ import { generateEmbedding, callOpenAI } from './AIService.js';
 import * as TripleService from './TripleService.js';
 
 // ============================================================================
+// QUERY EXECUTION PLANNER
+// ============================================================================
+
+/**
+ * Analyze a question and create an execution plan.
+ * Gives the LLM a birds-eye view of the graph and lets it decide
+ * the best retrieval strategy.
+ *
+ * Returns: { queryType, strategy, precomputedData, augmentedQuestion }
+ */
+export async function planQuery(teamId, question, scopeIds = []) {
+  // Step 1: Get graph summary (fast — cached metadata)
+  const [conceptSummary, tripleCount] = await Promise.all([
+    db.query(`
+      SELECT type, COUNT(*) as count, array_agg(DISTINCT name ORDER BY name) as names
+      FROM concepts WHERE team_id = $1
+      GROUP BY type ORDER BY count DESC LIMIT 10
+    `, [teamId]),
+    db.query(`SELECT COUNT(*) as count FROM triples WHERE team_id = $1 AND status = 'active'`, [teamId]),
+  ]);
+
+  const graphSummary = conceptSummary.rows.map(r =>
+    `${r.type}: ${r.count} (${r.names.slice(0, 8).join(', ')}${r.names.length > 8 ? '...' : ''})`
+  ).join('\n');
+
+  const totalTriples = tripleCount.rows[0]?.count || 0;
+
+  // Step 2: Ask LLM to classify the query and plan execution
+  const planResponse = await callOpenAI([
+    {
+      role: 'system',
+      content: `You are a query planner for a knowledge graph. Given a question and a summary of available data, determine the best retrieval strategy.
+
+AVAILABLE DATA:
+${graphSummary}
+Total knowledge triples: ${totalTriples}
+
+QUERY TYPES:
+- factual: Simple fact lookup ("When does X launch?")
+- counting: Requires counting entities ("How many products?")
+- comparison: Comparing two entities ("Which is cheaper?")
+- aggregation: Summarizing across entities ("What's our total revenue?")
+- listing: Listing items that match criteria ("What games are under $20?")
+- temporal: Time-based question ("What happened in Q1?")
+- relational: About relationships between entities ("Who works with whom?")
+
+Return ONLY JSON:
+{
+  "queryType": "factual|counting|comparison|aggregation|listing|temporal|relational",
+  "targetConcepts": ["concept names to search for"],
+  "needsGraphScan": false,
+  "scanQuery": null,
+  "augmentation": null
+}
+
+For COUNTING queries: set needsGraphScan=true and scanQuery to describe what to count (e.g., "count concepts of type product").
+For LISTING queries: set needsGraphScan=true and scanQuery to describe the filter.
+For COMPARISON: list both concepts in targetConcepts.
+For simple FACTUAL: just list the main concept.`
+    },
+    { role: 'user', content: question }
+  ], { model: 'gpt-4o-mini', maxTokens: 200, temperature: 0, teamId, operation: 'query_plan' });
+
+  let plan;
+  try {
+    plan = JSON.parse(planResponse.match(/\{[\s\S]*\}/)?.[0] || '{}');
+  } catch {
+    plan = { queryType: 'factual', targetConcepts: [], needsGraphScan: false };
+  }
+
+  // Step 3: Execute graph scan if needed
+  let precomputedData = null;
+  if (plan.needsGraphScan && plan.scanQuery) {
+    precomputedData = await executeGraphScan(teamId, plan, scopeIds);
+  }
+
+  return plan.queryType === 'factual' && !plan.needsGraphScan
+    ? null // No special planning needed, use normal retrieval
+    : { ...plan, precomputedData, graphSummary };
+}
+
+/**
+ * Execute a targeted graph scan based on the query plan.
+ * Handles counting, listing, and aggregation queries.
+ */
+async function executeGraphScan(teamId, plan, scopeIds) {
+  const qt = (plan.queryType || '').toLowerCase();
+  const scan = (plan.scanQuery || '').toLowerCase();
+
+  try {
+    if (qt === 'counting') {
+      // Strategy 1: Count by type (try multiple synonyms)
+      const typeMatch = scan.match(/count\s+(?:concepts?\s+of\s+type\s+)?(\w+)/i);
+      if (typeMatch) {
+        const type = typeMatch[1].toLowerCase();
+        // Expand type to include synonyms
+        const typeVariants = expandTypeVariants(type);
+
+        const result = await db.query(
+          `SELECT COUNT(*) as count, array_agg(name ORDER BY name) as names
+           FROM concepts WHERE team_id = $1 AND LOWER(type) = ANY($2)`,
+          [teamId, typeVariants]
+        );
+        let row = result.rows[0];
+
+        // Strategy 2: If type match fails, find concepts connected via "is a" or "includes" relationships
+        if (parseInt(row.count) === 0) {
+          const relResult = await db.query(`
+            SELECT DISTINCT s.name
+            FROM triples t
+            JOIN concepts s ON t.subject_id = s.id
+            JOIN concepts o ON t.object_id = o.id
+            WHERE t.team_id = $1 AND t.status = 'active'
+              AND (LOWER(t.relationship) LIKE '%include%' OR LOWER(t.relationship) LIKE '%is a%'
+                OR LOWER(t.relationship) LIKE '%product%' OR LOWER(o.name) LIKE $2)
+            ORDER BY s.name
+          `, [teamId, `%${type}%`]);
+
+          if (relResult.rows.length > 0) {
+            const names = relResult.rows.map(r => r.name);
+            return { type: 'count', count: names.length, names, description: `Found ${names.length} items via relationship search: ${names.join(', ')}` };
+          }
+        }
+
+        // Strategy 3: Count subjects that appear in triples where the object matches the query type
+        if (parseInt(row.count) === 0) {
+          const subjectResult = await db.query(`
+            SELECT DISTINCT s.name
+            FROM triples t
+            JOIN concepts s ON t.subject_id = s.id
+            WHERE t.team_id = $1 AND t.status = 'active'
+              AND s.type != 'concept'
+              AND (LOWER(s.type) = ANY($2)
+                OR LOWER(t.display_text) LIKE '%product line%'
+                OR LOWER(t.display_text) LIKE '%product%includes%')
+            ORDER BY s.name
+          `, [teamId, typeVariants]);
+
+          if (subjectResult.rows.length > 0) {
+            const names = subjectResult.rows.map(r => r.name);
+            return { type: 'count', count: names.length, names, description: `Found ${names.length} items: ${names.join(', ')}` };
+          }
+        }
+
+        return {
+          type: 'count',
+          count: parseInt(row.count),
+          names: row.names || [],
+          description: `Found ${row.count} ${type} concepts: ${(row.names || []).join(', ')}`,
+        };
+      }
+
+      // Generic count — count all concepts mentioned in targetConcepts
+      if (plan.targetConcepts?.length > 0) {
+        return {
+          type: 'count',
+          count: plan.targetConcepts.length,
+          names: plan.targetConcepts,
+          description: `Identified ${plan.targetConcepts.length} matching concepts`,
+        };
+      }
+    }
+
+    if (qt === 'listing') {
+      // List concepts matching a criteria
+      const result = await db.query(`
+        SELECT c.name, c.type, COUNT(t.id) as triple_count
+        FROM concepts c
+        LEFT JOIN triples t ON (t.subject_id = c.id OR t.object_id = c.id) AND t.status = 'active'
+        WHERE c.team_id = $1
+        GROUP BY c.id, c.name, c.type
+        ORDER BY triple_count DESC
+        LIMIT 20
+      `, [teamId]);
+      return {
+        type: 'list',
+        items: result.rows,
+        description: `${result.rows.length} concepts with their connection counts`,
+      };
+    }
+
+    if (qt === 'comparison' && plan.targetConcepts?.length >= 2) {
+      // Get triples for both concepts being compared
+      const results = [];
+      for (const name of plan.targetConcepts.slice(0, 2)) {
+        const conceptResult = await db.query(
+          `SELECT id FROM concepts WHERE team_id = $1 AND LOWER(canonical_name) = $2`,
+          [teamId, name.toLowerCase()]
+        );
+        if (conceptResult.rows[0]) {
+          const triples = await db.query(`
+            SELECT display_text FROM triples
+            WHERE team_id = $1 AND status = 'active'
+              AND (subject_id = $2 OR object_id = $2)
+          `, [teamId, conceptResult.rows[0].id]);
+          results.push({ concept: name, triples: triples.rows.map(r => r.display_text) });
+        }
+      }
+      return { type: 'comparison', comparisons: results };
+    }
+  } catch (err) {
+    console.error('[QueryPlan] Graph scan error:', err.message);
+  }
+
+  return null;
+}
+
+/**
+ * Expand a concept type into synonyms/variants for broader matching.
+ */
+function expandTypeVariants(type) {
+  const synonyms = {
+    product: ['product', 'game', 'item', 'offering'],
+    game: ['game', 'product', 'card game', 'board game'],
+    person: ['person', 'employee', 'team member', 'contact'],
+    company: ['company', 'organization', 'partner', 'manufacturer'],
+    location: ['location', 'place', 'city', 'venue'],
+    date: ['date', 'deadline', 'milestone', 'event'],
+    event: ['event', 'milestone', 'date', 'launch'],
+  };
+  return synonyms[type] || [type];
+}
+
+// ============================================================================
 // DUAL-EMBEDDING SEARCH + CONCEPT-ANCHORED RETRIEVAL
 // ============================================================================
 

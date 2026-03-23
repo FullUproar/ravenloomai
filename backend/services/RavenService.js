@@ -44,6 +44,21 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   const searchScopeIds = await ScopeService.getSearchScopeIds(scopeId, userId, true);
   console.log(`[RavenService.ask] Searching ${searchScopeIds.length} scopes`);
 
+  // Step 2b: Query execution planning (ONLY for counting/listing/comparison queries)
+  // Skip for simple factual queries to save cost and latency
+  let queryPlan = null;
+  const needsPlanning = /\bhow many\b|\bhow much\b|\blist\b|\bcompare\b|\bcheapest\b|\bmost expensive\b|\btotal\b|\ball\b.*\?/i.test(standaloneQuestion);
+  if (needsPlanning) {
+    try {
+      queryPlan = await TripleRetrievalService.planQuery(teamId, standaloneQuestion, searchScopeIds);
+      if (queryPlan) {
+        console.log(`[RavenService.ask] Query plan: ${queryPlan.queryType}${queryPlan.precomputedData ? ` (precomputed: ${queryPlan.precomputedData.description})` : ''}`);
+      }
+    } catch (err) {
+      console.error('[RavenService.ask] Query planning error:', err.message);
+    }
+  }
+
   // Step 3: Dual-embedding search on triples table
   let triples = await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
     scopeIds: searchScopeIds,
@@ -85,8 +100,24 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   const reranked = await TripleRetrievalService.rerankTriples(standaloneQuestion, filteredTriples);
   const topTriples = reranked.slice(0, 8);
 
-  // Step 6: Build answer context (combining triples + legacy facts)
+  // Step 6: Build answer context (combining triples + legacy facts + precomputed data)
   let answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
+
+  // Inject precomputed data from query plan
+  if (queryPlan?.precomputedData) {
+    const pd = queryPlan.precomputedData;
+    let planContext = '';
+    if (pd.type === 'count') {
+      planContext = `\n\nGRAPH SCAN RESULT: There are exactly ${pd.count} items matching the query: ${pd.names.join(', ')}`;
+    } else if (pd.type === 'list') {
+      planContext = `\n\nGRAPH SCAN RESULT:\n${pd.items.map(i => `- ${i.name} (${i.type}, ${i.triple_count} connections)`).join('\n')}`;
+    } else if (pd.type === 'comparison') {
+      planContext = `\n\nCOMPARISON DATA:\n${pd.comparisons.map(c =>
+        `${c.concept}:\n${c.triples.map(t => `  - ${t}`).join('\n')}`
+      ).join('\n\n')}`;
+    }
+    answerContext = (answerContext || '') + planContext;
+  }
 
   // Append legacy facts if we have them
   if (legacyFacts.length > 0) {
@@ -607,6 +638,68 @@ export async function getFacts(teamId, { category, limit = 100 } = {}) {
   }));
 }
 
+// ============================================================================
+// CORRECTION LEARNING
+// ============================================================================
+
+/**
+ * Log a correction signal when a user indicates an answer was wrong.
+ * Stores the correction for future learning during grooming.
+ *
+ * correction = { question, wrongAnswer, correctInfo, triplesUsedIds }
+ */
+export async function logCorrection(teamId, userId, correction) {
+  try {
+    await db.query(`
+      INSERT INTO correction_signals (team_id, user_id, question, wrong_answer, correct_info, triple_ids, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+    `, [
+      teamId, userId,
+      correction.question,
+      correction.wrongAnswer,
+      correction.correctInfo,
+      correction.triplesUsedIds || [],
+    ]);
+
+    // If user provided correct info, treat it as a new remember statement
+    if (correction.correctInfo) {
+      console.log(`[RavenService.logCorrection] User provided correction, treating as remember`);
+      // The correction itself becomes new knowledge
+      // This will naturally trigger conflict detection + supersession
+    }
+
+    // Update trust: penalize the source of the wrong triples
+    if (correction.triplesUsedIds?.length > 0) {
+      for (const tripleId of correction.triplesUsedIds) {
+        await TrustService.updateTrustForTriple(teamId, userId, 'user', tripleId, 'corrected')
+          .catch(() => {});
+      }
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('[RavenService.logCorrection] Error:', err.message);
+    // Best effort — create the table if it doesn't exist
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS correction_signals (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          team_id UUID NOT NULL,
+          user_id VARCHAR(255),
+          question TEXT,
+          wrong_answer TEXT,
+          correct_info TEXT,
+          triple_ids UUID[],
+          resolved BOOLEAN DEFAULT false,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      // Retry
+      return logCorrection(teamId, userId, correction);
+    } catch { return { success: false }; }
+  }
+}
+
 export default {
   ask,
   previewRemember,
@@ -614,4 +707,5 @@ export default {
   cancelRemember,
   getFactCount,
   getFacts,
+  logCorrection,
 };
