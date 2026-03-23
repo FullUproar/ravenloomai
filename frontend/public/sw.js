@@ -1,12 +1,10 @@
 // RavenLoom Service Worker
 // Handles offline caching and push notifications
 
-const CACHE_NAME = 'ravenloom-v2';
+const CACHE_NAME = 'ravenloom-v3';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/src/main.jsx',
-  '/src/App.jsx',
   '/manifest.json'
 ];
 
@@ -54,38 +52,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-first strategy: always try network, fall back to cache
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
-
-        // Clone the request
-        const fetchRequest = event.request.clone();
-
-        return fetch(fetchRequest).then((response) => {
-          // Check if valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-
-          // Clone the response
+        // Cache successful responses for offline use
+        if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();
-
-          // Cache the fetched response
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-
-          return response;
-        });
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return response;
       })
       .catch(() => {
-        // Return a custom offline page if available
-        return caches.match('/offline.html');
+        // Network failed — try cache
+        return caches.match(event.request);
       })
   );
 });
