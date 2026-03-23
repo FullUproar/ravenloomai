@@ -7,7 +7,7 @@
  */
 
 import db from '../db.js';
-import { generateEmbedding, callOpenAI } from './AIService.js';
+import { generateEmbedding, callOpenAI, callClaude } from './AIService.js';
 import * as TripleService from './TripleService.js';
 
 // ============================================================================
@@ -99,8 +99,8 @@ Also extract WHY it changed if stated (e.g., "due to manufacturing delays" → s
   ];
 
   try {
-    const response = await callOpenAI(messages, {
-      model: 'gpt-4o',
+    const response = await callClaude(messages, {
+      model: 'claude-sonnet-4-6',
       maxTokens: 2000,
       temperature: 0
     });

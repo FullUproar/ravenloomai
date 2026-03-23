@@ -16,10 +16,17 @@
  */
 
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+
+let _anthropic = null;
+function getAnthropic() {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
 
 // System prompt for Raven AI
 const SYSTEM_PROMPT = `You are Raven, an AI assistant for a tabletop games company. You help the team remember important information, answer questions based on what you know, and stay organized.
@@ -972,6 +979,43 @@ export async function callOpenAI(messages, { maxTokens = 500, temperature = 0.7,
   } catch (error) {
     console.error('OpenAI call error:', error);
     throw error;
+  }
+}
+
+/**
+ * Call Claude with messages (generic helper — same interface as callOpenAI)
+ * Uses Claude as primary for extraction and answer generation.
+ */
+export async function callClaude(messages, { maxTokens = 500, temperature = 0.7, model = 'claude-sonnet-4-6', teamId = null, userId = null, operation = 'unknown' } = {}) {
+  try {
+    // Separate system message from user/assistant messages
+    const systemMsg = messages.find(m => m.role === 'system');
+    const otherMsgs = messages.filter(m => m.role !== 'system');
+
+    const response = await getAnthropic().messages.create({
+      model,
+      max_tokens: maxTokens,
+      temperature,
+      system: systemMsg?.content || '',
+      messages: otherMsgs.map(m => ({ role: m.role, content: m.content })),
+    });
+
+    const content = response.content[0]?.type === 'text' ? response.content[0].text : '';
+
+    // Token tracking (fire-and-forget)
+    if (response.usage) {
+      _trackTokens(teamId, userId, operation, model, {
+        prompt_tokens: response.usage.input_tokens || 0,
+        completion_tokens: response.usage.output_tokens || 0,
+      }).catch(() => {});
+    }
+
+    return content;
+  } catch (error) {
+    console.error('[AIService] Claude call error:', error.message);
+    // Fallback to OpenAI
+    console.warn('[AIService] Falling back to OpenAI...');
+    return callOpenAI(messages, { maxTokens, temperature, model: 'gpt-4o', teamId, userId, operation });
   }
 }
 

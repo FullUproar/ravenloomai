@@ -245,10 +245,10 @@ After your answer, on a new line, return a JSON object:
 confidence = 0.0 if none of the knowledge is relevant, 1.0 if the knowledge fully answers the question.
 If you said "I don't have confirmed knowledge", confidence should be 0.0-0.1.${userModelPrompt}`;
 
-  const response = await AIService.callOpenAI([
+  const response = await AIService.callClaude([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: question }
-  ], { model: 'gpt-4o', maxTokens: 800, temperature: 0.3 });
+  ], { model: 'claude-sonnet-4-6', maxTokens: 800, temperature: 0.3 });
 
   return parseAnswerResponse(response);
 }
