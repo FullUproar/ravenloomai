@@ -172,12 +172,22 @@ async function extractEntitiesFromQuestion(question) {
     const response = await callOpenAI([
       {
         role: 'system',
-        content: `Extract entity names, product names, and key nouns from this question. Return ONLY a JSON array of strings. Include proper nouns, product names, company names, and important concepts. Be generous — include anything that might be a named entity.
-Example: "When does our chaos card game ship?" → ["chaos card game"]
-Example: "What's the manufacturing lead time for Hack Your Deck?" → ["Hack Your Deck", "manufacturing"]`
+        content: `Extract entity names, product names, and key nouns from this question. Return ONLY a JSON array of strings.
+
+Include:
+- Proper nouns, product names, company names
+- Key action nouns and their SYNONYMS (e.g., "shipped" → include "shipped", "sold", "delivered", "distributed")
+- Paraphrased concepts (e.g., "boxes" → include "boxes", "packaging")
+- Be generous — include anything that might match a stored concept
+
+Examples:
+"When does our chaos card game ship?" → ["chaos card game", "ship", "launch", "release"]
+"How many games have we shipped total?" → ["games", "shipped", "sold", "units", "total"]
+"Are our boxes environmentally friendly?" → ["boxes", "packaging", "environmentally friendly", "eco-friendly"]
+"What's the manufacturing lead time for Hack Your Deck?" → ["Hack Your Deck", "manufacturing", "production", "lead time"]`
       },
       { role: 'user', content: question }
-    ], { model: 'gpt-4o-mini', maxTokens: 100, temperature: 0 });
+    ], { model: 'gpt-4o-mini', maxTokens: 150, temperature: 0 });
 
     const parsed = JSON.parse(response.match(/\[[\s\S]*?\]/)?.[0] || '[]');
     return parsed.filter(e => typeof e === 'string' && e.length > 2);
@@ -389,7 +399,8 @@ export async function buildAnswerContext(triples) {
         : '';
       const hopStr = t.hopDistance ? ` (via ${t.hopDistance}-hop connection)` : '';
 
-      lines.push(`  - ${t.displayText}${ctxStr}${hopStr}`);
+      const supersededStr = t.status === 'superseded' ? ' [SUPERSEDED]' : '';
+      lines.push(`  - ${t.displayText}${ctxStr}${hopStr}${supersededStr}`);
     }
     sections.push(`${subject}:\n${lines.join('\n')}`);
   }

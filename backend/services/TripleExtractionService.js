@@ -84,8 +84,17 @@ Return ONLY a JSON object:
   ]
 }`;
 
+  // Detect explicit update/correction language and add extraction guidance
+  const isExplicitUpdate = /^(update|correction|revised|fyi|heads up)[\s:]/i.test(text.trim())
+    || /\b(pushed back to|moved to|changed to|switched to|now using|rescheduled to|revised to)\b/i.test(text);
+  const updateGuidance = isExplicitUpdate
+    ? `\n\nIMPORTANT: This text describes an UPDATE or CHANGE. Extract the NEW state as the triple.
+Example: "Launch pushed back to September 15" → "X launches on September 15" (the new date).
+Also extract WHY it changed if stated (e.g., "due to manufacturing delays" → separate triple).`
+    : '';
+
   const messages = [
-    { role: 'system', content: systemPrompt },
+    { role: 'system', content: systemPrompt + updateGuidance },
     { role: 'user', content: `Extract knowledge triples from this text:\n\n${text}` }
   ];
 
@@ -252,8 +261,16 @@ export async function detectConflicts(teamId, extractedTriples) {
  * Classify conflict type: contradiction, update, duplicate, or none.
  */
 function classifyConflict(newTriple, existingRow, similarity) {
-  // Very high similarity = likely duplicate
-  if (similarity > 0.95) return 'duplicate';
+  // Very high similarity = check if it's a true duplicate or a value-changing update
+  if (similarity > 0.95) {
+    // If the objects are different, this is an update (same structure, new value)
+    const newObj = (typeof newTriple.object === 'object' ? newTriple.object.name : newTriple.object || '').toLowerCase();
+    const existObj = (existingRow.object_name || '').toLowerCase();
+    if (newObj !== existObj && newObj.length > 0 && existObj.length > 0) {
+      return 'update'; // Same structure but different value = supersession
+    }
+    return 'duplicate';
+  }
 
   const newSubject = (typeof newTriple.subject === 'object' ? newTriple.subject.name : newTriple.subject || '').toLowerCase();
   const existSubject = (existingRow.subject_name || '').toLowerCase();
@@ -282,8 +299,25 @@ function classifyConflict(newTriple, existingRow, similarity) {
     return 'update';
   }
 
+  // Detect temporal supersession patterns in the input text
+  const newDisplay = (newTriple.displayText || '').toLowerCase();
+  const hasUpdateSignal = /\b(update|pushed back|moved to|changed to|now |switched|new date|rescheduled|revised|corrected)\b/.test(newDisplay)
+    || /\b(update|pushed back|moved to|changed to|now |switched|new date|rescheduled|revised|corrected)\b/.test(
+      (typeof newTriple.object === 'object' ? newTriple.object.name : newTriple.object || '').toLowerCase()
+    );
+  if (sameSubject && hasUpdateSignal && similarity > 0.6) {
+    return 'update';
+  }
+
   // High similarity but different meaning = contradiction
   if (similarity > 0.85) return 'contradiction';
+
+  // Same subject + similar object type (e.g., both dates) = likely update
+  const newObjType = (typeof newTriple.object === 'object' ? newTriple.object.type : '').toLowerCase();
+  const existObjType = (existingRow.object_type || '').toLowerCase();
+  if (sameSubject && newObjType === existObjType && ['date', 'location', 'company', 'person'].includes(newObjType) && similarity > 0.6) {
+    return 'update';
+  }
 
   return 'none';
 }

@@ -130,7 +130,7 @@ export const SCENARIO_C = {
     { userId: 'user-shawn', statement: 'All client contracts use Net 30 payment terms.' },
     { userId: 'user-dana', statement: 'Enterprise clients get Net 15 payment terms. Standard clients stay at Net 30.' },
     { userId: 'user-shawn', statement: 'The holiday party is on December 20th at the downtown venue.' },
-    { userId: 'user-dana', statement: 'The holiday party has been moved to December 18th at the rooftop bar.' },
+    { userId: 'user-dana', statement: 'I heard the holiday party is December 18th at the rooftop bar.' },
   ],
   tests: [
     {

@@ -219,16 +219,22 @@ async function generateTripleBasedAnswer(question, answerContext, triples, userM
     answerContext = triples.map(t => `- ${t.displayText}`).join('\n');
   }
 
+  // Detect conflicts in retrieved triples (same subject, different objects)
+  const conflictWarning = detectRetrievedConflicts(triples);
+
   const systemPrompt = `You are Raven, the institutional knowledge assistant.
 
 STRICT RULES — FOLLOW EXACTLY:
 1. Answer using ONLY the knowledge statements listed below. Do NOT add information from your training data.
-2. If NONE of the knowledge below is relevant to the question, say "I don't have confirmed knowledge about that." But if ANY statements are relevant, use them to answer — even partial answers are better than "I don't know".
+2. If NONE of the knowledge below is relevant to the question, say "I don't have confirmed knowledge about that." But if ANY statements are relevant, use them to answer — even partial answers are better than "I don't know". Treat synonyms and paraphrases as matches: "shipped" ≈ "sold" ≈ "delivered", "boxes" ≈ "packaging", etc.
 3. Every claim in your answer must be traceable to a specific knowledge statement below. If you can't point to it, don't say it.
 4. CRITICAL: Do NOT merge or connect statements about different entities. "Company A has target X" and "Company B makes product Y" does NOT mean Company B has target X. Each statement is about the specific entities it names.
 5. When connecting multiple facts (multi-hop), the connection must share a COMMON entity: "X is Y" + "Y is Z" → "X is Z" is valid. "X is Y" + "A is B" → nothing, different entities.
 6. If contexts are listed, mention them: "as of [date]..." or "in the context of [context]..."
 7. Be concise. No filler. No hedging beyond what's warranted by the data.
+8. If a statement is marked [SUPERSEDED], do NOT use it — use the newer version instead.
+${conflictWarning ? `9. CONFLICTING INFORMATION DETECTED: ${conflictWarning}
+   You MUST present ALL perspectives and clearly note the discrepancy. Do NOT silently pick one side.` : ''}
 
 KNOWLEDGE STATEMENTS:
 ${answerContext}
@@ -245,6 +251,47 @@ If you said "I don't have confirmed knowledge", confidence should be 0.0-0.1.${u
   ], { model: 'gpt-4o', maxTokens: 800, temperature: 0.3 });
 
   return parseAnswerResponse(response);
+}
+
+/**
+ * Detect conflicts in retrieved triples — same subject + same relationship type but different objects.
+ * Returns a warning string for the LLM prompt, or null if no conflicts.
+ */
+function detectRetrievedConflicts(triples) {
+  if (!triples || triples.length < 2) return null;
+
+  const conflicts = [];
+  const seen = new Map(); // key: "subject|rel_category" → triple
+
+  for (const t of triples) {
+    const subject = (t.subjectName || '').toLowerCase();
+    const rel = (t.relationship || '').toLowerCase();
+
+    // Normalize relationship to category
+    let relCat = rel;
+    if (/launch|release|ship|come out|debut/.test(rel)) relCat = 'release_date';
+    else if (/manufactur|produce|make|built by/.test(rel)) relCat = 'manufacturer';
+    else if (/price|cost|retail/.test(rel)) relCat = 'price';
+    else if (/pay|term|net \d+/.test(rel)) relCat = 'payment_terms';
+    else if (/schedul|date|when|held on/.test(rel)) relCat = 'date';
+    else if (/locat|based in|held at|venue/.test(rel)) relCat = 'location';
+
+    const key = `${subject}|${relCat}`;
+    const existing = seen.get(key);
+
+    if (existing) {
+      const existObj = (existing.objectName || '').toLowerCase();
+      const newObj = (t.objectName || '').toLowerCase();
+      if (existObj !== newObj) {
+        conflicts.push(`"${existing.displayText}" vs "${t.displayText}"`);
+      }
+    } else {
+      seen.set(key, t);
+    }
+  }
+
+  if (conflicts.length === 0) return null;
+  return `The following statements appear to conflict — present BOTH and note the discrepancy:\n${conflicts.join('\n')}`;
 }
 
 /**
@@ -415,10 +462,9 @@ export async function confirmRemember(previewId, skipConflictIds = [], confirmin
       continue;
     }
 
-    // Handle updates: supersede existing triple
-    if (conflict && conflict.conflictType === 'update' && conflict.existingTriple?.id) {
-      await TripleService.archiveTriple(conflict.existingTriple.id);
-    }
+    // Handle updates: mark as pending supersession (finalized after new triple created)
+    const pendingSupersession = (conflict && conflict.conflictType === 'update' && conflict.existingTriple?.id)
+      ? conflict.existingTriple.id : null;
 
     // Step 1: Upsert subject concept
     const subjectConcept = await TripleService.upsertConcept(teamId, {
@@ -459,7 +505,9 @@ export async function confirmRemember(previewId, skipConflictIds = [], confirmin
       trustTier: extracted.trustTier || 'tribal',
     });
 
-    if (conflict && conflict.conflictType === 'update') {
+    // Complete supersession: link old triple to new one
+    if (pendingSupersession) {
+      await TripleService.supersedeTriple(pendingSupersession, triple.id);
       triplesUpdated.push(triple);
     } else {
       triplesCreated.push(triple);
