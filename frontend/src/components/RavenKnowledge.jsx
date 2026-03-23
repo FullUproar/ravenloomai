@@ -225,7 +225,8 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
 
   // GraphQL operations
   const [askRaven, { loading: askLoading }] = useLazyQuery(ASK_RAVEN, {
-    fetchPolicy: 'network-only'
+    fetchPolicy: 'network-only',
+    errorPolicy: 'all', // Return both data and errors so we can see what went wrong
   });
   const [previewRemember, { loading: previewLoading }] = useMutation(PREVIEW_REMEMBER);
   const [confirmRemember, { loading: confirmLoading }] = useMutation(CONFIRM_REMEMBER);
@@ -271,20 +272,24 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
         content: h.content,
       }));
 
-      const { data } = await askRaven({
+      const result = await askRaven({
         variables: {
           scopeId,
           question,
           conversationHistory: historyForBackend.length > 0 ? historyForBackend : undefined,
         }
       });
-      setAskResult(data.askRaven);
+
+      if (result.error) throw result.error;
+      if (!result.data?.askRaven) throw new Error('No response from Raven');
+      setAskResult(result.data.askRaven);
 
       // Append to conversation history
+      const askData = result.data.askRaven;
       setConversationHistory(prev => [
         ...prev,
         { role: 'user', content: question },
-        { role: 'assistant', content: data.askRaven.answer, confidence: data.askRaven.confidence },
+        { role: 'assistant', content: askData.answer, confidence: askData.confidence },
       ]);
 
       setMode('result');
