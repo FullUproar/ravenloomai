@@ -290,7 +290,12 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
       setMode('result');
     } catch (err) {
       console.error('Ask error:', err);
-      setError('Something went wrong getting an answer. Try again?');
+      const msg = err?.graphQLErrors?.[0]?.message || err?.message || '';
+      if (msg.includes('timeout') || msg.includes('FUNCTION_INVOCATION_TIMEOUT')) {
+        setError('That took too long — the AI is warming up. Try again in a moment.');
+      } else {
+        setError(`Something went wrong: ${msg || 'Unknown error'}. Try again?`);
+      }
       setMode('idle');
     }
   };

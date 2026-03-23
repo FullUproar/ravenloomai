@@ -19,12 +19,12 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: (process.env.OPENAI_API_KEY || '').trim()
 });
 
 let _anthropic = null;
 function getAnthropic() {
-  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: (process.env.ANTHROPIC_API_KEY || '').trim() });
   return _anthropic;
 }
 
