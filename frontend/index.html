@@ -26,17 +26,29 @@
   <body>
     <div id="root"></div>
 
-    <!-- Register service worker for PWA install prompt and push notifications -->
+    <!-- Service worker: force-update old versions, then register new -->
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-              console.log('Service worker registered:', registration.scope);
-            })
-            .catch(error => {
-              console.log('Service worker registration failed:', error);
-            });
+        window.addEventListener('load', async () => {
+          // Force-unregister any stale service workers first
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of registrations) {
+            await reg.unregister();
+            console.log('Unregistered old service worker');
+          }
+          // Clear all old caches
+          const cacheNames = await caches.keys();
+          for (const name of cacheNames) {
+            await caches.delete(name);
+            console.log('Deleted cache:', name);
+          }
+          // Register fresh
+          try {
+            const reg = await navigator.serviceWorker.register('/sw.js');
+            console.log('Service worker registered:', reg.scope);
+          } catch (e) {
+            console.log('SW registration failed:', e);
+          }
         });
       }
     </script>
