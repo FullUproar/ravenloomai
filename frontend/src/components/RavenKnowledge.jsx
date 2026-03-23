@@ -68,11 +68,25 @@ const LOG_CORRECTION = gql`
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function looksLikeQuestion(text) {
+  const t = text.trim().toLowerCase();
+  // Explicit question marks
+  if (/[?]$/.test(t)) return true;
+  // Question words
+  if (/^(what|when|where|who|why|how|is |are |do |does |can |will |should |tell |show |list |give )/.test(t)) return true;
+  // Implied questions — statements that are really queries
+  if (/\b(i forget|i forgot|remind me|i need to know|i('m| am) not sure|i('m| am) unsure|i don'?t remember|what'?s (our|the|my)|i('m| am) looking for|i('m| am) trying to find|help me (find|understand|figure)|do we have|have we)\b/.test(t)) return true;
+  return false;
+}
+
 function looksLikeCorrection(text) {
   const t = text.trim().toLowerCase();
+  // Explicit correction signals
   if (/^(no[,. ]|nope|wrong|incorrect|actually|that's not|thats not|not quite|correction|update:|fyi |the answer is|it's actually|its actually|should be|it is )/.test(t)) return true;
-  if (!/[?]$/.test(t) && !/^(what|when|where|who|why|how|is |are |do |does |can |will |should |tell )/.test(t)) return true;
-  return false;
+  // If it's a question (including implied), it's NOT a correction
+  if (looksLikeQuestion(t)) return false;
+  // Remaining statements after an answer are likely corrections/additions
+  return true;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
