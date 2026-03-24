@@ -106,50 +106,50 @@ Only decompose if the statement contains multiple distinct facts. If it's alread
  * Auto-merges >0.97 similarity, proposes 0.90-0.97.
  */
 export async function mergeSemanticDuplicates(teamId) {
-  const concepts = await db.query(`
-    SELECT id, name, canonical_name, type, embedding, mention_count
-    FROM concepts
-    WHERE team_id = $1 AND embedding IS NOT NULL
-    ORDER BY mention_count DESC
+  // Single SQL query to find all similar concept pairs (much faster than O(n²) loop)
+  const pairs = await db.query(`
+    SELECT c1.id AS id1, c1.name AS name1, c1.type AS type1, c1.mention_count AS mentions1,
+           c2.id AS id2, c2.name AS name2, c2.type AS type2, c2.mention_count AS mentions2,
+           1 - (c1.embedding <=> c2.embedding) AS similarity
+    FROM concepts c1
+    JOIN concepts c2 ON c1.team_id = c2.team_id AND c1.id < c2.id AND c1.type = c2.type
+    WHERE c1.team_id = $1
+      AND c1.embedding IS NOT NULL AND c2.embedding IS NOT NULL
+      AND 1 - (c1.embedding <=> c2.embedding) > 0.90
+    ORDER BY similarity DESC
+    LIMIT 100
   `, [teamId]);
 
   const proposals = [];
   const autoMerged = [];
   const processed = new Set();
 
-  for (let i = 0; i < concepts.rows.length; i++) {
-    if (processed.has(concepts.rows[i].id)) continue;
+  for (const row of pairs.rows) {
+    if (processed.has(row.id1) || processed.has(row.id2)) continue;
+    const similarity = parseFloat(row.similarity);
 
-    for (let j = i + 1; j < concepts.rows.length; j++) {
-      if (processed.has(concepts.rows[j].id)) continue;
-      if (concepts.rows[i].type !== concepts.rows[j].type) continue;
+    if (similarity > 0.97) {
+      // Auto-merge (editorial decision — silent)
+      const canonicalId = row.mentions1 >= row.mentions2 ? row.id1 : row.id2;
+      const duplicateId = canonicalId === row.id1 ? row.id2 : row.id1;
+      const canonicalName = canonicalId === row.id1 ? row.name1 : row.name2;
+      const duplicateName = canonicalId === row.id1 ? row.name2 : row.name1;
 
-      // Calculate similarity via SQL for accuracy
-      const simResult = await db.query(
-        'SELECT 1 - ($1::vector <=> $2::vector) AS similarity',
-        [concepts.rows[i].embedding, concepts.rows[j].embedding]
-      );
-      const similarity = parseFloat(simResult.rows[0]?.similarity || '0');
-
-      if (similarity > 0.97) {
-        // Auto-merge (editorial decision — silent)
-        const canonical = concepts.rows[i].mention_count >= concepts.rows[j].mention_count
-          ? concepts.rows[i] : concepts.rows[j];
-        const duplicate = canonical === concepts.rows[i] ? concepts.rows[j] : concepts.rows[i];
-
-        await TripleService.mergeConcepts(teamId, canonical.id, duplicate.id);
-        processed.add(duplicate.id);
-        autoMerged.push({ canonical: canonical.name, duplicate: duplicate.name, similarity });
-      } else if (similarity > 0.90) {
-        // Propose (needs review)
-        proposals.push({
-          conceptA: { id: concepts.rows[i].id, name: concepts.rows[i].name, type: concepts.rows[i].type },
-          conceptB: { id: concepts.rows[j].id, name: concepts.rows[j].name, type: concepts.rows[j].type },
-          similarity: similarity.toFixed(3),
-          suggestedCanonical: concepts.rows[i].mention_count >= concepts.rows[j].mention_count
-            ? concepts.rows[i].name : concepts.rows[j].name
-        });
+      try {
+        await TripleService.mergeConcepts(teamId, canonicalId, duplicateId);
+        processed.add(duplicateId);
+        autoMerged.push({ canonical: canonicalName, duplicate: duplicateName, similarity });
+      } catch (err) {
+        console.error(`[Grooming] Merge error: ${err.message}`);
       }
+    } else {
+      // Propose (needs review)
+      proposals.push({
+        conceptA: { id: row.id1, name: row.name1, type: row.type1 },
+        conceptB: { id: row.id2, name: row.name2, type: row.type2 },
+        similarity: similarity.toFixed(3),
+        suggestedCanonical: row.mentions1 >= row.mentions2 ? row.name1 : row.name2
+      });
     }
   }
 
