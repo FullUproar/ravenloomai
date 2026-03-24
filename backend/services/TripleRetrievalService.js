@@ -51,24 +51,29 @@ QUERY TYPES:
 - factual: Simple fact lookup ("When does X launch?")
 - counting: Requires counting entities ("How many products?")
 - comparison: Comparing two entities ("Which is cheaper?")
-- aggregation: Summarizing across entities ("What's our total revenue?")
 - listing: Listing items that match criteria ("What games are under $20?")
-- temporal: Time-based question ("What happened in Q1?")
+- exhaustive: Broad query wanting ALL info about a topic ("Tell me everything about Fugly's Mayhem Machine", "What do we know about manufacturing?")
+- timeline: Wants dates/deadlines aggregated chronologically ("All upcoming deadlines", "What's our timeline?", "Upcoming milestones")
+- cross_domain: Combines multiple distinct topics ("Who handles manufacturing AND what brand principles apply?", "How does our budget relate to product launches?")
 - relational: About relationships between entities ("Who works with whom?")
 
 Return ONLY JSON:
 {
-  "queryType": "factual|counting|comparison|aggregation|listing|temporal|relational",
+  "queryType": "factual|counting|comparison|listing|exhaustive|timeline|cross_domain|relational",
   "targetConcepts": ["concept names to search for"],
-  "needsGraphScan": false,
-  "scanQuery": null,
-  "augmentation": null
+  "needsGraphScan": true/false,
+  "scanQuery": "description of what to scan for",
+  "domains": ["domain1", "domain2"],
+  "warnSlowQuery": false
 }
 
-For COUNTING queries: set needsGraphScan=true and scanQuery to describe what to count (e.g., "count concepts of type product").
-For LISTING queries: set needsGraphScan=true and scanQuery to describe the filter.
+For COUNTING: set needsGraphScan=true, scanQuery describes what to count.
+For LISTING: set needsGraphScan=true, scanQuery describes the filter.
 For COMPARISON: list both concepts in targetConcepts.
-For simple FACTUAL: just list the main concept.`
+For EXHAUSTIVE: set needsGraphScan=true, scanQuery="all triples for [concept]". targetConcepts lists the main topic(s).
+For TIMELINE: set needsGraphScan=true, scanQuery="all date-containing triples". warnSlowQuery=true.
+For CROSS_DOMAIN: set needsGraphScan=true, list multiple concepts in targetConcepts, domains lists the topic areas. warnSlowQuery=true.
+For simple FACTUAL: just list the main concept, needsGraphScan=false.`
     },
     { role: 'user', content: question }
   ], { model: 'gpt-4o-mini', maxTokens: 200, temperature: 0, teamId, operation: 'query_plan' });
@@ -192,7 +197,6 @@ async function executeGraphScan(teamId, plan, scopeIds) {
     }
 
     if (qt === 'comparison' && plan.targetConcepts?.length >= 2) {
-      // Get triples for both concepts being compared
       const results = [];
       for (const name of plan.targetConcepts.slice(0, 2)) {
         const conceptResult = await db.query(
@@ -209,6 +213,103 @@ async function executeGraphScan(teamId, plan, scopeIds) {
         }
       }
       return { type: 'comparison', comparisons: results };
+    }
+
+    // ── EXHAUSTIVE: get ALL triples for target concepts ──────────────
+    if (qt === 'exhaustive' && plan.targetConcepts?.length > 0) {
+      const allTriples = [];
+      for (const name of plan.targetConcepts.slice(0, 3)) {
+        // Fuzzy match concept name
+        const conceptResult = await db.query(`
+          SELECT id, name FROM concepts
+          WHERE team_id = $1 AND (LOWER(canonical_name) LIKE $2 OR LOWER(name) LIKE $2
+            OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE LOWER(a) LIKE $2))
+          LIMIT 3
+        `, [teamId, `%${name.toLowerCase()}%`]);
+
+        for (const concept of conceptResult.rows) {
+          const triples = await db.query(`
+            SELECT t.display_text, t.relationship, s.name AS sn, o.name AS on2
+            FROM triples t
+            JOIN concepts s ON t.subject_id = s.id
+            JOIN concepts o ON t.object_id = o.id
+            WHERE t.team_id = $1 AND t.status = 'active'
+              AND (t.subject_id = $2 OR t.object_id = $2)
+            ORDER BY t.confidence DESC
+            LIMIT 30
+          `, [teamId, concept.id]);
+          allTriples.push(...triples.rows.map(r => r.display_text));
+        }
+      }
+      const unique = [...new Set(allTriples)];
+      return {
+        type: 'exhaustive',
+        triples: unique,
+        count: unique.length,
+        description: `Found ${unique.length} facts about ${plan.targetConcepts.join(', ')}`,
+      };
+    }
+
+    // ── TIMELINE: aggregate all date-containing triples ──────────────
+    if (qt === 'timeline') {
+      const dateTriples = await db.query(`
+        SELECT t.display_text, t.relationship, s.name AS subject, o.name AS object, o.type AS object_type
+        FROM triples t
+        JOIN concepts s ON t.subject_id = s.id
+        JOIN concepts o ON t.object_id = o.id
+        WHERE t.team_id = $1 AND t.status = 'active'
+          AND (o.type IN ('date', 'deadline', 'milestone', 'event', 'time_period')
+            OR t.relationship ~* '(launch|release|due|deadline|target|schedule|start|open|ship|complete|deliver)'
+            OR o.name ~* '(january|february|march|april|may|june|july|august|september|october|november|december|20[0-9]{2}|Q[1-4])')
+        ORDER BY o.name ASC
+        LIMIT 50
+      `, [teamId]);
+
+      const timeline = dateTriples.rows.map(r => ({
+        event: r.subject,
+        relationship: r.relationship,
+        date: r.object,
+        displayText: r.display_text,
+      }));
+
+      return {
+        type: 'timeline',
+        events: timeline,
+        count: timeline.length,
+        description: `Found ${timeline.length} dated events/deadlines:\n${timeline.map(t => `- ${t.event} ${t.relationship} ${t.date}`).join('\n')}`,
+      };
+    }
+
+    // ── CROSS_DOMAIN: search multiple concepts and merge ─────────────
+    if (qt === 'cross_domain' && plan.targetConcepts?.length >= 2) {
+      const domainResults = [];
+      for (const name of plan.targetConcepts.slice(0, 4)) {
+        const conceptResult = await db.query(`
+          SELECT id, name FROM concepts
+          WHERE team_id = $1 AND (LOWER(canonical_name) LIKE $2 OR LOWER(name) LIKE $2)
+          LIMIT 3
+        `, [teamId, `%${name.toLowerCase()}%`]);
+
+        const triples = [];
+        for (const concept of conceptResult.rows) {
+          const tripleResult = await db.query(`
+            SELECT t.display_text FROM triples t
+            WHERE t.team_id = $1 AND t.status = 'active'
+              AND (t.subject_id = $2 OR t.object_id = $2)
+            ORDER BY t.confidence DESC LIMIT 15
+          `, [teamId, concept.id]);
+          triples.push(...tripleResult.rows.map(r => r.display_text));
+        }
+        domainResults.push({ domain: name, triples: [...new Set(triples)] });
+      }
+
+      return {
+        type: 'cross_domain',
+        domains: domainResults,
+        description: domainResults.map(d =>
+          `${d.domain} (${d.triples.length} facts):\n${d.triples.slice(0, 5).map(t => `  - ${t}`).join('\n')}`
+        ).join('\n\n'),
+      };
     }
   } catch (err) {
     console.error('[QueryPlan] Graph scan error:', err.message);

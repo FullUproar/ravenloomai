@@ -57,15 +57,18 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     console.error('[RavenService.ask] SST routing error:', err.message);
   }
 
-  // Step 2b: Query execution planning (ONLY for counting/listing/comparison queries)
-  // Skip for simple factual queries to save cost and latency
+  // Step 2b: Query execution planning — decides retrieval strategy
+  // Triggers for anything beyond simple factual lookups
   let queryPlan = null;
-  const needsPlanning = /\bhow many\b|\bhow much\b|\blist\b|\bcompare\b|\bcheapest\b|\bmost expensive\b|\btotal\b|\ball\b.*\?/i.test(standaloneQuestion);
+  const needsPlanning = /\bhow many\b|\bhow much\b|\blist\b|\bcompare\b|\bcheapest\b|\bmost expensive\b|\btotal\b|\ball\b|\beverything\b|\btimeline\b|\bdeadline\b|\bupcoming\b|\bschedule\b|\bmilestone\b|\band\b.*\band\b|\btell me about\b/i.test(standaloneQuestion);
   if (needsPlanning) {
     try {
       queryPlan = await TripleRetrievalService.planQuery(teamId, standaloneQuestion, searchScopeIds);
       if (queryPlan) {
-        console.log(`[RavenService.ask] Query plan: ${queryPlan.queryType}${queryPlan.precomputedData ? ` (precomputed: ${queryPlan.precomputedData.description})` : ''}`);
+        console.log(`[RavenService.ask] Query plan: ${queryPlan.queryType}${queryPlan.precomputedData ? ` (precomputed)` : ''}`);
+        if (queryPlan.warnSlowQuery) {
+          console.log(`[RavenService.ask] Slow query warning — deep/broad search`);
+        }
       }
     } catch (err) {
       console.error('[RavenService.ask] Query planning error:', err.message);
@@ -177,6 +180,14 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
       planContext = `\n\nCOMPARISON DATA:\n${pd.comparisons.map(c =>
         `${c.concept}:\n${c.triples.map(t => `  - ${t}`).join('\n')}`
       ).join('\n\n')}`;
+    } else if (pd.type === 'exhaustive') {
+      planContext = `\n\nCOMPREHENSIVE SCAN (${pd.count} facts found):\n${pd.triples.map(t => `- ${t}`).join('\n')}`;
+    } else if (pd.type === 'timeline') {
+      planContext = `\n\nTIMELINE SCAN (${pd.count} dated events):\n${pd.events.map(e => `- ${e.event} ${e.relationship} ${e.date}`).join('\n')}`;
+    } else if (pd.type === 'cross_domain') {
+      planContext = `\n\nCROSS-DOMAIN ANALYSIS:\n${pd.domains.map(d =>
+        `${d.domain.toUpperCase()} (${d.triples.length} facts):\n${d.triples.map(t => `  - ${t}`).join('\n')}`
+      ).join('\n\n')}`;
     }
     answerContext = (answerContext || '') + planContext;
   }
@@ -279,6 +290,32 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
     emit('status', { phase: 'routed', message: `Scoped to: ${sstNode.name}`, scope: { id: sstNode.id, name: sstNode.name } });
   }
 
+  // Step 2b: Query planning
+  let queryPlan = null;
+  const needsPlanning = /\bhow many\b|\bhow much\b|\blist\b|\bcompare\b|\btotal\b|\ball\b|\beverything\b|\btimeline\b|\bdeadline\b|\bupcoming\b|\bschedule\b|\bmilestone\b|\band\b.*\band\b|\btell me about\b/i.test(standaloneQuestion);
+  if (needsPlanning) {
+    emit('status', { phase: 'planning', message: 'Planning retrieval strategy...' });
+    try {
+      queryPlan = await TripleRetrievalService.planQuery(teamId, standaloneQuestion, searchScopeIds);
+      if (queryPlan) {
+        const planMessages = {
+          exhaustive: 'Doing a deep scan — gathering everything I know...',
+          timeline: 'Scanning all dates and deadlines...',
+          cross_domain: 'Searching across multiple topics...',
+          counting: 'Counting items in the knowledge base...',
+          comparison: 'Comparing the items you asked about...',
+          listing: 'Building a list from the knowledge base...',
+        };
+        emit('status', {
+          phase: 'planned',
+          message: planMessages[queryPlan.queryType] || `Running a ${queryPlan.queryType} query...`,
+          queryType: queryPlan.queryType,
+          warnSlowQuery: queryPlan.warnSlowQuery,
+        });
+      }
+    } catch {}
+  }
+
   // Step 3: Embedding search
   emit('status', { phase: 'searching', message: 'Searching knowledge base...' });
 
@@ -347,6 +384,19 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
           : legacyLines.join('\n');
       }
     } catch {}
+  }
+
+  // Inject precomputed data from query plan
+  if (queryPlan?.precomputedData) {
+    const pd = queryPlan.precomputedData;
+    let planContext = '';
+    if (pd.type === 'count') planContext = `\n\nGRAPH SCAN: ${pd.count} items found: ${pd.names.join(', ')}`;
+    else if (pd.type === 'list') planContext = `\n\nGRAPH SCAN:\n${pd.items.map(i => `- ${i.name} (${i.type})`).join('\n')}`;
+    else if (pd.type === 'comparison') planContext = `\n\nCOMPARISON:\n${pd.comparisons.map(c => `${c.concept}:\n${c.triples.map(t => `  - ${t}`).join('\n')}`).join('\n\n')}`;
+    else if (pd.type === 'exhaustive') planContext = `\n\nDEEP SCAN (${pd.count} facts):\n${pd.triples.map(t => `- ${t}`).join('\n')}`;
+    else if (pd.type === 'timeline') planContext = `\n\nTIMELINE (${pd.count} events):\n${pd.events.map(e => `- ${e.event} ${e.relationship} ${e.date}`).join('\n')}`;
+    else if (pd.type === 'cross_domain') planContext = `\n\nCROSS-DOMAIN:\n${pd.domains.map(d => `${d.domain} (${d.triples.length} facts):\n${d.triples.map(t => `  - ${t}`).join('\n')}`).join('\n\n')}`;
+    answerContext = (answerContext || '') + planContext;
   }
 
   let userModelPrompt = '';
