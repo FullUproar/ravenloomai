@@ -6,9 +6,9 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-height: calc(100vh - 140px);
   max-width: 720px;
   margin: 0 auto;
+  overflow: hidden;
 }
 
 /* ── Messages area ─────────────────────────────────────────────────────── */
@@ -464,6 +464,7 @@
   border-top: 1px solid var(--border-subtle, #2a2d32);
   background: var(--surface, #16181c);
   align-items: flex-end;
+  flex-shrink: 0;
 }
 
 .chat-input-field {
@@ -542,45 +543,82 @@
 
 @media (max-width: 600px) {
   .raven-chat {
-    max-height: calc(100vh - 120px);
-    max-height: calc(100dvh - 120px);
+    max-width: 100%;
   }
 
   .raven-chat-messages {
-    padding: 12px 8px;
+    padding: 8px 6px;
+    gap: 6px;
   }
 
   .chat-msg {
-    max-width: 92%;
+    max-width: 95%;
   }
 
   .chat-bubble {
     font-size: 14px;
-    padding: 8px 12px;
+    padding: 8px 10px;
+    border-radius: 12px;
   }
 
   .raven-chat-input {
-    padding: 8px;
+    padding: 6px 8px;
     gap: 6px;
   }
 
   .chat-input-field {
     font-size: 16px; /* prevents iOS zoom */
-    padding: 8px 12px;
+    padding: 8px 10px;
     border-radius: 10px;
+    min-height: 38px;
   }
 
   .chat-input-actions {
     flex-direction: row;
+    gap: 4px;
   }
 
   .chat-action-btn {
-    padding: 8px 12px;
-    font-size: 13px;
+    padding: 8px 10px;
+    font-size: 12px;
   }
 
   .triple-structure {
     font-size: 12px;
+  }
+
+  .chat-followups {
+    gap: 4px;
+  }
+
+  .chat-followup-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
+  .chat-sources summary {
+    font-size: 11px;
+  }
+
+  .chat-traversal-btn {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+
+  .confidence-badge {
+    font-size: 10px;
+  }
+
+  .raven-chat-empty {
+    padding: 20px 16px;
+  }
+
+  .raven-chat-empty-icon {
+    font-size: 36px;
+  }
+
+  .raven-chat-empty p {
+    font-size: 13px;
   }
 }
 
