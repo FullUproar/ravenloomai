@@ -406,8 +406,8 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
         </header>
 
         {/* Main content */}
-        <main className={`shell-main ${activeView === 'home' && showSplitView ? 'shell-main--split' : ''}`} role="tabpanel">
-          {activeView === 'home' && !showSplitView && (
+        <main className="shell-main" role="tabpanel">
+          {activeView === 'home' && (
             <RavenHome
               teamId={teamId}
               scopeId={activeScopeId}
@@ -420,34 +420,6 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
               onShowTraversal={handleShowTraversal}
               onTraversalEvent={handleTraversalEvent}
             />
-          )}
-
-          {/* Split view: chat + graph side by side during real-time traversal */}
-          {activeView === 'home' && showSplitView && (
-            <>
-              <div className="shell-split-chat">
-                <RavenHome
-                  teamId={teamId}
-                  scopeId={activeScopeId}
-                  scopeName={isPrivate ? 'Just Me' : team.name}
-                  isPrivate={isPrivate}
-                  onTogglePrivate={handleTogglePrivate}
-                  factCount={factCount}
-                  onFactsChanged={refetchFactCount}
-                  user={user}
-                  onShowTraversal={handleShowTraversal}
-                  onTraversalEvent={handleTraversalEvent}
-                />
-              </div>
-              <div className="shell-split-graph">
-                <KnowledgeGraph
-                  teamId={teamId}
-                  traversalPath={pendingTraversal}
-                  realtimePhases={realtimePhases}
-                  onTraversalComplete={() => { setPendingTraversal(null); }}
-                />
-              </div>
-            </>
           )}
 
           {activeView === 'explore' && (
@@ -466,6 +438,25 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
             />
           )}
         </main>
+
+        {/* Graph popout overlay — floats on top of chat */}
+        {showSplitView && activeView === 'home' && (
+          <div className="shell-graph-popout">
+            <div className="shell-graph-popout-header">
+              <span className="shell-graph-popout-title">
+                <span className="traversal-pulse" />
+                Raven is thinking...
+              </span>
+              <button className="shell-graph-popout-close" onClick={() => setShowSplitView(false)}>&times;</button>
+            </div>
+            <KnowledgeGraph
+              teamId={teamId}
+              traversalPath={pendingTraversal}
+              realtimePhases={realtimePhases}
+              onTraversalComplete={() => setPendingTraversal(null)}
+            />
+          </div>
+        )}
 
         {/* Footer branding */}
         <footer className="shell-footer">
