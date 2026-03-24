@@ -535,10 +535,12 @@ const resolvers = {
     getGraphData: async (_, { teamId, sstNodeId, limit }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       let query = `
-        SELECT t.id, t.display_text, t.relationship, t.confidence, t.trust_tier,
+        SELECT t.id, t.display_text, t.relationship, t.confidence, t.trust_tier, t.created_at,
                t.subject_id, t.object_id,
-               s.name AS subject_name, s.type AS subject_type, s.mention_count AS subject_mentions,
-               o.name AS object_name, o.type AS object_type, o.mention_count AS object_mentions
+               s.name AS subject_name, s.type AS subject_type,
+               s.mention_count AS subject_mentions, s.created_at AS subject_created,
+               o.name AS object_name, o.type AS object_type,
+               o.mention_count AS object_mentions, o.created_at AS object_created
         FROM triples t
         JOIN concepts s ON t.subject_id = s.id
         JOIN concepts o ON t.object_id = o.id
@@ -552,22 +554,50 @@ const resolvers = {
       const result = await pool.query(query, params);
       const conceptMap = new Map();
       for (const row of result.rows) {
-        for (const [id, name, type, mentions] of [
-          [row.subject_id, row.subject_name, row.subject_type, row.subject_mentions],
-          [row.object_id, row.object_name, row.object_type, row.object_mentions]
+        for (const [id, name, type, mentions, created] of [
+          [row.subject_id, row.subject_name, row.subject_type, row.subject_mentions, row.subject_created],
+          [row.object_id, row.object_name, row.object_type, row.object_mentions, row.object_created]
         ]) {
           if (!conceptMap.has(id)) {
-            conceptMap.set(id, { id, name, type, mentionCount: mentions || 0, connectionCount: 0 });
+            conceptMap.set(id, {
+              id, name, type,
+              mentionCount: mentions || 0,
+              connectionCount: 0,
+              queryCount: 0,
+              lastQueryAt: null,
+              createdAt: created,
+            });
           }
           conceptMap.get(id).connectionCount++;
         }
       }
+
+      // Enrich with query frequency from SST route cache and concept aliases
+      try {
+        const conceptIds = Array.from(conceptMap.keys());
+        if (conceptIds.length > 0) {
+          // Get alias/query data from concepts table (mention_count tracks queries)
+          const queryData = await pool.query(
+            `SELECT id, mention_count, updated_at FROM concepts WHERE id = ANY($1)`,
+            [conceptIds]
+          );
+          for (const row of queryData.rows) {
+            const node = conceptMap.get(row.id);
+            if (node) {
+              node.queryCount = row.mention_count || 0;
+              node.lastQueryAt = row.updated_at;
+            }
+          }
+        }
+      } catch {}
+
       return {
         nodes: Array.from(conceptMap.values()),
         edges: result.rows.map(r => ({
           id: r.id, sourceId: r.subject_id, targetId: r.object_id,
           relationship: r.relationship, displayText: r.display_text,
           confidence: r.confidence, trustTier: r.trust_tier,
+          traversalCount: 0, // TODO: track per-edge traversal frequency
         })),
       };
     },

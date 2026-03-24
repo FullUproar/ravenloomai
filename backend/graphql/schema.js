@@ -335,6 +335,9 @@ export default gql`
     type: String!
     mentionCount: Int!
     connectionCount: Int!
+    queryCount: Int
+    lastQueryAt: DateTime
+    createdAt: DateTime
   }
 
   type GraphEdge {
@@ -345,6 +348,7 @@ export default gql`
     displayText: String!
     confidence: Float
     trustTier: String
+    traversalCount: Int
   }
 
   type GraphData {

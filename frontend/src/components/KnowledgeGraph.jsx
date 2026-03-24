@@ -17,8 +17,8 @@ import './KnowledgeGraph.css';
 const GET_GRAPH_DATA = gql`
   query GetGraphData($teamId: ID!, $sstNodeId: ID, $limit: Int) {
     getGraphData(teamId: $teamId, sstNodeId: $sstNodeId, limit: $limit) {
-      nodes { id name type mentionCount connectionCount }
-      edges { id sourceId targetId relationship displayText confidence trustTier }
+      nodes { id name type mentionCount connectionCount queryCount lastQueryAt createdAt }
+      edges { id sourceId targetId relationship displayText confidence trustTier traversalCount }
     }
   }
 `;
@@ -229,18 +229,39 @@ export default function KnowledgeGraph({ teamId, traversalPath, realtimePhases, 
     const zoom = d3Zoom.zoom().scaleExtent([0.1, 4]).on('zoom', (event) => g.attr('transform', event.transform));
     svg.call(zoom);
 
-    // Max connections for normalization
+    // Normalization
     const maxConn = Math.max(1, ...nodes.map(n => n.connectionCount));
+    const maxQueries = Math.max(1, ...nodes.map(n => n.queryCount || 0));
+    const now = Date.now();
 
-    // Node data with computed properties
+    // Color temperature: recently touched = warm (gold), untouched = cool (type color)
+    function getHeatColor(node) {
+      if (!node.lastQueryAt) return getNodeColor(node.type);
+      const age = now - new Date(node.lastQueryAt).getTime();
+      const hoursAgo = age / (1000 * 60 * 60);
+      if (hoursAgo < 1) return '#fbbf24'; // gold — very recent
+      if (hoursAgo < 24) return '#f59e0b'; // amber — today
+      if (hoursAgo < 168) return '#d97706'; // dark amber — this week
+      return getNodeColor(node.type); // cool — older
+    }
+
+    // Node data with computed visual properties
     const nodeData = nodes.map(n => {
-      const importance = n.connectionCount / maxConn; // 0-1
+      const importance = n.connectionCount / maxConn;
+      const queryIntensity = (n.queryCount || 0) / maxQueries; // 0-1 how often queried
+      const recency = n.lastQueryAt
+        ? Math.max(0, 1 - (now - new Date(n.lastQueryAt).getTime()) / (7 * 24 * 60 * 60 * 1000)) // 0-1, fades over 7 days
+        : 0;
+
       return {
         ...n,
         importance,
+        queryIntensity,
+        recency,
+        heatColor: getHeatColor(n),
         radius: Math.max(5, Math.min(35, 3 + Math.sqrt(n.connectionCount) * 6)),
-        breatheSpeed: 3000 + (1 - importance) * 4000, // important nodes breathe faster
-        breatheAmount: 0.15 + importance * 0.25, // important nodes breathe more
+        breatheSpeed: 3000 + (1 - Math.max(importance, recency)) * 4000,
+        breatheAmount: 0.15 + Math.max(importance, recency) * 0.25,
       };
     });
     const nodeMap = new Map(nodeData.map(n => [n.id, n]));
@@ -285,40 +306,44 @@ export default function KnowledgeGraph({ teamId, traversalPath, realtimePhases, 
       .attr('class', 'graph-node-group')
       .style('cursor', 'pointer');
 
-    // Outer glow ring (breathing)
+    // Outer glow ring (breathing) — color reflects recency
     nodeGroups.append('circle')
       .attr('class', 'node-glow-ring')
       .attr('r', d => d.radius + 6)
       .attr('fill', 'none')
-      .attr('stroke', d => getNodeColor(d.type))
-      .attr('stroke-width', 1)
-      .attr('opacity', 0.15);
+      .attr('stroke', d => d.recency > 0.3 ? d.heatColor : getNodeColor(d.type))
+      .attr('stroke-width', d => d.recency > 0.5 ? 1.5 : 1)
+      .attr('opacity', d => 0.1 + d.recency * 0.2);
 
-    // Main circle
+    // Main circle — fill opacity reflects query intensity
     nodeGroups.append('circle')
       .attr('class', 'node-main')
       .attr('r', d => d.radius)
-      .attr('fill', d => getNodeColor(d.type))
-      .attr('stroke', d => getNodeColor(d.type))
-      .attr('stroke-width', 0.5)
-      .attr('fill-opacity', d => 0.3 + d.importance * 0.5)
-      .attr('stroke-opacity', 0.6);
+      .attr('fill', d => d.recency > 0.3 ? d.heatColor : getNodeColor(d.type))
+      .attr('stroke', d => d.recency > 0.3 ? d.heatColor : getNodeColor(d.type))
+      .attr('stroke-width', d => 0.5 + d.queryIntensity)
+      .attr('fill-opacity', d => 0.2 + d.importance * 0.3 + d.queryIntensity * 0.3)
+      .attr('stroke-opacity', d => 0.4 + d.queryIntensity * 0.4);
 
-    // Inner bright core (more important = brighter core)
+    // Inner bright core — brighter for recently/frequently accessed
     nodeGroups.append('circle')
       .attr('class', 'node-core')
-      .attr('r', d => d.radius * 0.4 * (0.5 + d.importance * 0.5))
-      .attr('fill', d => getNodeColor(d.type))
-      .attr('opacity', d => 0.5 + d.importance * 0.5)
-      .attr('filter', 'url(#softGlow)');
+      .attr('r', d => d.radius * (0.3 + (d.importance + d.queryIntensity) * 0.25))
+      .attr('fill', d => d.recency > 0.5 ? d.heatColor : getNodeColor(d.type))
+      .attr('opacity', d => 0.3 + d.importance * 0.3 + d.recency * 0.4)
+      .attr('filter', d => (d.importance > 0.3 || d.recency > 0.3) ? 'url(#glow)' : 'url(#softGlow)');
 
-    // Labels
+    // Labels — more prominent for important/recent nodes
     nodeGroups.append('text')
       .text(d => d.name.length > 20 ? d.name.substring(0, 18) + '...' : d.name)
       .attr('text-anchor', 'middle')
       .attr('dy', d => d.radius + 14)
-      .attr('font-size', d => Math.max(8, Math.min(12, 7 + d.importance * 5)))
-      .attr('fill', d => d.importance > 0.3 ? '#d1d5db' : '#6b7280')
+      .attr('font-size', d => Math.max(8, Math.min(13, 7 + Math.max(d.importance, d.recency) * 6)))
+      .attr('fill', d => {
+        if (d.recency > 0.5) return '#fbbf24'; // gold for recently touched
+        if (d.importance > 0.4) return '#e5e7eb'; // bright for important
+        return '#6b7280'; // dim for peripheral
+      })
       .attr('pointer-events', 'none');
 
     // ── Interactions ────────────────────────────────────────────
