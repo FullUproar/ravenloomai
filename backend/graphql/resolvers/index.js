@@ -549,7 +549,7 @@ const resolvers = {
       params.push(limit || 200);
       query += ` ORDER BY s.mention_count DESC, t.created_at DESC LIMIT $${params.length}`;
 
-      const result = await db.query(query, params);
+      const result = await pool.query(query, params);
       const conceptMap = new Map();
       for (const row of result.rows) {
         for (const [id, name, type, mentions] of [
