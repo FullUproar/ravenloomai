@@ -101,22 +101,17 @@ function looksLikeCorrection(text) {
 // ── Sub-components ──────────────────────────────────────────────────────────
 
 function ThinkingBubble({ mode }) {
-  const [idx, setIdx] = useState(0);
-  const msgs = mode === 'asking'
-    ? ['Searching your knowledge...', 'Analyzing connections...', 'Composing answer...']
-    : ['Reading your input...', 'Extracting knowledge...', 'Checking for conflicts...'];
-
-  useEffect(() => {
-    setIdx(0);
-    const interval = setInterval(() => setIdx(p => Math.min(p + 1, msgs.length - 1)), 2000);
-    return () => clearInterval(interval);
-  }, [mode]);
+  // mode can be a status message string from streaming, or 'asking'/'remembering'
+  const isStreaming = typeof mode === 'string' && mode !== 'asking' && mode !== 'remembering';
+  const displayMsg = isStreaming ? mode : (
+    mode === 'asking' ? 'Searching your knowledge...' : 'Extracting knowledge...'
+  );
 
   return (
     <div className="chat-msg chat-msg--raven">
       <div className="chat-bubble chat-bubble--raven chat-bubble--thinking">
         <div className="thinking-dot" />
-        <span>{msgs[idx]}</span>
+        <span>{displayMsg}</span>
       </div>
     </div>
   );
@@ -162,7 +157,7 @@ function TriplePreview({ triple }) {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, teamId, onShowTraversal }) {
+export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, teamId, onShowTraversal, onTraversalEvent }) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]); // { id, role, type, content, data }
   const [pendingPreview, setPendingPreview] = useState(null); // active remember preview
@@ -219,38 +214,86 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
     setIsLoading(true);
     setLoadingMode('asking');
 
+    // Signal parent to open split view for real-time animation
+    onTraversalEvent?.({ type: 'start' });
+
     try {
       const history = getConversationHistory();
-      const result = await askRaven({
-        variables: {
-          scopeId, question: q,
-          conversationHistory: history.length > 0 ? history : undefined,
+      const userId = localStorage.getItem('userId');
+
+      // Use streaming endpoint for real-time traversal
+      const response = await fetch('/api/ask-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': userId || '' },
+        body: JSON.stringify({ scopeId, question: q, conversationHistory: history }),
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      // Parse SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalAnswer = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // keep incomplete line
+
+        let currentEvent = null;
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.substring(7).trim();
+          } else if (line.startsWith('data: ') && currentEvent) {
+            try {
+              const data = JSON.parse(line.substring(6));
+
+              if (currentEvent === 'phase') {
+                // Real-time: emit traversal phase to graph
+                onTraversalEvent?.({ type: 'phase', data });
+              } else if (currentEvent === 'status') {
+                // Update loading message
+                setLoadingMode(data.message || 'asking');
+              } else if (currentEvent === 'answer') {
+                finalAnswer = data;
+              } else if (currentEvent === 'error') {
+                throw new Error(data.message);
+              }
+            } catch (parseErr) {
+              if (currentEvent === 'error') throw parseErr;
+            }
+            currentEvent = null;
+          }
         }
-      });
+      }
 
-      if (result.error) throw result.error;
-      if (!result.data?.askRaven) throw new Error('No response from Raven');
-
-      const r = result.data.askRaven;
-      addMsg('raven', 'answer', r.answer, {
-        confidence: r.confidence,
-        factsUsed: r.factsUsed,
-        suggestedFollowups: r.suggestedFollowups,
-        originalQuestion: q,
-        traversalPath: r.traversalPath,
-      });
+      if (finalAnswer) {
+        addMsg('raven', 'answer', finalAnswer.answer, {
+          confidence: finalAnswer.confidence,
+          factsUsed: finalAnswer.factsUsed,
+          suggestedFollowups: finalAnswer.suggestedFollowups,
+          originalQuestion: q,
+        });
+        onTraversalEvent?.({ type: 'complete' });
+      } else {
+        throw new Error('No answer received');
+      }
     } catch (err) {
       console.error('Ask error:', err);
-      const msg = err?.graphQLErrors?.[0]?.message || err?.message || 'Unknown error';
-      addMsg('raven', 'error', msg.includes('timeout')
+      addMsg('raven', 'error', err.message?.includes('timeout')
         ? 'That took too long — try again in a moment.'
-        : `Something went wrong: ${msg}`);
+        : `Something went wrong: ${err.message || 'Unknown error'}`);
+      onTraversalEvent?.({ type: 'error' });
     } finally {
       setIsLoading(false);
       setLoadingMode(null);
       inputRef.current?.focus();
     }
-  }, [scopeId, isLoading, addMsg, getConversationHistory, askRaven]);
+  }, [scopeId, isLoading, addMsg, getConversationHistory, onTraversalEvent]);
 
   // ── Remember ─────────────────────────────────────────────────────────────
 

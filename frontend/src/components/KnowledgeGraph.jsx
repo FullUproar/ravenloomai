@@ -174,7 +174,7 @@ function NodeDetail({ node, edges, allNodes, onClose }) {
 
 // ── Main Component ──────────────────────────────────────────────────────
 
-export default function KnowledgeGraph({ teamId, traversalPath, onTraversalComplete }) {
+export default function KnowledgeGraph({ teamId, traversalPath, realtimePhases, onTraversalComplete }) {
   const svgRef = useRef(null);
   const simRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -383,7 +383,147 @@ export default function KnowledgeGraph({ teamId, traversalPath, onTraversalCompl
     }
   }, [selectedNode, edges]);
 
-  // ── Traversal Animation ────────────────────────────────────────────
+  // ── Real-time Phase Animation ───────────────────────────────────────
+  // Triggered as each phase arrives from the streaming endpoint
+  const lastPhaseCountRef = useRef(0);
+
+  useEffect(() => {
+    if (!realtimePhases || realtimePhases.length === 0 || !svgRef.current || nodes.length === 0) return;
+    if (realtimePhases.length <= lastPhaseCountRef.current) return;
+
+    // Only animate the NEW phase(s)
+    const newPhases = realtimePhases.slice(lastPhaseCountRef.current);
+    lastPhaseCountRef.current = realtimePhases.length;
+
+    const svg = d3Selection.select(svgRef.current);
+    const g = svg.select('g');
+    if (g.empty()) return;
+
+    // On first phase, dim everything
+    if (realtimePhases.length === 1) {
+      setIsAnimating(true);
+      svg.selectAll('.graph-node-group circle').transition().duration(600).attr('opacity', 0.08).attr('stroke-width', 1.5);
+      svg.selectAll('.graph-node-group text').transition().duration(600).attr('opacity', 0.05);
+      svg.selectAll('.graph-link').transition().duration(600).attr('stroke-opacity', 0.03);
+      svg.selectAll('.graph-link-label').transition().duration(600).attr('opacity', 0);
+
+      // Ensure glow filter exists
+      let defs = svg.select('defs');
+      if (defs.empty()) defs = svg.append('defs');
+      if (defs.select('#glow').empty()) {
+        const filter = defs.append('filter').attr('id', 'glow');
+        filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'coloredBlur');
+        const merge = filter.append('feMerge');
+        merge.append('feMergeNode').attr('in', 'coloredBlur');
+        merge.append('feMergeNode').attr('in', 'SourceGraphic');
+      }
+    }
+
+    const PHASE_COLORS = {
+      embedding_search: '#3b82f6',
+      multi_hop: '#f59e0b',
+      selected: '#22c55e',
+    };
+
+    for (const phase of newPhases) {
+      const color = PHASE_COLORS[phase.phase] || '#3b82f6';
+      const conceptIds = new Set();
+      const edgeIds = new Set();
+      (phase.nodesVisited || []).forEach(n => {
+        if (n.subjectId) conceptIds.add(n.subjectId);
+        if (n.objectId) conceptIds.add(n.objectId);
+        edgeIds.add(n.id);
+      });
+
+      // Auto-zoom to cluster
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, count = 0;
+      svg.selectAll('.graph-node-group').each(function(d) {
+        if (conceptIds.has(d.id)) {
+          minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x);
+          minY = Math.min(minY, d.y); maxY = Math.max(maxY, d.y);
+          count++;
+        }
+      });
+
+      if (count > 0) {
+        const padding = 80;
+        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+        const bw = maxX - minX + padding * 2, bh = maxY - minY + padding * 2;
+        const width = svgRef.current.clientWidth, height = svgRef.current.clientHeight;
+        const scale = Math.min(width / bw, height / bh, 2.0) * 0.85;
+        const tx = width / 2 - cx * scale, ty = height / 2 - cy * scale;
+        const zoom = d3Zoom.zoom().scaleExtent([0.1, 4]);
+        svg.transition().duration(1000).ease(t => t * (2 - t))
+          .call(zoom.transform, d3Zoom.zoomIdentity.translate(tx, ty).scale(scale));
+      }
+
+      // Stagger node reveals
+      let nodeIdx = 0;
+      svg.selectAll('.graph-node-group').each(function(d) {
+        if (conceptIds.has(d.id)) {
+          const node = d3Selection.select(this);
+          const stagger = nodeIdx * 150;
+
+          setTimeout(() => {
+            // Ripple
+            const ripple = g.append('circle').attr('class', 'traversal-ripple')
+              .attr('cx', d.x).attr('cy', d.y).attr('r', d.radius || 10)
+              .attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2.5).attr('opacity', 0.9);
+            ripple.transition().duration(1200).ease(t => Math.sqrt(t))
+              .attr('r', (d.radius || 10) + 40).attr('stroke-width', 0.5).attr('opacity', 0).remove();
+
+            // Glow node
+            node.select('circle').transition().duration(500).ease(t => t * (2 - t))
+              .attr('opacity', 1).attr('stroke', color)
+              .attr('stroke-width', phase.phase === 'selected' ? 4 : 2.5).attr('filter', 'url(#glow)');
+            node.select('text').transition().duration(500)
+              .attr('opacity', 1).attr('fill', phase.phase === 'selected' ? '#fff' : color);
+          }, stagger);
+          nodeIdx++;
+        }
+      });
+
+      // Edge particles
+      let edgeIdx = 0;
+      svg.selectAll('.graph-link').each(function(d) {
+        if (edgeIds.has(d.id)) {
+          const stagger = edgeIdx * 150 + 200;
+          setTimeout(() => {
+            d3Selection.select(this).transition().duration(600)
+              .attr('stroke', color).attr('stroke-opacity', phase.phase === 'selected' ? 0.9 : 0.6)
+              .attr('stroke-width', phase.phase === 'selected' ? 3.5 : 2);
+
+            const source = typeof d.source === 'object' ? d.source : { x: 0, y: 0 };
+            const target = typeof d.target === 'object' ? d.target : { x: 0, y: 0 };
+            for (let p = 0; p < 4; p++) {
+              g.append('circle').attr('class', 'traversal-particle')
+                .attr('r', phase.phase === 'selected' ? 4 : 2.5).attr('fill', color)
+                .attr('opacity', 0.95).attr('filter', 'url(#glow)')
+                .attr('cx', source.x).attr('cy', source.y)
+                .transition().delay(p * 180).duration(900)
+                .ease(t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t)
+                .attr('cx', target.x).attr('cy', target.y)
+                .transition().duration(300).attr('r', 1).attr('opacity', 0).remove();
+            }
+          }, stagger);
+          edgeIdx++;
+        }
+      });
+
+      // If this is the final 'selected' phase, end animation after a delay
+      if (phase.phase === 'selected') {
+        setTimeout(() => {
+          setIsAnimating(false);
+          // Zoom out gently
+          const zoom = d3Zoom.zoom().scaleExtent([0.1, 4]);
+          svg.transition().duration(1500).ease(t => t * (2 - t))
+            .call(zoom.transform, d3Zoom.zoomIdentity.translate(0, 0).scale(0.75));
+        }, 2500);
+      }
+    }
+  }, [realtimePhases, nodes]);
+
+  // ── Replay Traversal Animation (from "Watch Raven think" button) ────
   useEffect(() => {
     if (!traversalPath || !svgRef.current || nodes.length === 0) return;
 

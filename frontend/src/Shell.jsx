@@ -6,7 +6,7 @@
  * Handles scope switching (Just Me / My Team) and recall alerts.
  */
 
-import { useState, useEffect, Component, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, Component, lazy, Suspense } from 'react';
 import { gql, useQuery, useLazyQuery } from '@apollo/client';
 import { useNavigate, useParams } from 'react-router-dom';
 import RavenHome from './components/RavenHome';
@@ -137,11 +137,27 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
   };
   // Traversal animation state
   const [pendingTraversal, setPendingTraversal] = useState(null);
+  const [showSplitView, setShowSplitView] = useState(false);
+  const [realtimePhases, setRealtimePhases] = useState([]);
 
   const handleShowTraversal = (traversalPath) => {
     setPendingTraversal(traversalPath);
     setActiveView('graph');
   };
+
+  // Real-time traversal events from streaming ask
+  const handleTraversalEvent = useCallback((event) => {
+    if (event.type === 'start') {
+      setShowSplitView(true);
+      setRealtimePhases([]);
+      setPendingTraversal(null);
+    } else if (event.type === 'phase') {
+      setRealtimePhases(prev => [...prev, event.data]);
+    } else if (event.type === 'complete' || event.type === 'error') {
+      // Keep split view open for a bit after completion
+      setTimeout(() => setShowSplitView(false), 5000);
+    }
+  }, []);
 
   // Scope toggle: false = "My Team" (team scope), true = "Just Me" (private scope)
   const [isPrivate, setIsPrivate] = useState(false);
@@ -390,8 +406,8 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
         </header>
 
         {/* Main content */}
-        <main className={`shell-main ${activeView === 'home' && pendingTraversal ? 'shell-main--split' : ''}`} role="tabpanel">
-          {activeView === 'home' && !pendingTraversal && (
+        <main className={`shell-main ${activeView === 'home' && showSplitView ? 'shell-main--split' : ''}`} role="tabpanel">
+          {activeView === 'home' && !showSplitView && (
             <RavenHome
               teamId={teamId}
               scopeId={activeScopeId}
@@ -402,11 +418,12 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
               onFactsChanged={refetchFactCount}
               user={user}
               onShowTraversal={handleShowTraversal}
+              onTraversalEvent={handleTraversalEvent}
             />
           )}
 
-          {/* Split view: chat + graph side by side during traversal */}
-          {activeView === 'home' && pendingTraversal && (
+          {/* Split view: chat + graph side by side during real-time traversal */}
+          {activeView === 'home' && showSplitView && (
             <>
               <div className="shell-split-chat">
                 <RavenHome
@@ -419,13 +436,15 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
                   onFactsChanged={refetchFactCount}
                   user={user}
                   onShowTraversal={handleShowTraversal}
+                  onTraversalEvent={handleTraversalEvent}
                 />
               </div>
               <div className="shell-split-graph">
                 <KnowledgeGraph
                   teamId={teamId}
                   traversalPath={pendingTraversal}
-                  onTraversalComplete={() => setPendingTraversal(null)}
+                  realtimePhases={realtimePhases}
+                  onTraversalComplete={() => { setPendingTraversal(null); }}
                 />
               </div>
             </>

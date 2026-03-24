@@ -21,6 +21,7 @@ export default function RavenHome({
   onFactsChanged,
   user,
   onShowTraversal,
+  onTraversalEvent,
 }) {
   return (
     <div className="raven-home">
@@ -52,6 +53,7 @@ export default function RavenHome({
           scopeName={scopeName}
           onFactsChanged={onFactsChanged}
           onShowTraversal={onShowTraversal}
+          onTraversalEvent={onTraversalEvent}
         />
       </div>
     </div>

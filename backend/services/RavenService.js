@@ -251,6 +251,135 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
 }
 
 /**
+ * Streaming version of ask() — emits SSE events as each retrieval phase completes.
+ * @param {function} emit - (event, data) => void, writes SSE events to the response
+ */
+export async function askStreaming(scopeId, userId, question, conversationHistory = [], emit) {
+  const scope = await ScopeService.getScopeById(scopeId);
+  if (!scope) throw new Error('Scope not found');
+  const teamId = scope.teamId;
+
+  emit('status', { phase: 'starting', message: 'Preparing query...' });
+
+  // Step 1: Rewrite follow-ups
+  let standaloneQuestion = question;
+  if (TripleRetrievalService.looksLikeFollowUp(question) && conversationHistory.length > 0) {
+    standaloneQuestion = await TripleRetrievalService.rewriteFollowUp(question, conversationHistory);
+  }
+
+  // Step 2: Get scopes + SST routing
+  const searchScopeIds = await ScopeService.getSearchScopeIds(scopeId, userId, true);
+  let sstNode = null;
+  try {
+    const route = await SSTService.routeQuery(teamId, standaloneQuestion);
+    if (route && route.confidence > 0.45) sstNode = route.node;
+  } catch {}
+
+  if (sstNode) {
+    emit('status', { phase: 'routed', message: `Scoped to: ${sstNode.name}`, scope: { id: sstNode.id, name: sstNode.name } });
+  }
+
+  // Step 3: Embedding search
+  emit('status', { phase: 'searching', message: 'Searching knowledge base...' });
+
+  let triples = await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
+    scopeIds: searchScopeIds, sstNodeId: sstNode?.id || null, topK: 15
+  });
+
+  // Emit embedding search results
+  const mapTriple = t => ({
+    id: t.id, subjectId: t.subjectId || t.subject_id, objectId: t.objectId || t.object_id,
+    subjectName: t.subjectName || t.subject_name, objectName: t.objectName || t.object_name,
+    relationship: t.relationship, similarity: t.similarity, displayText: t.displayText || t.display_text,
+  });
+
+  emit('phase', {
+    phase: 'embedding_search',
+    nodesVisited: triples.map(mapTriple),
+  });
+
+  // Step 4: Multi-hop
+  let multiHopTriples = [];
+  if (triples.length > 0 && TripleRetrievalService.shouldExpand(triples)) {
+    emit('status', { phase: 'expanding', message: 'Following connections...' });
+
+    const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 2);
+    const existingIds = new Set(triples.map(t => t.id));
+    multiHopTriples = expanded.filter(t => !existingIds.has(t.id));
+    triples = [...triples, ...multiHopTriples].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+
+    if (multiHopTriples.length > 0) {
+      emit('phase', {
+        phase: 'multi_hop',
+        nodesVisited: multiHopTriples.map(mapTriple),
+      });
+    }
+  }
+
+  // Step 5: Re-rank + select
+  emit('status', { phase: 'ranking', message: 'Evaluating relevance...' });
+
+  const filteredTriples = triples.filter(t => (t.similarity || 0) > 0.3);
+  const reranked = await TripleRetrievalService.rerankTriples(standaloneQuestion, filteredTriples);
+  const topTriples = reranked.slice(0, 8);
+
+  emit('phase', {
+    phase: 'selected',
+    nodesVisited: topTriples.map(mapTriple),
+  });
+
+  // Step 6-7: Build context + user model
+  let answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
+
+  // Legacy fallback
+  let legacyFacts = [];
+  if (topTriples.length < 3) {
+    try {
+      const { default: KnowledgeService } = await import('./KnowledgeService.js');
+      const knowledge = await KnowledgeService.getKnowledgeContext(teamId, standaloneQuestion);
+      if (knowledge.facts?.length > 0) {
+        legacyFacts = knowledge.facts;
+        const legacyLines = legacyFacts.slice(0, 10).map(f =>
+          `- ${f.content}${f.sourceQuote ? ` (Source: "${f.sourceQuote.substring(0, 100)}")` : ''}`
+        );
+        answerContext = answerContext
+          ? `${answerContext}\n\nAdditional confirmed facts:\n${legacyLines.join('\n')}`
+          : legacyLines.join('\n');
+      }
+    } catch {}
+  }
+
+  let userModelPrompt = '';
+  try {
+    const userModel = await UserModelService.getUserModel(teamId, userId);
+    userModelPrompt = UserModelService.applyUserModel(userModel);
+  } catch {}
+
+  // Step 8: Generate answer
+  emit('status', { phase: 'answering', message: 'Composing answer...' });
+
+  const answer = await generateTripleBasedAnswer(standaloneQuestion, answerContext, topTriples, userModelPrompt);
+
+  // Fire-and-forget side effects
+  UserModelService.extractUserTraits(teamId, userId, {
+    type: 'ask', content: question,
+    topics: topTriples.slice(0, 3).map(t => t.subjectName).filter(Boolean),
+  }).catch(() => {});
+  learnAliasesFromQuery(teamId, standaloneQuestion, topTriples).catch(() => {});
+
+  // Final answer event
+  emit('answer', {
+    answer: answer.text,
+    confidence: answer.confidence,
+    factsUsed: topTriples.slice(0, 5).map(t => ({
+      id: t.id, content: t.displayText, sourceQuote: t.sourceText,
+      sourceUrl: t.sourceUrl, createdAt: t.createdAt,
+    })),
+    suggestedFollowups: answer.followups || [],
+  });
+}
+
+/**
  * Learn concept aliases from how users phrase questions.
  * If "chaos card game" matches concept "Fugly's Mayhem Machine",
  * store "chaos card game" as an alias with lower trust.
