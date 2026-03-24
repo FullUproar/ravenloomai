@@ -101,10 +101,9 @@
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: var(--surface, #16181c);
+  background: #0a0b0d;
   background-image:
-    radial-gradient(circle at 1px 1px, var(--border-subtle, #2a2d32) 1px, transparent 0);
-  background-size: 30px 30px;
+    radial-gradient(ellipse at center, rgba(59, 130, 246, 0.03) 0%, transparent 70%);
 }
 
 .graph-svg {
@@ -114,7 +113,11 @@
 }
 
 .graph-link {
-  stroke: var(--text-muted, #6b7280);
+  stroke: #4a5568;
+}
+
+.ambient-particles circle {
+  pointer-events: none;
 }
 
 .graph-link-label {

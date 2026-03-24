@@ -197,7 +197,7 @@ export default function KnowledgeGraph({ teamId, traversalPath, realtimePhases, 
   const edges = graphData?.getGraphData?.edges || [];
   const sstTree = sstData?.getSSTTree || [];
 
-  // ── D3 Force Simulation ──────────────────────────────────────────────
+  // ── D3 Force Simulation — "Living Brain" ───────────────────────────
 
   useEffect(() => {
     if (!svgRef.current || nodes.length === 0) return;
@@ -206,149 +206,307 @@ export default function KnowledgeGraph({ teamId, traversalPath, realtimePhases, 
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
 
-    // Clear previous
     svg.selectAll('*').remove();
 
-    // Container for zoom
+    // Defs: glow filter + radial gradient for nodes
+    const defs = svg.append('defs');
+    const glow = defs.append('filter').attr('id', 'glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+    glow.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'coloredBlur');
+    const glowMerge = glow.append('feMerge');
+    glowMerge.append('feMergeNode').attr('in', 'coloredBlur');
+    glowMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+    // Soft glow for ambient particles
+    const softGlow = defs.append('filter').attr('id', 'softGlow').attr('x', '-100%').attr('y', '-100%').attr('width', '300%').attr('height', '300%');
+    softGlow.append('feGaussianBlur').attr('stdDeviation', '2').attr('result', 'blur');
+    const sgMerge = softGlow.append('feMerge');
+    sgMerge.append('feMergeNode').attr('in', 'blur');
+    sgMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
     const g = svg.append('g');
 
-    // Zoom behavior
-    const zoom = d3Zoom.zoom()
-      .scaleExtent([0.1, 4])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform);
-      });
+    // Zoom
+    const zoom = d3Zoom.zoom().scaleExtent([0.1, 4]).on('zoom', (event) => g.attr('transform', event.transform));
     svg.call(zoom);
 
-    // Build node/edge data for D3
-    const nodeData = nodes.map(n => ({
-      ...n,
-      radius: Math.max(6, Math.min(30, 4 + Math.sqrt(n.connectionCount) * 5)),
-    }));
+    // Max connections for normalization
+    const maxConn = Math.max(1, ...nodes.map(n => n.connectionCount));
+
+    // Node data with computed properties
+    const nodeData = nodes.map(n => {
+      const importance = n.connectionCount / maxConn; // 0-1
+      return {
+        ...n,
+        importance,
+        radius: Math.max(5, Math.min(35, 3 + Math.sqrt(n.connectionCount) * 6)),
+        breatheSpeed: 3000 + (1 - importance) * 4000, // important nodes breathe faster
+        breatheAmount: 0.15 + importance * 0.25, // important nodes breathe more
+      };
+    });
     const nodeMap = new Map(nodeData.map(n => [n.id, n]));
 
     const edgeData = edges
       .filter(e => nodeMap.has(e.sourceId) && nodeMap.has(e.targetId))
-      .map(e => ({
-        ...e,
-        source: e.sourceId,
-        target: e.targetId,
-      }));
+      .map(e => ({ ...e, source: e.sourceId, target: e.targetId }));
 
-    // Force simulation
+    // Force simulation — gravity pulls important nodes toward center
     const simulation = d3Force.forceSimulation(nodeData)
-      .force('link', d3Force.forceLink(edgeData).id(d => d.id).distance(80).strength(0.3))
-      .force('charge', d3Force.forceManyBody().strength(-200).distanceMax(300))
+      .force('link', d3Force.forceLink(edgeData).id(d => d.id).distance(70).strength(0.4))
+      .force('charge', d3Force.forceManyBody().strength(d => -100 - d.importance * 200).distanceMax(350))
       .force('center', d3Force.forceCenter(width / 2, height / 2))
-      .force('collision', d3Force.forceCollide().radius(d => d.radius + 4))
-      .force('x', d3Force.forceX(width / 2).strength(0.03))
-      .force('y', d3Force.forceY(height / 2).strength(0.03));
+      .force('collision', d3Force.forceCollide().radius(d => d.radius + 3))
+      .force('gravity', d3Force.forceRadial(
+        d => (1 - d.importance) * Math.min(width, height) * 0.35,
+        width / 2, height / 2
+      ).strength(0.05));
 
     simRef.current = simulation;
 
-    // Draw edges
-    const links = g.append('g')
-      .attr('class', 'graph-links')
-      .selectAll('line')
-      .data(edgeData)
-      .join('line')
-      .attr('class', 'graph-link')
-      .attr('stroke-opacity', 0.4)
-      .attr('stroke-width', d => d.confidence ? Math.max(1, d.confidence * 3) : 1);
+    // ── Layer 1: Ambient particles ──────────────────────────────
+    const particleLayer = g.append('g').attr('class', 'ambient-particles');
 
-    // Edge labels
-    const linkLabels = g.append('g')
-      .attr('class', 'graph-link-labels')
-      .selectAll('text')
-      .data(edgeData)
-      .join('text')
+    // ── Layer 2: Edges ──────────────────────────────────────────
+    const links = g.append('g').attr('class', 'graph-links')
+      .selectAll('line').data(edgeData).join('line')
+      .attr('class', 'graph-link')
+      .attr('stroke-opacity', d => 0.15 + (d.confidence || 0.5) * 0.25)
+      .attr('stroke-width', d => Math.max(0.5, (d.confidence || 0.5) * 2));
+
+    const linkLabels = g.append('g').attr('class', 'graph-link-labels')
+      .selectAll('text').data(edgeData).join('text')
       .attr('class', 'graph-link-label')
       .text(d => d.relationship)
-      .attr('font-size', '8px')
-      .attr('opacity', 0.5);
+      .attr('font-size', '7px')
+      .attr('opacity', 0);
 
-    // Draw nodes
-    const nodeGroups = g.append('g')
-      .attr('class', 'graph-nodes')
-      .selectAll('g')
-      .data(nodeData)
-      .join('g')
+    // ── Layer 3: Node groups ────────────────────────────────────
+    const nodeGroups = g.append('g').attr('class', 'graph-nodes')
+      .selectAll('g').data(nodeData).join('g')
       .attr('class', 'graph-node-group')
       .style('cursor', 'pointer');
 
-    // Node circles
+    // Outer glow ring (breathing)
     nodeGroups.append('circle')
+      .attr('class', 'node-glow-ring')
+      .attr('r', d => d.radius + 6)
+      .attr('fill', 'none')
+      .attr('stroke', d => getNodeColor(d.type))
+      .attr('stroke-width', 1)
+      .attr('opacity', 0.15);
+
+    // Main circle
+    nodeGroups.append('circle')
+      .attr('class', 'node-main')
       .attr('r', d => d.radius)
       .attr('fill', d => getNodeColor(d.type))
-      .attr('stroke', '#0d0e10')
-      .attr('stroke-width', 1.5)
-      .attr('opacity', 0.85);
+      .attr('stroke', d => getNodeColor(d.type))
+      .attr('stroke-width', 0.5)
+      .attr('fill-opacity', d => 0.3 + d.importance * 0.5)
+      .attr('stroke-opacity', 0.6);
 
-    // Node labels
+    // Inner bright core (more important = brighter core)
+    nodeGroups.append('circle')
+      .attr('class', 'node-core')
+      .attr('r', d => d.radius * 0.4 * (0.5 + d.importance * 0.5))
+      .attr('fill', d => getNodeColor(d.type))
+      .attr('opacity', d => 0.5 + d.importance * 0.5)
+      .attr('filter', 'url(#softGlow)');
+
+    // Labels
     nodeGroups.append('text')
-      .text(d => d.name.length > 18 ? d.name.substring(0, 16) + '...' : d.name)
+      .text(d => d.name.length > 20 ? d.name.substring(0, 18) + '...' : d.name)
       .attr('text-anchor', 'middle')
       .attr('dy', d => d.radius + 14)
-      .attr('font-size', d => Math.max(9, Math.min(12, 8 + d.connectionCount)))
-      .attr('fill', '#9ca3af')
+      .attr('font-size', d => Math.max(8, Math.min(12, 7 + d.importance * 5)))
+      .attr('fill', d => d.importance > 0.3 ? '#d1d5db' : '#6b7280')
       .attr('pointer-events', 'none');
 
-    // Interactions
+    // ── Interactions ────────────────────────────────────────────
     nodeGroups
       .on('click', (event, d) => {
         event.stopPropagation();
         setSelectedNode(prev => prev?.id === d.id ? null : d);
       })
-      .on('mouseenter', (event, d) => setHoveredNode(d))
-      .on('mouseleave', () => setHoveredNode(null));
-
-    // Click background to deselect
-    svg.on('click', () => setSelectedNode(null));
-
-    // Drag behavior
-    const drag = d3Drag.drag()
-      .on('start', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
+      .on('mouseenter', (event, d) => {
+        setHoveredNode(d);
+        // Neural pathway: highlight all connections cascading outward
+        highlightPathways(svg, g, d, edgeData, nodeData, 2);
       })
-      .on('drag', (event, d) => {
-        d.fx = event.x;
-        d.fy = event.y;
-      })
-      .on('end', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
+      .on('mouseleave', () => {
+        setHoveredNode(null);
+        resetHighlight(svg);
       });
 
+    svg.on('click', () => { setSelectedNode(null); resetHighlight(svg); });
+
+    // Drag
+    const drag = d3Drag.drag()
+      .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; });
     nodeGroups.call(drag);
 
-    // Tick
+    // ── Tick + Breathing ────────────────────────────────────────
+    let tickCount = 0;
     simulation.on('tick', () => {
-      links
-        .attr('x1', d => d.source.x)
-        .attr('y1', d => d.source.y)
-        .attr('x2', d => d.target.x)
-        .attr('y2', d => d.target.y);
+      tickCount++;
 
-      linkLabels
-        .attr('x', d => (d.source.x + d.target.x) / 2)
+      links.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+
+      linkLabels.attr('x', d => (d.source.x + d.target.x) / 2)
         .attr('y', d => (d.source.y + d.target.y) / 2);
 
-      nodeGroups
-        .attr('transform', d => `translate(${d.x},${d.y})`);
+      nodeGroups.attr('transform', d => `translate(${d.x},${d.y})`);
+
+      // Breathing animation (every 3 ticks to reduce overhead)
+      if (tickCount % 3 === 0) {
+        const now = Date.now();
+        nodeGroups.select('.node-glow-ring')
+          .attr('r', d => {
+            const phase = Math.sin(now / d.breatheSpeed * Math.PI * 2);
+            return d.radius + 5 + phase * d.radius * d.breatheAmount;
+          })
+          .attr('opacity', d => {
+            const phase = Math.sin(now / d.breatheSpeed * Math.PI * 2);
+            return 0.08 + (0.5 + phase * 0.5) * 0.15;
+          });
+      }
     });
 
-    // Initial zoom to fit
+    // ── Ambient Particles (synapse flow) ────────────────────────
+    let particleAnimId;
+    function spawnParticle() {
+      if (edgeData.length === 0) return;
+      // Pick a random edge
+      const edge = edgeData[Math.floor(Math.random() * edgeData.length)];
+      const source = typeof edge.source === 'object' ? edge.source : nodeMap.get(edge.source);
+      const target = typeof edge.target === 'object' ? edge.target : nodeMap.get(edge.target);
+      if (!source || !target || !source.x || !target.x) return;
+
+      const color = getNodeColor(source.type || 'default');
+      const particle = particleLayer.append('circle')
+        .attr('r', 1.5)
+        .attr('fill', color)
+        .attr('opacity', 0.6)
+        .attr('filter', 'url(#softGlow)')
+        .attr('cx', source.x)
+        .attr('cy', source.y);
+
+      particle.transition()
+        .duration(2000 + Math.random() * 2000)
+        .ease(t => t)
+        .attr('cx', target.x)
+        .attr('cy', target.y)
+        .attr('opacity', 0)
+        .attr('r', 0.5)
+        .remove();
+    }
+
+    // Spawn particles at a steady rate
+    const particleInterval = setInterval(() => {
+      const count = Math.min(3, Math.ceil(edgeData.length / 50));
+      for (let i = 0; i < count; i++) spawnParticle();
+    }, 800);
+
+    // Initial zoom
     setTimeout(() => {
-      svg.call(zoom.transform, d3Zoom.zoomIdentity.translate(0, 0).scale(0.8));
-    }, 500);
+      svg.transition().duration(1000).call(zoom.transform, d3Zoom.zoomIdentity.translate(0, 0).scale(0.75));
+    }, 600);
 
     return () => {
       simulation.stop();
+      clearInterval(particleInterval);
+      cancelAnimationFrame(particleAnimId);
     };
   }, [nodes, edges]);
+
+  // Neural pathway highlighting — cascading wave from hovered node
+  function highlightPathways(svg, g, centerNode, edgeData, nodeData, maxDepth) {
+    const visited = new Map(); // id → depth
+    const queue = [{ id: centerNode.id, depth: 0 }];
+    visited.set(centerNode.id, 0);
+
+    while (queue.length > 0) {
+      const { id, depth } = queue.shift();
+      if (depth >= maxDepth) continue;
+
+      for (const edge of edgeData) {
+        const srcId = typeof edge.source === 'object' ? edge.source.id : edge.source;
+        const tgtId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+        const neighborId = srcId === id ? tgtId : tgtId === id ? srcId : null;
+        if (neighborId && !visited.has(neighborId)) {
+          visited.set(neighborId, depth + 1);
+          queue.push({ id: neighborId, depth: depth + 1 });
+        }
+      }
+    }
+
+    // Dim everything first
+    svg.selectAll('.graph-node-group .node-main').transition().duration(200).attr('fill-opacity', 0.05).attr('stroke-opacity', 0.1);
+    svg.selectAll('.graph-node-group .node-core').transition().duration(200).attr('opacity', 0.05);
+    svg.selectAll('.graph-node-group .node-glow-ring').transition().duration(200).attr('opacity', 0.02);
+    svg.selectAll('.graph-node-group text').transition().duration(200).attr('opacity', 0.05);
+    svg.selectAll('.graph-link').transition().duration(200).attr('stroke-opacity', 0.02);
+    svg.selectAll('.graph-link-label').transition().duration(200).attr('opacity', 0);
+
+    // Light up visited nodes with cascading delay
+    visited.forEach((depth, nodeId) => {
+      const delay = depth * 150;
+      const intensity = 1 - depth * 0.3;
+      const color = depth === 0 ? '#fff' : getNodeColor(nodeData.find(n => n.id === nodeId)?.type || 'default');
+
+      svg.selectAll('.graph-node-group').filter(d => d.id === nodeId).each(function() {
+        const node = d3Selection.select(this);
+        node.select('.node-main').transition().delay(delay).duration(300)
+          .attr('fill-opacity', 0.4 * intensity + 0.2).attr('stroke-opacity', 0.8 * intensity)
+          .attr('stroke', color).attr('stroke-width', depth === 0 ? 2 : 1);
+        node.select('.node-core').transition().delay(delay).duration(300)
+          .attr('opacity', 0.7 * intensity).attr('filter', 'url(#glow)');
+        node.select('.node-glow-ring').transition().delay(delay).duration(300)
+          .attr('opacity', 0.2 * intensity).attr('stroke', color);
+        node.select('text').transition().delay(delay).duration(300)
+          .attr('opacity', Math.max(0.4, intensity)).attr('fill', depth === 0 ? '#fff' : '#d1d5db');
+      });
+    });
+
+    // Light up edges between visited nodes
+    svg.selectAll('.graph-link').each(function(d) {
+      const srcId = typeof d.source === 'object' ? d.source.id : d.source;
+      const tgtId = typeof d.target === 'object' ? d.target.id : d.target;
+      if (visited.has(srcId) && visited.has(tgtId)) {
+        const depth = Math.max(visited.get(srcId), visited.get(tgtId));
+        d3Selection.select(this).transition().delay(depth * 150).duration(300)
+          .attr('stroke-opacity', 0.5 - depth * 0.15).attr('stroke-width', 2 - depth * 0.4);
+      }
+    });
+
+    // Show edge labels for direct connections
+    svg.selectAll('.graph-link-label').each(function(d) {
+      const srcId = typeof d.source === 'object' ? d.source.id : d.source;
+      const tgtId = typeof d.target === 'object' ? d.target.id : d.target;
+      if ((srcId === centerNode.id || tgtId === centerNode.id) && visited.has(srcId) && visited.has(tgtId)) {
+        d3Selection.select(this).transition().delay(100).duration(300).attr('opacity', 0.8);
+      }
+    });
+  }
+
+  function resetHighlight(svg) {
+    svg.selectAll('.graph-node-group .node-main').transition().duration(400)
+      .attr('fill-opacity', d => 0.3 + (d.importance || 0) * 0.5)
+      .attr('stroke-opacity', 0.6).attr('stroke-width', 0.5)
+      .attr('stroke', d => getNodeColor(d.type));
+    svg.selectAll('.graph-node-group .node-core').transition().duration(400)
+      .attr('opacity', d => 0.5 + (d.importance || 0) * 0.5).attr('filter', 'url(#softGlow)');
+    svg.selectAll('.graph-node-group .node-glow-ring').transition().duration(400)
+      .attr('opacity', 0.15).attr('stroke', d => getNodeColor(d.type));
+    svg.selectAll('.graph-node-group text').transition().duration(400)
+      .attr('opacity', d => (d.importance || 0) > 0.3 ? 1 : 0.7)
+      .attr('fill', d => (d.importance || 0) > 0.3 ? '#d1d5db' : '#6b7280');
+    svg.selectAll('.graph-link').transition().duration(400)
+      .attr('stroke-opacity', d => 0.15 + ((d.confidence || 0.5) * 0.25)).attr('stroke-width', d => Math.max(0.5, (d.confidence || 0.5) * 2));
+    svg.selectAll('.graph-link-label').transition().duration(400).attr('opacity', 0);
+  }
 
   // Highlight selected node's connections
   useEffect(() => {
