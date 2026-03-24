@@ -151,17 +151,20 @@ export async function placeTriple(teamId, triple, tripleId) {
     LIMIT 1
   `, [embStr, teamId]);
 
-  if (match.rows.length > 0 && match.rows[0].similarity > 0.5) {
-    // Good match — place here
+  if (match.rows.length > 0 && match.rows[0].similarity > 0.35) {
+    // Reasonable match — place at the closest node
+    // Only create new categories when nothing is even close
     await tagTriple(tripleId, match.rows[0].id);
     await db.query('UPDATE sst_nodes SET triple_count = triple_count + 1, updated_at = NOW() WHERE id = $1', [match.rows[0].id]);
     return match.rows[0];
   }
 
-  // No good match — ask LLM where to place it (or create new node)
-  const newNode = await suggestPlacement(teamId, tripleText, nodes);
-  await tagTriple(tripleId, newNode.id);
-  return newNode;
+  // Nothing close — place at root. New categories are only created during grooming
+  // when enough uncategorized triples cluster naturally.
+  const root = nodes.find(n => n.is_root) || nodes[0];
+  await tagTriple(tripleId, root.id);
+  await db.query('UPDATE sst_nodes SET triple_count = triple_count + 1, updated_at = NOW() WHERE id = $1', [root.id]);
+  return root;
 }
 
 /**
@@ -252,22 +255,22 @@ async function getOrCreateRoot(teamId) {
   const team = await db.query('SELECT name FROM teams WHERE id = $1', [teamId]);
   const teamName = team.rows[0]?.name || 'Knowledge Base';
 
-  // Insert with ON CONFLICT guard (use canonical_name + team_id uniqueness)
-  const result = await db.query(`
-    INSERT INTO sst_nodes (team_id, name, canonical_name, description, is_root, depth)
-    VALUES ($1, $2, $3, $4, true, 0)
-    ON CONFLICT (team_id, canonical_name) WHERE is_root = true DO NOTHING
-    RETURNING *
-  `, [teamId, teamName, teamName.toLowerCase().trim(), `Root scope for all ${teamName} knowledge`]).catch(() => null);
-
-  if (result?.rows?.[0]) return result.rows[0];
-
-  // Race lost — fetch the one that won
-  const retry = await db.query(
-    'SELECT * FROM sst_nodes WHERE team_id = $1 AND is_root = true ORDER BY created_at ASC LIMIT 1',
-    [teamId]
-  );
-  return retry.rows[0];
+  // Simple insert — if race condition, the check at top of next call catches it
+  try {
+    const result = await db.query(`
+      INSERT INTO sst_nodes (team_id, name, canonical_name, description, is_root, depth)
+      VALUES ($1, $2, $3, $4, true, 0)
+      RETURNING *
+    `, [teamId, teamName, teamName.toLowerCase().trim(), `Root scope for all ${teamName} knowledge`]);
+    return result.rows[0];
+  } catch {
+    // Race condition — another call created it first, fetch it
+    const retry = await db.query(
+      'SELECT * FROM sst_nodes WHERE team_id = $1 AND is_root = true ORDER BY created_at ASC LIMIT 1',
+      [teamId]
+    );
+    return retry.rows[0];
+  }
 }
 
 /**
@@ -328,21 +331,27 @@ async function tagTriple(tripleId, sstNodeId) {
  * Clusters triples into categories using LLM, then creates nodes.
  */
 export async function bootstrapTree(teamId) {
-  // Get all active triples
+  // Step 1: Create root node
+  const root = await getOrCreateRoot(teamId);
+  console.log(`[SST] Root: "${root.name}"`);
+
+  // Step 2: Sample triples — random sample up to 300 for diverse coverage
   const triples = await db.query(`
     SELECT t.id, t.display_text, s.name as subject_name, t.relationship, o.name as object_name
     FROM triples t
     JOIN concepts s ON t.subject_id = s.id
     JOIN concepts o ON t.object_id = o.id
     WHERE t.team_id = $1 AND t.status = 'active'
-    ORDER BY t.created_at DESC
-    LIMIT 100
+    ORDER BY RANDOM()
+    LIMIT 300
   `, [teamId]);
 
   if (triples.rows.length === 0) return;
 
-  // Ask LLM to cluster into categories
-  const tripleDescs = triples.rows.map(t =>
+  // Step 3: Ask LLM to identify 5-15 broad categories
+  // Use a SAMPLE of display texts to keep prompt manageable
+  const sample = triples.rows.slice(0, 200);
+  const tripleDescs = sample.map(t =>
     `- ${t.display_text || `${t.subject_name} ${t.relationship} ${t.object_name}`}`
   ).join('\n');
 
@@ -350,74 +359,56 @@ export async function bootstrapTree(teamId) {
     const response = await AIService.callOpenAI([
       {
         role: 'system',
-        content: `You are a knowledge organizer. Given a list of knowledge facts, create a hierarchical category tree.
+        content: `You are a knowledge organizer. Given knowledge facts, create BROAD categories.
 
-Return a JSON array of categories:
-[
-  {"name": "Category Name", "description": "1-sentence description for navigation", "parent": null, "facts": [0, 2, 5]},
-  {"name": "Sub Category", "description": "...", "parent": "Category Name", "facts": [1, 3]}
-]
+Return a JSON array:
+[{"name": "Category", "description": "1-sentence for LLM navigation", "facts": [0, 2, 5]}]
 
-Rules:
-- Max 3 levels deep
-- Category names: 1-3 words
-- Each fact should appear in exactly one category
-- Use "General" for uncategorizable facts
-- facts array contains the 0-based indices of facts that belong to this category`
+STRICT RULES:
+- Create 5-12 categories maximum. BROAD, not granular.
+- Good: "Human Biology", "Space & Astronomy", "World Geography"
+- Bad: "Heart", "Jupiter", "Tokyo Population" (too specific)
+- Every category must have at least 3 facts
+- A category of 1-2 facts should be merged into a broader one
+- "facts" array = 0-based indices of facts belonging to this category
+- Include an "Other" category for anything that doesn't fit
+- NO hierarchy — all categories are flat siblings (hierarchy comes later from grooming)
+- Category descriptions should help an AI router distinguish between categories`
       },
       {
         role: 'user',
-        content: `Organize these ${triples.rows.length} facts into categories:\n\n${tripleDescs}`
+        content: `Organize these ${sample.length} facts into broad categories:\n\n${tripleDescs}`
       }
-    ], { model: 'gpt-4o-mini', maxTokens: 1000, temperature: 0.2, teamId, operation: 'sst_bootstrap' });
+    ], { model: 'gpt-4o-mini', maxTokens: 2000, temperature: 0.1, teamId, operation: 'sst_bootstrap' });
 
     const jsonMatch = response.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return;
     const categories = JSON.parse(jsonMatch[0]);
 
-    // Create nodes
-    const nodeMap = new Map(); // name → node
-    // First pass: create root-level nodes
-    for (const cat of categories.filter(c => !c.parent)) {
-      const isGeneral = cat.name.toLowerCase() === 'general';
+    // Create category nodes under root
+    let created = 0;
+    for (const cat of categories) {
+      // Skip if too few facts (merge into Other)
+      if ((cat.facts || []).length < 2 && cat.name.toLowerCase() !== 'other') continue;
+
       const node = await createNode(teamId, {
         name: cat.name,
         description: cat.description,
-        isRoot: isGeneral,
-        depth: 0,
+        parentId: root.id,
+        depth: 1,
       });
-      nodeMap.set(cat.name, node);
 
-      // Tag triples
+      // Tag sampled triples
       for (const idx of (cat.facts || [])) {
-        if (triples.rows[idx]) {
-          await tagTriple(triples.rows[idx].id, node.id);
+        if (sample[idx]) {
+          await tagTriple(sample[idx].id, node.id);
         }
       }
       await db.query('UPDATE sst_nodes SET triple_count = $1 WHERE id = $2', [(cat.facts || []).length, node.id]);
+      created++;
     }
 
-    // Second pass: create child nodes
-    for (const cat of categories.filter(c => c.parent)) {
-      const parent = nodeMap.get(cat.parent);
-      if (!parent) continue;
-      const node = await createNode(teamId, {
-        name: cat.name,
-        description: cat.description,
-        parentId: parent.id,
-        depth: (parent.depth || 0) + 1,
-      });
-      nodeMap.set(cat.name, node);
-
-      for (const idx of (cat.facts || [])) {
-        if (triples.rows[idx]) {
-          await tagTriple(triples.rows[idx].id, node.id);
-        }
-      }
-      await db.query('UPDATE sst_nodes SET triple_count = $1 WHERE id = $2', [(cat.facts || []).length, node.id]);
-    }
-
-    console.log(`[SST] Bootstrapped ${nodeMap.size} nodes for team ${teamId}`);
+    console.log(`[SST] Bootstrapped ${created} categories under "${root.name}" for team ${teamId}`);
   } catch (err) {
     console.error('[SST] Bootstrap error:', err.message);
   }
