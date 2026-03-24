@@ -135,6 +135,14 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
     setActiveViewState(view);
     navigate(`/team/${teamId}/${view}`, { replace: true });
   };
+  // Traversal animation state
+  const [pendingTraversal, setPendingTraversal] = useState(null);
+
+  const handleShowTraversal = (traversalPath) => {
+    setPendingTraversal(traversalPath);
+    setActiveView('graph');
+  };
+
   // Scope toggle: false = "My Team" (team scope), true = "Just Me" (private scope)
   const [isPrivate, setIsPrivate] = useState(false);
   // Private scope ID (fetched on demand)
@@ -393,6 +401,7 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
               factCount={factCount}
               onFactsChanged={refetchFactCount}
               user={user}
+              onShowTraversal={handleShowTraversal}
             />
           )}
 
@@ -405,7 +414,11 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
           )}
 
           {activeView === 'graph' && (
-            <KnowledgeGraph teamId={teamId} />
+            <KnowledgeGraph
+              teamId={teamId}
+              traversalPath={pendingTraversal}
+              onTraversalComplete={() => setPendingTraversal(null)}
+            />
           )}
         </main>
 

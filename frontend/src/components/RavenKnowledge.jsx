@@ -23,6 +23,15 @@ const ASK_RAVEN = gql`
       confidence
       factsUsed { id content sourceQuote sourceUrl createdAt }
       suggestedFollowups
+      traversalPath {
+        steps {
+          phase
+          timestamp
+          nodesVisited { id subjectId objectId subjectName objectName relationship similarity displayText }
+        }
+        totalDurationMs
+        sstScope { id name }
+      }
     }
   }
 `;
@@ -153,7 +162,7 @@ function TriplePreview({ triple }) {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, teamId }) {
+export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, teamId, onShowTraversal }) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]); // { id, role, type, content, data }
   const [pendingPreview, setPendingPreview] = useState(null); // active remember preview
@@ -228,6 +237,7 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
         factsUsed: r.factsUsed,
         suggestedFollowups: r.suggestedFollowups,
         originalQuestion: q,
+        traversalPath: r.traversalPath,
       });
     } catch (err) {
       console.error('Ask error:', err);
@@ -377,6 +387,16 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
                         <div key={f.id} className="chat-source-item">{(f.content || '').substring(0, 150)}</div>
                       ))}
                     </details>
+                  )}
+
+                  {msg.data?.traversalPath && onShowTraversal && (
+                    <button
+                      className="chat-traversal-btn"
+                      onClick={() => onShowTraversal(msg.data.traversalPath)}
+                    >
+                      <span className="traversal-btn-icon">&#x2728;</span>
+                      Watch Raven think
+                    </button>
                   )}
 
                   {msg.data?.suggestedFollowups?.length > 0 && (

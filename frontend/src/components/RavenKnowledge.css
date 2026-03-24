@@ -226,6 +226,34 @@
 
 /* ── Suggested follow-ups ──────────────────────────────────────────────── */
 
+/* ── Watch traversal button ─────────────────────────────────────────── */
+
+.chat-traversal-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.15));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 10px;
+  color: #a5b4fc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chat-traversal-btn:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(139, 92, 246, 0.25));
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+  color: #c7d2fe;
+}
+
+.traversal-btn-icon {
+  font-size: 14px;
+}
+
 .chat-followups {
   display: flex;
   flex-wrap: wrap;

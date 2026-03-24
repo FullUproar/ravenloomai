@@ -145,6 +145,7 @@ export default gql`
     factsUsed: [Fact!]!             # backward compat (triples rendered as facts)
     triplesUsed: [Triple!]          # new: structured triples
     suggestedFollowups: [String!]
+    traversalPath: TraversalPath    # for animated graph visualization
   }
 
   # ============================================================================
@@ -296,6 +297,35 @@ export default gql`
     nodeCreated: KnowledgeNode         # backward compat
     attachedToNodeId: ID               # backward compat
     message: String
+  }
+
+  # Traversal path — for animated graph visualization
+  type TraversalStep {
+    phase: String!         # embedding_search, multi_hop, selected
+    timestamp: Int!        # ms since traversal start
+    nodesVisited: [TraversalNode!]!
+  }
+
+  type TraversalNode {
+    id: ID!
+    subjectId: ID
+    objectId: ID
+    subjectName: String
+    objectName: String
+    relationship: String
+    similarity: Float
+    displayText: String
+  }
+
+  type TraversalScope {
+    id: ID!
+    name: String!
+  }
+
+  type TraversalPath {
+    steps: [TraversalStep!]!
+    totalDurationMs: Int!
+    sstScope: TraversalScope
   }
 
   # Graph visualization data

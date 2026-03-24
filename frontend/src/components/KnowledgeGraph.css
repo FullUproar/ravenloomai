@@ -303,6 +303,56 @@
   white-space: nowrap;
 }
 
+/* ── Traversal animation ───────────────────────────────────────────────── */
+
+.graph-traversal-status {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13, 14, 16, 0.9);
+  border: 1px solid var(--accent, #3b82f6);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--accent, #3b82f6);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 15;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  animation: statusGlow 2s ease-in-out infinite;
+}
+
+@keyframes statusGlow {
+  0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.2); }
+  50% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.5); }
+}
+
+.traversal-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #3b82f6);
+  animation: traversalPulse 1s ease-in-out infinite;
+}
+
+@keyframes traversalPulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Glow effect for nodes during traversal */
+.graph-svg .traversal-ripple {
+  pointer-events: none;
+}
+
+.graph-svg .traversal-particle {
+  pointer-events: none;
+  filter: url(#glow);
+}
+
 /* ── Mobile ────────────────────────────────────────────────────────────── */
 
 @media (max-width: 600px) {

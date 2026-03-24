@@ -72,6 +72,10 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     }
   }
 
+  // ── Traversal tracking ──────────────────────────────────────────────
+  const traversalSteps = [];
+  const traversalStart = Date.now();
+
   // Step 3: Dual-embedding search on triples table
   let triples = await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
     scopeIds: searchScopeIds,
@@ -80,8 +84,22 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   });
   console.log(`[RavenService.ask] Dual-embedding search found ${triples.length} triples`);
 
+  // Track: initial embedding search results
+  traversalSteps.push({
+    phase: 'embedding_search',
+    timestamp: Date.now() - traversalStart,
+    nodesVisited: triples.map(t => ({
+      id: t.id, subjectId: t.subjectId || t.subject_id,
+      objectId: t.objectId || t.object_id,
+      subjectName: t.subjectName || t.subject_name,
+      objectName: t.objectName || t.object_name,
+      relationship: t.relationship,
+      similarity: t.similarity,
+      displayText: t.displayText || t.display_text,
+    })),
+  });
+
   // Step 3b: Fallback to old facts table if no triples found
-  // (transitional — until all knowledge is migrated to triples)
   let legacyFacts = [];
   if (triples.length < 3) {
     try {
@@ -97,22 +115,52 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   }
 
   // Step 4: Multi-hop expansion if initial results are sparse
+  let multiHopTriples = [];
   if (triples.length > 0 && TripleRetrievalService.shouldExpand(triples)) {
     console.log(`[RavenService.ask] Expanding with multi-hop...`);
     const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 2);
     console.log(`[RavenService.ask] Multi-hop found ${expanded.length} additional triples`);
 
     const existingIds = new Set(triples.map(t => t.id));
-    const newTriples = expanded.filter(t => !existingIds.has(t.id));
-    triples = [...triples, ...newTriples].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+    multiHopTriples = expanded.filter(t => !existingIds.has(t.id));
+    triples = [...triples, ...multiHopTriples].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+
+    if (multiHopTriples.length > 0) {
+      traversalSteps.push({
+        phase: 'multi_hop',
+        timestamp: Date.now() - traversalStart,
+        nodesVisited: multiHopTriples.map(t => ({
+          id: t.id, subjectId: t.subjectId || t.subject_id,
+          objectId: t.objectId || t.object_id,
+          subjectName: t.subjectName || t.subject_name,
+          objectName: t.objectName || t.object_name,
+          relationship: t.relationship,
+          similarity: t.similarity,
+          displayText: t.displayText || t.display_text,
+        })),
+      });
+    }
   }
 
   // Step 5: Filter low-similarity noise, then re-rank with LLM
   const filteredTriples = triples.filter(t => (t.similarity || 0) > 0.3);
-
-  // Re-rank with lightweight LLM to ensure most relevant triples are first
   const reranked = await TripleRetrievalService.rerankTriples(standaloneQuestion, filteredTriples);
   const topTriples = reranked.slice(0, 8);
+
+  // Track: final selected triples
+  traversalSteps.push({
+    phase: 'selected',
+    timestamp: Date.now() - traversalStart,
+    nodesVisited: topTriples.map(t => ({
+      id: t.id, subjectId: t.subjectId || t.subject_id,
+      objectId: t.objectId || t.object_id,
+      subjectName: t.subjectName || t.subject_name,
+      objectName: t.objectName || t.object_name,
+      relationship: t.relationship,
+      similarity: t.similarity,
+      displayText: t.displayText || t.display_text,
+    })),
+  });
 
   // Step 6: Build answer context (combining triples + legacy facts + precomputed data)
   let answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
@@ -193,7 +241,12 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
           sourceUrl: f.sourceUrl || f.source_url,
           createdAt: f.createdAt || f.created_at,
         })),
-    suggestedFollowups: answer.followups || []
+    suggestedFollowups: answer.followups || [],
+    traversalPath: {
+      steps: traversalSteps,
+      totalDurationMs: Date.now() - traversalStart,
+      sstScope: sstNode ? { id: sstNode.id, name: sstNode.name } : null,
+    },
   };
 }
 

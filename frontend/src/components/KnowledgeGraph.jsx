@@ -174,12 +174,14 @@ function NodeDetail({ node, edges, allNodes, onClose }) {
 
 // ── Main Component ──────────────────────────────────────────────────────
 
-export default function KnowledgeGraph({ teamId }) {
+export default function KnowledgeGraph({ teamId, traversalPath, onTraversalComplete }) {
   const svgRef = useRef(null);
   const simRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [activeScopeId, setActiveScopeId] = useState(null);
   const [hoveredNode, setHoveredNode] = useState(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const animFrameRef = useRef(null);
 
   const { data: graphData, loading: graphLoading } = useQuery(GET_GRAPH_DATA, {
     variables: { teamId, sstNodeId: activeScopeId, limit: 300 },
@@ -381,6 +383,173 @@ export default function KnowledgeGraph({ teamId }) {
     }
   }, [selectedNode, edges]);
 
+  // ── Traversal Animation ────────────────────────────────────────────
+  useEffect(() => {
+    if (!traversalPath || !svgRef.current || nodes.length === 0) return;
+
+    const svg = d3Selection.select(svgRef.current);
+    const g = svg.select('g');
+    if (g.empty()) return;
+
+    setIsAnimating(true);
+    setSelectedNode(null);
+
+    // Collect all concept IDs involved in the traversal
+    const allSteps = traversalPath.steps || [];
+    if (allSteps.length === 0) { setIsAnimating(false); return; }
+
+    // Build concept ID sets for each phase
+    const phaseData = allSteps.map(step => {
+      const conceptIds = new Set();
+      const edgeIds = new Set();
+      (step.nodesVisited || []).forEach(n => {
+        if (n.subjectId) conceptIds.add(n.subjectId);
+        if (n.objectId) conceptIds.add(n.objectId);
+        edgeIds.add(n.id);
+      });
+      return { ...step, conceptIds, edgeIds };
+    });
+
+    // Phase 1: Dim everything
+    svg.selectAll('.graph-node-group circle')
+      .transition().duration(400)
+      .attr('opacity', 0.08)
+      .attr('stroke-width', 1.5);
+    svg.selectAll('.graph-node-group text')
+      .transition().duration(400)
+      .attr('opacity', 0.05);
+    svg.selectAll('.graph-link')
+      .transition().duration(400)
+      .attr('stroke-opacity', 0.03);
+    svg.selectAll('.graph-link-label')
+      .transition().duration(400)
+      .attr('opacity', 0);
+
+    // Remove old animation elements
+    g.selectAll('.traversal-particle').remove();
+    g.selectAll('.traversal-ripple').remove();
+    g.selectAll('.traversal-glow').remove();
+
+    // Create glow filter
+    let defs = svg.select('defs');
+    if (defs.empty()) defs = svg.append('defs');
+    defs.selectAll('#glow').remove();
+    const filter = defs.append('filter').attr('id', 'glow');
+    filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'coloredBlur');
+    const merge = filter.append('feMerge');
+    merge.append('feMergeNode').attr('in', 'coloredBlur');
+    merge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+    // Animate each phase with delays
+    const PHASE_COLORS = {
+      embedding_search: '#3b82f6',  // blue — initial search
+      multi_hop: '#f59e0b',          // amber — expansion
+      selected: '#22c55e',           // green — final answer
+    };
+
+    const PHASE_DELAY = 1200; // ms between phases
+
+    phaseData.forEach((phase, phaseIdx) => {
+      const delay = 600 + phaseIdx * PHASE_DELAY;
+      const color = PHASE_COLORS[phase.phase] || '#3b82f6';
+
+      setTimeout(() => {
+        // Light up nodes in this phase
+        svg.selectAll('.graph-node-group').each(function(d) {
+          if (phase.conceptIds.has(d.id)) {
+            const node = d3Selection.select(this);
+
+            // Ripple effect
+            const ripple = g.append('circle')
+              .attr('class', 'traversal-ripple')
+              .attr('cx', d.x).attr('cy', d.y)
+              .attr('r', d.radius || 10)
+              .attr('fill', 'none')
+              .attr('stroke', color)
+              .attr('stroke-width', 2)
+              .attr('opacity', 0.8);
+
+            ripple.transition().duration(800).ease(t => t)
+              .attr('r', (d.radius || 10) + 25)
+              .attr('opacity', 0)
+              .remove();
+
+            // Glow the node
+            node.select('circle')
+              .transition().duration(300)
+              .attr('opacity', 1)
+              .attr('stroke', color)
+              .attr('stroke-width', phase.phase === 'selected' ? 3 : 2)
+              .attr('filter', phase.phase === 'selected' ? 'url(#glow)' : null);
+
+            // Show label
+            node.select('text')
+              .transition().duration(300)
+              .attr('opacity', 1)
+              .attr('fill', color);
+          }
+        });
+
+        // Light up edges in this phase
+        svg.selectAll('.graph-link').each(function(d) {
+          if (phase.edgeIds.has(d.id)) {
+            d3Selection.select(this)
+              .transition().duration(300)
+              .attr('stroke', color)
+              .attr('stroke-opacity', 0.7)
+              .attr('stroke-width', phase.phase === 'selected' ? 3 : 2);
+
+            // Particle flowing along the edge
+            const source = typeof d.source === 'object' ? d.source : { x: 0, y: 0 };
+            const target = typeof d.target === 'object' ? d.target : { x: 0, y: 0 };
+
+            for (let p = 0; p < 3; p++) {
+              const particle = g.append('circle')
+                .attr('class', 'traversal-particle')
+                .attr('r', 3)
+                .attr('fill', color)
+                .attr('opacity', 0.9)
+                .attr('cx', source.x)
+                .attr('cy', source.y);
+
+              particle.transition()
+                .delay(p * 150)
+                .duration(600)
+                .ease(t => t * t)
+                .attr('cx', target.x)
+                .attr('cy', target.y)
+                .attr('r', 1.5)
+                .attr('opacity', 0)
+                .remove();
+            }
+          }
+        });
+
+        // Show edge labels for this phase
+        svg.selectAll('.graph-link-label').each(function(d) {
+          if (phase.edgeIds.has(d.id)) {
+            d3Selection.select(this)
+              .transition().duration(300)
+              .attr('opacity', 0.8)
+              .attr('fill', color);
+          }
+        });
+      }, delay);
+    });
+
+    // Final phase: pulse the selected nodes
+    const finalDelay = 600 + phaseData.length * PHASE_DELAY + 500;
+    setTimeout(() => {
+      setIsAnimating(false);
+      onTraversalComplete?.();
+    }, finalDelay + 1000);
+
+    return () => {
+      g.selectAll('.traversal-particle').remove();
+      g.selectAll('.traversal-ripple').remove();
+    };
+  }, [traversalPath, nodes]);
+
   return (
     <div className="knowledge-graph">
       {/* Scope navigation */}
@@ -404,6 +573,14 @@ export default function KnowledgeGraph({ teamId }) {
         )}
 
         <svg ref={svgRef} className="graph-svg" />
+
+        {/* Traversal animation overlay */}
+        {isAnimating && (
+          <div className="graph-traversal-status">
+            <div className="traversal-pulse" />
+            <span>Traversing knowledge graph...</span>
+          </div>
+        )}
 
         {/* Hover tooltip */}
         {hoveredNode && !selectedNode && (
