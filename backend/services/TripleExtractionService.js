@@ -70,19 +70,8 @@ RULES:
    Good: "launches on", "is manufactured by", "includes"
    Bad: "LAUNCHES_ON", "IS_A", "HAS"
 
-Return ONLY a JSON object:
-{
-  "triples": [
-    {
-      "subject": { "name": "Entity Name", "type": "product" },
-      "relationship": "launches on",
-      "object": { "name": "May 1, 2026", "type": "date" },
-      "contexts": [],
-      "confidence": 0.95,
-      "trustTier": "tribal"
-    }
-  ]
-}`;
+Return ONLY a raw JSON object (no markdown, no \`\`\`json blocks, no explanation):
+{"triples": [{"subject": {"name": "Entity Name", "type": "product"}, "relationship": "launches on", "object": {"name": "May 1, 2026", "type": "date"}, "contexts": [], "confidence": 0.95, "trustTier": "tribal"}]}`;
 
   // Detect explicit update/correction language and add extraction guidance
   const isExplicitUpdate = /^(update|correction|revised|fyi|heads up)[\s:]/i.test(text.trim())
@@ -101,15 +90,20 @@ Also extract WHY it changed if stated (e.g., "due to manufacturing delays" → s
   try {
     const response = await callClaude(messages, {
       model: 'claude-sonnet-4-6',
-      maxTokens: 2000,
+      maxTokens: 4000,
       temperature: 0
     });
 
-    let content = response;
-    // Strip markdown code blocks if present
-    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    let content = (response || '').trim();
+    // Strip markdown code blocks if present (handles ```json, ``` json, etc.)
+    const codeBlockMatch = content.match(/```\s*(?:json)?\s*\n?([\s\S]*?)```/);
     if (codeBlockMatch) {
       content = codeBlockMatch[1].trim();
+    }
+    // Also try to extract just the JSON object/array if surrounded by other text
+    if (!content.startsWith('{') && !content.startsWith('[')) {
+      const jsonStart = content.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+      if (jsonStart) content = jsonStart[1];
     }
 
     const parsed = JSON.parse(content);

@@ -125,14 +125,9 @@ Return ONLY the number (1-${candidates.length}) of the best scope, or 0 if none 
 export async function placeTriple(teamId, triple, tripleId) {
   const nodes = await getTree(teamId);
 
-  // If no tree at all, bootstrap with a root
+  // If no tree at all, bootstrap with a single root
   if (nodes.length === 0) {
-    const root = await createNode(teamId, {
-      name: 'General',
-      description: 'General knowledge that doesn\'t fit a specific category',
-      isRoot: true,
-      parentId: null,
-    });
+    const root = await getOrCreateRoot(teamId);
     await tagTriple(tripleId, root.id);
     return root;
   }
@@ -243,6 +238,39 @@ Return ONLY one line in the format above.`
 // ============================================================================
 
 /**
+ * Get or create the single root node for a team.
+ */
+async function getOrCreateRoot(teamId) {
+  // Use advisory lock to prevent race conditions
+  const existing = await db.query(
+    'SELECT * FROM sst_nodes WHERE team_id = $1 AND is_root = true ORDER BY created_at ASC LIMIT 1',
+    [teamId]
+  );
+  if (existing.rows.length > 0) return existing.rows[0];
+
+  // Get team name for the root
+  const team = await db.query('SELECT name FROM teams WHERE id = $1', [teamId]);
+  const teamName = team.rows[0]?.name || 'Knowledge Base';
+
+  // Insert with ON CONFLICT guard (use canonical_name + team_id uniqueness)
+  const result = await db.query(`
+    INSERT INTO sst_nodes (team_id, name, canonical_name, description, is_root, depth)
+    VALUES ($1, $2, $3, $4, true, 0)
+    ON CONFLICT (team_id, canonical_name) WHERE is_root = true DO NOTHING
+    RETURNING *
+  `, [teamId, teamName, teamName.toLowerCase().trim(), `Root scope for all ${teamName} knowledge`]).catch(() => null);
+
+  if (result?.rows?.[0]) return result.rows[0];
+
+  // Race lost — fetch the one that won
+  const retry = await db.query(
+    'SELECT * FROM sst_nodes WHERE team_id = $1 AND is_root = true ORDER BY created_at ASC LIMIT 1',
+    [teamId]
+  );
+  return retry.rows[0];
+}
+
+/**
  * Get the full SST for a team, ordered by depth then name.
  */
 export async function getTree(teamId) {
@@ -262,6 +290,18 @@ export async function getTree(teamId) {
  */
 async function createNode(teamId, { name, description, parentId = null, depth = 0, isRoot = false, scopeId = null }) {
   const canonical = name.toLowerCase().trim();
+
+  // Check if a node with this canonical name already exists under the same parent
+  const existing = await db.query(
+    'SELECT * FROM sst_nodes WHERE team_id = $1 AND canonical_name = $2 AND (parent_id = $3 OR ($3 IS NULL AND parent_id IS NULL)) LIMIT 1',
+    [teamId, canonical, parentId]
+  );
+  if (existing.rows.length > 0) {
+    // Update triple count and return existing
+    await db.query('UPDATE sst_nodes SET triple_count = triple_count + 1, updated_at = NOW() WHERE id = $1', [existing.rows[0].id]);
+    return existing.rows[0];
+  }
+
   const embText = `${name}: ${description}`;
   const embedding = await AIService.generateEmbedding(embText);
   const embStr = embedding ? '[' + embedding.join(',') + ']' : null;
