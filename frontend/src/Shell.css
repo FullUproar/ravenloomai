@@ -440,6 +440,21 @@
   cursor: pointer;
 }
 
+.shell-groom-btn {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.shell-groom-btn:hover {
+  opacity: 1;
+}
+
 .shell-error button:hover {
   background: var(--bg-tertiary);
 }
@@ -486,6 +501,11 @@
   .shell-recall-btn {
     font-size: 0.8rem;
     padding: 0.2rem 0.4rem;
+  }
+
+  .shell-groom-btn {
+    font-size: 0.8rem;
+    padding: 0.1rem 0.3rem;
   }
 
   .shell-user-btn {

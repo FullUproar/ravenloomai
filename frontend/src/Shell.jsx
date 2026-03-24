@@ -12,6 +12,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import RavenHome from './components/RavenHome';
 import KnowledgeExplorer from './components/KnowledgeExplorer';
 import KnowledgeGraph from './components/KnowledgeGraph';
+import GroomingPrompt from './components/GroomingPrompt';
 import { useToast } from './Toast.jsx';
 import './Shell.css';
 
@@ -143,6 +144,9 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
     setPendingTraversal(traversalPath);
     setActiveView('graph');
   };
+
+  // Grooming state
+  const [showGrooming, setShowGrooming] = useState(false);
 
   // Real-time traversal events from streaming ask
   const handleTraversalEvent = useCallback((event) => {
@@ -392,6 +396,15 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
               </div>
             )}
 
+            {/* Groom button */}
+            <button
+              className="shell-groom-btn"
+              onClick={() => setShowGrooming(!showGrooming)}
+              title="Organize Raven's knowledge"
+            >
+              &#x1F9F9;
+            </button>
+
             {/* User menu */}
             <div className="shell-user-menu-container">
               <button
@@ -411,6 +424,13 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
             </div>
           </div>
         </header>
+
+        {/* Grooming prompt */}
+        <GroomingPrompt
+          teamId={teamId}
+          show={showGrooming}
+          onDismiss={() => setShowGrooming(false)}
+        />
 
         {/* Main content — 4 views */}
         <main className={`shell-main ${activeView === 'split' ? 'shell-main--split' : ''}`} role="tabpanel">
