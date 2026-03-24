@@ -1163,7 +1163,18 @@ const resolvers = {
 
     previewRemember: async (_, { scopeId, statement, sourceUrl }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
-      return RavenService.previewRemember(scopeId, userId, statement, sourceUrl);
+      const result = await RavenService.previewRemember(scopeId, userId, statement, sourceUrl);
+      // Map subject/object from {name, type} objects to strings for GraphQL
+      if (result.extractedTriples) {
+        result.extractedTriples = result.extractedTriples.map(t => ({
+          ...t,
+          subject: typeof t.subject === 'object' ? t.subject.name : t.subject,
+          subjectType: typeof t.subject === 'object' ? t.subject.type : (t.subjectType || ''),
+          object: typeof t.object === 'object' ? t.object.name : t.object,
+          objectType: typeof t.object === 'object' ? t.object.type : (t.objectType || ''),
+        }));
+      }
+      return result;
     },
 
     confirmRemember: async (_, { previewId, skipConflictIds }, { userId }) => {

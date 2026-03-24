@@ -352,14 +352,14 @@ export default function RavenKnowledge({ scopeId, scopeName, onFactsChanged, tea
   // ── Correction (follow-up that corrects a previous answer) ───────────
 
   const doCorrection = useCallback(async (text) => {
-    // Find the last answer to get context
+    // Find the last answer to get context — log correction (best-effort)
     const lastAnswer = [...messages].reverse().find(m => m.type === 'answer');
     if (lastAnswer?.data && teamId) {
       logCorrectionMutation({
         variables: {
           teamId,
           question: lastAnswer.data.originalQuestion || '',
-          wrongAnswer: lastAnswer.content,
+          wrongAnswer: lastAnswer.content || '',
           correctInfo: text,
           tripleIds: (lastAnswer.data.factsUsed || []).map(f => f.id).filter(Boolean),
         }
