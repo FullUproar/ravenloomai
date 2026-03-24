@@ -306,46 +306,57 @@ export async function proposeInferences(teamId) {
         SELECT 1 FROM triples t3
         WHERE t3.subject_id = t1.subject_id AND t3.object_id = t2.object_id AND t3.status = 'active'
       )
-    LIMIT 50
+    LIMIT 30
   `, [teamId]);
 
   if (result.rows.length === 0) return [];
 
-  const chains = result.rows.map(r =>
-    `${r.a_name} (${r.a_type}) --[${r.r1}]--> ${r.b_name} (${r.b_type}) --[${r.r2}]--> ${r.c_name} (${r.c_type})`
-  ).join('\n');
+  // Process in batches of 10 to avoid truncated JSON
+  const allInferences = [];
+  const BATCH = 10;
 
-  const response = await callOpenAI([
-    {
-      role: 'system',
-      content: `You analyze 2-hop chains in a knowledge graph and propose direct relationships.
-For each chain A → B → C, determine if a direct A → C relationship is meaningful and accurate.
+  for (let i = 0; i < result.rows.length; i += BATCH) {
+    const batch = result.rows.slice(i, i + BATCH);
+    const chains = batch.map((r, idx) =>
+      `${idx}. ${r.a_name} --[${r.r1}]--> ${r.b_name} --[${r.r2}]--> ${r.c_name}`
+    ).join('\n');
 
-Return JSON: { "inferences": [
-  { "index": 0, "relationship": "launches at", "statement": "Hack Your Deck launches at Gen Con 2026", "confidence": 0.8 }
-] }
-Only include inferences with confidence >= 0.6. Be conservative — don't infer what isn't strongly implied.`
-    },
-    { role: 'user', content: `Evaluate these 2-hop chains:\n${chains}` }
-  ], { model: 'gpt-4o', maxTokens: 1000, temperature: 0 });
+    try {
+      const response = await callOpenAI([
+        {
+          role: 'system',
+          content: `Analyze 2-hop chains in a knowledge graph. For each chain A→B→C, determine if a direct A→C relationship is meaningful.
 
-  try {
-    const parsed = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
-    return (parsed.inferences || []).map(inf => {
-      const chain = result.rows[inf.index];
-      return {
-        chain: `${chain?.a_name} → ${chain?.b_name} → ${chain?.c_name}`,
-        relationship: inf.relationship,
-        statement: inf.statement,
-        confidence: inf.confidence,
-        sourceNodeId: chain?.a_id,
-        targetNodeId: chain?.c_id,
-      };
-    }).filter(inf => inf.confidence >= 0.6);
-  } catch (err) {
-    console.error('[Grooming] Inference error:', err.message);
-    return [];
+Return ONLY raw JSON (no markdown): {"inferences": [{"index": 0, "relationship": "verb phrase", "statement": "A relationship C", "confidence": 0.8}]}
+Only include inferences with confidence >= 0.6. Be conservative.`
+        },
+        { role: 'user', content: `Chains:\n${chains}` }
+      ], { model: 'gpt-4o-mini', maxTokens: 500, temperature: 0, teamId, operation: 'inference' });
+
+      let content = (response || '').trim();
+      const codeBlock = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlock) content = codeBlock[1].trim();
+
+      const parsed = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '{}');
+      for (const inf of (parsed.inferences || [])) {
+        if (inf.confidence < 0.6) continue;
+        const chain = batch[inf.index];
+        if (!chain) continue;
+        allInferences.push({
+          chain: `${chain.a_name} → ${chain.b_name} → ${chain.c_name}`,
+          relationship: inf.relationship,
+          statement: inf.statement,
+          confidence: inf.confidence,
+          sourceNodeId: chain.a_id,
+          targetNodeId: chain.c_id,
+        });
+      }
+    } catch (err) {
+      console.error(`[Grooming] Inference batch ${i} error:`, err.message);
+    }
   }
+
+  return allInferences;
 }
 
 // ============================================================================
