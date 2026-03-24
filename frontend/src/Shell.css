@@ -244,87 +244,43 @@
   overflow-y: auto;
 }
 
-/* Graph popout overlay */
-.shell-graph-popout {
-  position: fixed;
-  bottom: 80px;
-  right: 16px;
-  width: 480px;
-  height: 360px;
-  background: var(--bg, #0d0e10);
-  border: 1px solid var(--border, #2a2d32);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(59, 130, 246, 0.1);
-  z-index: 50;
+/* Split view: Chat + Graph side by side */
+.shell-main--split {
   display: flex;
-  flex-direction: column;
   overflow: hidden;
-  animation: popoutIn 0.3s ease-out;
 }
 
-@keyframes popoutIn {
-  from { opacity: 0; transform: translateY(20px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.shell-graph-popout-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border, #2a2d32);
-  background: var(--bg-secondary, #16181c);
+.shell-split-chat {
+  width: 420px;
+  min-width: 340px;
+  border-right: 1px solid var(--border, #2a2d32);
+  overflow-y: auto;
   flex-shrink: 0;
 }
 
-.shell-graph-popout-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--accent, #3b82f6);
-  font-weight: 500;
-}
-
-.shell-graph-popout-title .traversal-pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent, #3b82f6);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.3; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.2); }
-}
-
-.shell-graph-popout-close {
-  background: none;
-  border: none;
-  color: var(--text-muted, #6b7280);
-  font-size: 18px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.shell-graph-popout-close:hover {
-  color: var(--text, #e5e7eb);
-}
-
-.shell-graph-popout .knowledge-graph {
+.shell-split-graph {
   flex: 1;
-  max-height: none;
+  overflow: hidden;
 }
 
-@media (max-width: 600px) {
-  .shell-graph-popout {
-    bottom: 60px;
-    right: 8px;
-    left: 8px;
-    width: auto;
-    height: 280px;
+.shell-split-graph .knowledge-graph {
+  max-height: none;
+  height: 100%;
+}
+
+@media (max-width: 768px) {
+  .shell-main--split {
+    flex-direction: column;
+  }
+  .shell-split-chat {
+    width: 100%;
+    min-width: unset;
+    height: 45%;
+    border-right: none;
+    border-bottom: 1px solid var(--border, #2a2d32);
+  }
+  .shell-split-graph {
+    height: 55%;
   }
 }
 
