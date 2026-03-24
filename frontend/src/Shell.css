@@ -244,6 +244,40 @@
   overflow-y: auto;
 }
 
+/* Split view: chat + graph side by side */
+.shell-main--split {
+  display: flex;
+  overflow: hidden;
+}
+
+.shell-split-chat {
+  width: 380px;
+  min-width: 320px;
+  border-right: 1px solid var(--border, #2a2d32);
+  overflow-y: auto;
+}
+
+.shell-split-graph {
+  flex: 1;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .shell-main--split {
+    flex-direction: column;
+  }
+  .shell-split-chat {
+    width: 100%;
+    min-width: unset;
+    height: 40%;
+    border-right: none;
+    border-bottom: 1px solid var(--border, #2a2d32);
+  }
+  .shell-split-graph {
+    height: 60%;
+  }
+}
+
 /* Explore placeholder */
 .explore-placeholder {
   display: flex;

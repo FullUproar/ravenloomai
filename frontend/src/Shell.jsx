@@ -390,8 +390,8 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
         </header>
 
         {/* Main content */}
-        <main className="shell-main" role="tabpanel">
-          {activeView === 'home' && (
+        <main className={`shell-main ${activeView === 'home' && pendingTraversal ? 'shell-main--split' : ''}`} role="tabpanel">
+          {activeView === 'home' && !pendingTraversal && (
             <RavenHome
               teamId={teamId}
               scopeId={activeScopeId}
@@ -403,6 +403,32 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
               user={user}
               onShowTraversal={handleShowTraversal}
             />
+          )}
+
+          {/* Split view: chat + graph side by side during traversal */}
+          {activeView === 'home' && pendingTraversal && (
+            <>
+              <div className="shell-split-chat">
+                <RavenHome
+                  teamId={teamId}
+                  scopeId={activeScopeId}
+                  scopeName={isPrivate ? 'Just Me' : team.name}
+                  isPrivate={isPrivate}
+                  onTogglePrivate={handleTogglePrivate}
+                  factCount={factCount}
+                  onFactsChanged={refetchFactCount}
+                  user={user}
+                  onShowTraversal={handleShowTraversal}
+                />
+              </div>
+              <div className="shell-split-graph">
+                <KnowledgeGraph
+                  teamId={teamId}
+                  traversalPath={pendingTraversal}
+                  onTraversalComplete={() => setPendingTraversal(null)}
+                />
+              </div>
+            </>
           )}
 
           {activeView === 'explore' && (

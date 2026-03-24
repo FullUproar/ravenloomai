@@ -440,109 +440,257 @@ export default function KnowledgeGraph({ teamId, traversalPath, onTraversalCompl
     merge.append('feMergeNode').attr('in', 'coloredBlur');
     merge.append('feMergeNode').attr('in', 'SourceGraphic');
 
-    // Animate each phase with delays
-    const PHASE_COLORS = {
-      embedding_search: '#3b82f6',  // blue — initial search
-      multi_hop: '#f59e0b',          // amber — expansion
-      selected: '#22c55e',           // green — final answer
+    // ── Phase animation config ──────────────────────────────────────
+    const PHASE_CONFIG = {
+      embedding_search: { color: '#3b82f6', label: 'Searching knowledge...', duration: 2500 },
+      multi_hop: { color: '#f59e0b', label: 'Following connections...', duration: 2500 },
+      selected: { color: '#22c55e', label: 'Found the answer', duration: 2000 },
     };
+    const PHASE_GAP = 800; // pause between phases
 
-    const PHASE_DELAY = 1200; // ms between phases
+    // Compute bounding box for a set of concept IDs
+    function getClusterBounds(conceptIds) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      let count = 0;
+      svg.selectAll('.graph-node-group').each(function(d) {
+        if (conceptIds.has(d.id)) {
+          minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x);
+          minY = Math.min(minY, d.y); maxY = Math.max(maxY, d.y);
+          count++;
+        }
+      });
+      if (count === 0) return null;
+      const padding = 80;
+      return { minX: minX - padding, minY: minY - padding,
+               maxX: maxX + padding, maxY: maxY + padding,
+               cx: (minX + maxX) / 2, cy: (minY + maxY) / 2,
+               width: maxX - minX + padding * 2, height: maxY - minY + padding * 2 };
+    }
+
+    // Auto-zoom to a cluster
+    function zoomToCluster(conceptIds, duration = 1000) {
+      const bounds = getClusterBounds(conceptIds);
+      if (!bounds) return;
+      const width = svgRef.current.clientWidth;
+      const height = svgRef.current.clientHeight;
+      const scale = Math.min(
+        width / bounds.width,
+        height / bounds.height,
+        2.0 // max zoom
+      ) * 0.85; // slight padding
+      const tx = width / 2 - bounds.cx * scale;
+      const ty = height / 2 - bounds.cy * scale;
+      const zoom = d3Zoom.zoom().scaleExtent([0.1, 4]);
+      svg.transition().duration(duration).ease(t => t * (2 - t)) // ease-out quad
+        .call(zoom.transform, d3Zoom.zoomIdentity.translate(tx, ty).scale(scale));
+    }
+
+    // Phase label element
+    const phaseLabel = g.append('text')
+      .attr('class', 'traversal-phase-label')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '14px')
+      .attr('font-weight', '600')
+      .attr('opacity', 0)
+      .attr('pointer-events', 'none');
+
+    let totalDelay = 800; // initial dim delay
 
     phaseData.forEach((phase, phaseIdx) => {
-      const delay = 600 + phaseIdx * PHASE_DELAY;
-      const color = PHASE_COLORS[phase.phase] || '#3b82f6';
+      const config = PHASE_CONFIG[phase.phase] || PHASE_CONFIG.embedding_search;
+      const phaseStart = totalDelay;
+      const nodeCount = phase.conceptIds.size;
+      const staggerDelay = Math.min(200, config.duration / (nodeCount + 1)); // stagger per node
 
       setTimeout(() => {
-        // Light up nodes in this phase
+        // Auto-zoom to this phase's cluster
+        zoomToCluster(phase.conceptIds, 800);
+
+        // Update phase label
+        const bounds = getClusterBounds(phase.conceptIds);
+        if (bounds) {
+          phaseLabel
+            .attr('x', bounds.cx)
+            .attr('y', bounds.minY - 10)
+            .attr('fill', config.color)
+            .text(config.label)
+            .transition().duration(400)
+            .attr('opacity', 0.9);
+        }
+
+        // Stagger node reveals
+        let nodeIdx = 0;
         svg.selectAll('.graph-node-group').each(function(d) {
           if (phase.conceptIds.has(d.id)) {
             const node = d3Selection.select(this);
+            const stagger = nodeIdx * staggerDelay;
 
-            // Ripple effect
-            const ripple = g.append('circle')
-              .attr('class', 'traversal-ripple')
-              .attr('cx', d.x).attr('cy', d.y)
-              .attr('r', d.radius || 10)
-              .attr('fill', 'none')
-              .attr('stroke', color)
-              .attr('stroke-width', 2)
-              .attr('opacity', 0.8);
+            // Expanding ripple
+            setTimeout(() => {
+              const ripple = g.append('circle')
+                .attr('class', 'traversal-ripple')
+                .attr('cx', d.x).attr('cy', d.y)
+                .attr('r', d.radius || 10)
+                .attr('fill', 'none')
+                .attr('stroke', config.color)
+                .attr('stroke-width', 2.5)
+                .attr('opacity', 0.9);
 
-            ripple.transition().duration(800).ease(t => t)
-              .attr('r', (d.radius || 10) + 25)
-              .attr('opacity', 0)
-              .remove();
-
-            // Glow the node
-            node.select('circle')
-              .transition().duration(300)
-              .attr('opacity', 1)
-              .attr('stroke', color)
-              .attr('stroke-width', phase.phase === 'selected' ? 3 : 2)
-              .attr('filter', phase.phase === 'selected' ? 'url(#glow)' : null);
-
-            // Show label
-            node.select('text')
-              .transition().duration(300)
-              .attr('opacity', 1)
-              .attr('fill', color);
-          }
-        });
-
-        // Light up edges in this phase
-        svg.selectAll('.graph-link').each(function(d) {
-          if (phase.edgeIds.has(d.id)) {
-            d3Selection.select(this)
-              .transition().duration(300)
-              .attr('stroke', color)
-              .attr('stroke-opacity', 0.7)
-              .attr('stroke-width', phase.phase === 'selected' ? 3 : 2);
-
-            // Particle flowing along the edge
-            const source = typeof d.source === 'object' ? d.source : { x: 0, y: 0 };
-            const target = typeof d.target === 'object' ? d.target : { x: 0, y: 0 };
-
-            for (let p = 0; p < 3; p++) {
-              const particle = g.append('circle')
-                .attr('class', 'traversal-particle')
-                .attr('r', 3)
-                .attr('fill', color)
-                .attr('opacity', 0.9)
-                .attr('cx', source.x)
-                .attr('cy', source.y);
-
-              particle.transition()
-                .delay(p * 150)
-                .duration(600)
-                .ease(t => t * t)
-                .attr('cx', target.x)
-                .attr('cy', target.y)
-                .attr('r', 1.5)
+              ripple.transition().duration(1200).ease(t => Math.sqrt(t))
+                .attr('r', (d.radius || 10) + 40)
+                .attr('stroke-width', 0.5)
                 .attr('opacity', 0)
                 .remove();
-            }
+
+              // Second ripple, delayed
+              const ripple2 = g.append('circle')
+                .attr('class', 'traversal-ripple')
+                .attr('cx', d.x).attr('cy', d.y)
+                .attr('r', d.radius || 10)
+                .attr('fill', 'none')
+                .attr('stroke', config.color)
+                .attr('stroke-width', 1.5)
+                .attr('opacity', 0.5);
+
+              ripple2.transition().delay(300).duration(1400).ease(t => Math.sqrt(t))
+                .attr('r', (d.radius || 10) + 55)
+                .attr('opacity', 0)
+                .remove();
+
+              // Glow the node
+              node.select('circle')
+                .transition().duration(500).ease(t => t * (2 - t))
+                .attr('opacity', 1)
+                .attr('stroke', config.color)
+                .attr('stroke-width', phase.phase === 'selected' ? 4 : 2.5)
+                .attr('filter', 'url(#glow)');
+
+              // Reveal label
+              node.select('text')
+                .transition().duration(500)
+                .attr('opacity', 1)
+                .attr('fill', phase.phase === 'selected' ? '#fff' : config.color);
+            }, stagger);
+
+            nodeIdx++;
           }
         });
 
-        // Show edge labels for this phase
+        // Stagger edge reveals with particles
+        let edgeIdx = 0;
+        svg.selectAll('.graph-link').each(function(d) {
+          if (phase.edgeIds.has(d.id)) {
+            const stagger = edgeIdx * staggerDelay + 200;
+
+            setTimeout(() => {
+              // Glow the edge
+              d3Selection.select(this)
+                .transition().duration(600).ease(t => t * (2 - t))
+                .attr('stroke', config.color)
+                .attr('stroke-opacity', phase.phase === 'selected' ? 0.9 : 0.6)
+                .attr('stroke-width', phase.phase === 'selected' ? 3.5 : 2);
+
+              // Flowing particles along edge
+              const source = typeof d.source === 'object' ? d.source : { x: 0, y: 0 };
+              const target = typeof d.target === 'object' ? d.target : { x: 0, y: 0 };
+
+              for (let p = 0; p < 5; p++) {
+                const particle = g.append('circle')
+                  .attr('class', 'traversal-particle')
+                  .attr('r', phase.phase === 'selected' ? 4 : 2.5)
+                  .attr('fill', config.color)
+                  .attr('opacity', 0.95)
+                  .attr('filter', 'url(#glow)')
+                  .attr('cx', source.x)
+                  .attr('cy', source.y);
+
+                particle.transition()
+                  .delay(p * 180)
+                  .duration(900)
+                  .ease(t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t) // ease-in-out quad
+                  .attr('cx', target.x)
+                  .attr('cy', target.y)
+                  .transition().duration(300)
+                  .attr('r', 1)
+                  .attr('opacity', 0)
+                  .remove();
+              }
+
+              // Trail line that fades
+              const trail = g.append('line')
+                .attr('class', 'traversal-ripple')
+                .attr('x1', source.x).attr('y1', source.y)
+                .attr('x2', source.x).attr('y2', source.y)
+                .attr('stroke', config.color)
+                .attr('stroke-width', 1.5)
+                .attr('stroke-opacity', 0.4);
+
+              trail.transition().duration(700)
+                .attr('x2', target.x).attr('y2', target.y)
+                .transition().duration(1500)
+                .attr('stroke-opacity', 0)
+                .remove();
+            }, stagger);
+
+            edgeIdx++;
+          }
+        });
+
+        // Edge labels
         svg.selectAll('.graph-link-label').each(function(d) {
           if (phase.edgeIds.has(d.id)) {
             d3Selection.select(this)
-              .transition().duration(300)
-              .attr('opacity', 0.8)
-              .attr('fill', color);
+              .transition().delay(300).duration(400)
+              .attr('opacity', 0.9)
+              .attr('fill', config.color)
+              .attr('font-size', '10px');
           }
         });
-      }, delay);
+
+        // Fade phase label before next phase
+        setTimeout(() => {
+          phaseLabel.transition().duration(400).attr('opacity', 0);
+        }, config.duration - 400);
+
+      }, phaseStart);
+
+      totalDelay += config.duration + PHASE_GAP;
     });
 
-    // Final phase: pulse the selected nodes
-    const finalDelay = 600 + phaseData.length * PHASE_DELAY + 500;
+    // Final: zoom out to show full graph with selected nodes glowing
     setTimeout(() => {
-      setIsAnimating(false);
-      onTraversalComplete?.();
-    }, finalDelay + 1000);
+      // Gentle zoom out
+      const zoom = d3Zoom.zoom().scaleExtent([0.1, 4]);
+      svg.transition().duration(1500).ease(t => t * (2 - t))
+        .call(zoom.transform, d3Zoom.zoomIdentity.translate(0, 0).scale(0.75));
+
+      // Pulse selected nodes
+      const selectedPhase = phaseData.find(p => p.phase === 'selected');
+      if (selectedPhase) {
+        svg.selectAll('.graph-node-group').each(function(d) {
+          if (selectedPhase.conceptIds.has(d.id)) {
+            const node = d3Selection.select(this);
+            // Breathing pulse
+            function pulseNode() {
+              node.select('circle')
+                .transition().duration(1200).ease(t => Math.sin(t * Math.PI))
+                .attr('stroke-width', 5)
+                .transition().duration(1200).ease(t => Math.sin(t * Math.PI))
+                .attr('stroke-width', 3)
+                .on('end', () => { if (isAnimating) pulseNode(); });
+            }
+            pulseNode();
+          }
+        });
+      }
+
+      phaseLabel.remove();
+
+      setTimeout(() => {
+        setIsAnimating(false);
+        onTraversalComplete?.();
+      }, 2000);
+    }, totalDelay);
 
     return () => {
       g.selectAll('.traversal-particle').remove();
