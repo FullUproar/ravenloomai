@@ -15,6 +15,10 @@
 .graph-scope-nav {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-subtle, #2a2d32);
+  position: relative;
+  z-index: 10;
+  background: var(--surface, #16181c);
+  flex-shrink: 0;
 }
 
 .scope-breadcrumbs {
