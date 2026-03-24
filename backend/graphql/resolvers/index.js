@@ -532,6 +532,57 @@ const resolvers = {
       return TripleService.getConcept(conceptId);
     },
 
+    getGraphData: async (_, { teamId, sstNodeId, limit }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      let query = `
+        SELECT t.id, t.display_text, t.relationship, t.confidence, t.trust_tier,
+               t.subject_id, t.object_id,
+               s.name AS subject_name, s.type AS subject_type, s.mention_count AS subject_mentions,
+               o.name AS object_name, o.type AS object_type, o.mention_count AS object_mentions
+        FROM triples t
+        JOIN concepts s ON t.subject_id = s.id
+        JOIN concepts o ON t.object_id = o.id
+        WHERE t.team_id = $1 AND t.status = 'active'
+      `;
+      const params = [teamId];
+      if (sstNodeId) { params.push(sstNodeId); query += ` AND t.sst_node_id = $${params.length}`; }
+      params.push(limit || 200);
+      query += ` ORDER BY s.mention_count DESC, t.created_at DESC LIMIT $${params.length}`;
+
+      const result = await db.query(query, params);
+      const conceptMap = new Map();
+      for (const row of result.rows) {
+        for (const [id, name, type, mentions] of [
+          [row.subject_id, row.subject_name, row.subject_type, row.subject_mentions],
+          [row.object_id, row.object_name, row.object_type, row.object_mentions]
+        ]) {
+          if (!conceptMap.has(id)) {
+            conceptMap.set(id, { id, name, type, mentionCount: mentions || 0, connectionCount: 0 });
+          }
+          conceptMap.get(id).connectionCount++;
+        }
+      }
+      return {
+        nodes: Array.from(conceptMap.values()),
+        edges: result.rows.map(r => ({
+          id: r.id, sourceId: r.subject_id, targetId: r.object_id,
+          relationship: r.relationship, displayText: r.display_text,
+          confidence: r.confidence, trustTier: r.trust_tier,
+        })),
+      };
+    },
+
+    getSSTTree: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const SSTService = await import('../../services/SSTService.js');
+      const nodes = await SSTService.getTree(teamId);
+      return nodes.map(n => ({
+        id: n.id, name: n.name, description: n.description,
+        parentId: n.parent_id, depth: n.depth, tripleCount: n.triple_count,
+        queryCount: n.query_count, isRoot: n.is_root,
+      }));
+    },
+
     searchConcepts: async (_, { teamId, query, limit }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return TripleService.searchConcepts(teamId, query, limit || 10);

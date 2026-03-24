@@ -298,6 +298,42 @@ export default gql`
     message: String
   }
 
+  # Graph visualization data
+  type GraphNode {
+    id: ID!
+    name: String!
+    type: String!
+    mentionCount: Int!
+    connectionCount: Int!
+  }
+
+  type GraphEdge {
+    id: ID!
+    sourceId: ID!
+    targetId: ID!
+    relationship: String!
+    displayText: String!
+    confidence: Float
+    trustTier: String
+  }
+
+  type GraphData {
+    nodes: [GraphNode!]!
+    edges: [GraphEdge!]!
+  }
+
+  # Semantic Scope Tree node
+  type SSTNode {
+    id: ID!
+    name: String!
+    description: String
+    parentId: ID
+    depth: Int!
+    tripleCount: Int!
+    queryCount: Int!
+    isRoot: Boolean!
+  }
+
   # Graph statistics
   type TripleGraphStats {
     totalConcepts: Int!
@@ -963,6 +999,8 @@ export default gql`
     searchConcepts(teamId: ID!, query: String!, limit: Int): [Concept!]!
     getContextNodes(teamId: ID!, type: String, parentId: ID): [ContextNode!]!
     getTripleGraphStats(teamId: ID!): TripleGraphStats!
+    getGraphData(teamId: ID!, sstNodeId: ID, limit: Int): GraphData!
+    getSSTTree(teamId: ID!): [SSTNode!]!
 
     # Ask the Company (AI Q&A)
     askCompany(teamId: ID!, input: AskCompanyInput!): AskCompanyResponse!

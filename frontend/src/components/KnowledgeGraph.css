@@ -1,0 +1,332 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   KnowledgeGraph — Force-directed visualization
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.knowledge-graph {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: calc(100vh - 120px);
+  position: relative;
+}
+
+/* ── Scope breadcrumbs ─────────────────────────────────────────────────── */
+
+.graph-scope-nav {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle, #2a2d32);
+}
+
+.scope-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.scope-crumb {
+  background: none;
+  border: none;
+  color: var(--text-muted, #6b7280);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.scope-crumb:hover {
+  color: var(--text-primary, #e5e7eb);
+  background: var(--surface-elevated, #1e2024);
+}
+
+.scope-crumb.active {
+  color: var(--accent, #3b82f6);
+  font-weight: 600;
+}
+
+.scope-crumb-separator {
+  color: var(--border-subtle, #2a2d32);
+  font-size: 11px;
+  margin: 0 2px;
+}
+
+.scope-crumb-count {
+  font-size: 10px;
+  opacity: 0.6;
+  font-weight: 400;
+}
+
+.scope-children {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scope-child-btn {
+  background: var(--surface-elevated, #1e2024);
+  border: 1px solid var(--border-subtle, #2a2d32);
+  color: var(--text-secondary, #9ca3af);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.scope-child-btn:hover {
+  border-color: var(--accent, #3b82f6);
+  color: var(--text-primary, #e5e7eb);
+}
+
+.scope-child-count {
+  font-size: 10px;
+  opacity: 0.5;
+}
+
+/* ── Graph canvas ──────────────────────────────────────────────────────── */
+
+.graph-canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface, #16181c);
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--border-subtle, #2a2d32) 1px, transparent 0);
+  background-size: 30px 30px;
+}
+
+.graph-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.graph-link {
+  stroke: var(--text-muted, #6b7280);
+}
+
+.graph-link-label {
+  fill: var(--text-muted, #6b7280);
+  text-anchor: middle;
+  pointer-events: none;
+  font-family: inherit;
+}
+
+.graph-loading, .graph-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text-muted, #6b7280);
+}
+
+.graph-empty-hint {
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+/* ── Tooltip ───────────────────────────────────────────────────────────── */
+
+.graph-tooltip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: var(--surface-elevated, #1e2024);
+  border: 1px solid var(--border-subtle, #2a2d32);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 10;
+}
+
+.tooltip-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tooltip-stats {
+  color: var(--text-muted, #6b7280);
+  font-size: 11px;
+}
+
+/* ── Stats bar ─────────────────────────────────────────────────────────── */
+
+.graph-stats {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-elevated, #1e2024);
+  border: 1px solid var(--border-subtle, #2a2d32);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 11px;
+  color: var(--text-muted, #6b7280);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  z-index: 5;
+}
+
+.graph-stats-reset {
+  background: none;
+  border: none;
+  color: var(--accent, #3b82f6);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ── Detail panel ──────────────────────────────────────────────────────── */
+
+.graph-detail-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 320px;
+  height: 100%;
+  background: var(--surface-elevated, #1e2024);
+  border-left: 1px solid var(--border-subtle, #2a2d32);
+  padding: 16px;
+  overflow-y: auto;
+  z-index: 20;
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(320px); }
+  to { transform: translateX(0); }
+}
+
+.detail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.detail-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #e5e7eb);
+}
+
+.detail-type {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detail-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted, #6b7280);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.detail-close:hover {
+  color: var(--text-primary, #e5e7eb);
+}
+
+.detail-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted, #6b7280);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle, #2a2d32);
+}
+
+.detail-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-edge {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface, #16181c);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail-edge--outgoing {
+  border-left: 2px solid var(--accent, #3b82f6);
+}
+
+.detail-edge--incoming {
+  border-left: 2px solid #6366f1;
+}
+
+.detail-edge-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.detail-rel {
+  color: var(--accent, #3b82f6);
+  font-style: italic;
+  font-size: 11px;
+}
+
+.detail-conf {
+  font-size: 10px;
+  color: var(--text-muted, #6b7280);
+  white-space: nowrap;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .knowledge-graph {
+    max-height: calc(100vh - 100px);
+    max-height: calc(100dvh - 100px);
+  }
+
+  .graph-detail-panel {
+    width: 100%;
+    height: 50%;
+    top: auto;
+    bottom: 0;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle, #2a2d32);
+    animation: slideUp 0.2s ease-out;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .scope-breadcrumbs {
+    font-size: 12px;
+  }
+}

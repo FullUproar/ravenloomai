@@ -11,6 +11,7 @@ import { gql, useQuery, useLazyQuery } from '@apollo/client';
 import { useNavigate, useParams } from 'react-router-dom';
 import RavenHome from './components/RavenHome';
 import KnowledgeExplorer from './components/KnowledgeExplorer';
+import KnowledgeGraph from './components/KnowledgeGraph';
 import { useToast } from './Toast.jsx';
 import './Shell.css';
 
@@ -126,7 +127,7 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
   });
 
   // Active view synced with URL: 'home' (default) or 'explore'
-  const resolvedView = urlView === 'explore' ? 'explore' : (initialView === 'explore' ? 'explore' : 'home');
+  const resolvedView = ['explore', 'graph'].includes(urlView) ? urlView : (initialView || 'home');
   const [activeView, setActiveViewState] = useState(resolvedView);
 
   // Sync view changes to URL (deep links)
@@ -308,6 +309,14 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
               >
                 Explore
               </button>
+              <button
+                role="tab"
+                aria-selected={activeView === 'graph'}
+                className={`shell-nav-tab ${activeView === 'graph' ? 'active' : ''}`}
+                onClick={() => setActiveView('graph')}
+              >
+                Graph
+              </button>
             </nav>
           </div>
 
@@ -393,6 +402,10 @@ export default function Shell({ teamId, initialView, user, onSignOut }) {
               scopeId={activeScopeId}
               onSwitchToHome={() => setActiveView('home')}
             />
+          )}
+
+          {activeView === 'graph' && (
+            <KnowledgeGraph teamId={teamId} />
           )}
         </main>
 
