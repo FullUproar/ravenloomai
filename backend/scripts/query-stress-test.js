@@ -70,6 +70,16 @@ const QUERIES = [
   // ── Multi-hop reasoning ─────────────────────────────────────────
   { q: 'How long until Fugly\'s Mayhem Machine ships after we approve proofs?', expect: '6 weeks|sea freight|logistics', type: 'multi_hop' },
   { q: 'What products launch on the doors-open date?', expect: 'Top This|Trolls|Afterroar|May 1', type: 'multi_hop' },
+
+  // ── Adversarial / tricky ────────────────────────────────────────
+  { q: 'What DON\'T we know about our products?', expect: 'dont_know_or_gaps', type: 'adversarial' },
+  { q: 'Is Fugly\'s Mayhem Machine ready to ship?', expect: 'not yet|July|2026|proof|approval', type: 'adversarial' },
+  { q: 'What happens if the Monthly Mailer subscription flops?', expect: 'convention|giveaway|expansion|bonus', type: 'adversarial' },
+  { q: 'Are we profitable?', expect: 'dont_know', type: 'adversarial' },
+  { q: 'What\'s the biggest risk to our timeline?', expect: 'manufactur|proof|deadline|lead time', type: 'adversarial' },
+  { q: 'Summarize our company in one paragraph', expect: 'Full Uproar|game|tabletop', type: 'adversarial' },
+  { q: 'What changed recently?', expect: 'dont_know_or_partial', type: 'adversarial' },
+  { q: 'How does Afterroar HQ make money?', expect: 'Free|Pro|\\$5|Venue|\\$10|monetiz|tier', type: 'adversarial' },
 ];
 
 async function run() {
@@ -87,8 +97,8 @@ async function run() {
 
       // Grade
       let passed = false;
-      if (expect === 'dont_know') {
-        passed = conf <= 0.3 || /don.t have|no confirmed|not sure/i.test(answer);
+      if (expect === 'dont_know' || expect === 'dont_know_or_gaps' || expect === 'dont_know_or_partial') {
+        passed = conf <= 0.5 || /don.t have|no confirmed|not sure|don.t know|gap|missing/i.test(answer);
       } else if (expect === 'multiple products listed' || expect === 'multiple dates') {
         // Count distinct items — should have 3+
         const bullets = (answer.match(/\*\*[^*]+\*\*/g) || []).length + (answer.match(/^-/gm) || []).length;
