@@ -152,20 +152,56 @@ async function executeGraphScan(teamId, plan, scopeIds) {
     }
 
     if (qt === 'listing') {
-      // List concepts matching a criteria
-      const result = await db.query(`
+      // Extract what we're listing from the scan query
+      const listTarget = (plan.scanQuery || scan).match(/list (?:all )?(\w+)/i)?.[1] || '';
+      const typeVariants = expandTypeVariants(listTarget);
+
+      // Strategy 1: Find concepts by type
+      let result = await db.query(`
         SELECT c.name, c.type, COUNT(t.id) as triple_count
         FROM concepts c
         LEFT JOIN triples t ON (t.subject_id = c.id OR t.object_id = c.id) AND t.status = 'active'
-        WHERE c.team_id = $1
+        WHERE c.team_id = $1 AND LOWER(c.type) = ANY($2)
         GROUP BY c.id, c.name, c.type
+        HAVING COUNT(t.id) > 0
         ORDER BY triple_count DESC
         LIMIT 20
-      `, [teamId]);
+      `, [teamId, typeVariants]);
+
+      // Strategy 2: If no type match, search display_text for the category
+      if (result.rows.length < 3 && listTarget) {
+        const textResult = await db.query(`
+          SELECT DISTINCT s.name, s.type, COUNT(t.id) as triple_count
+          FROM triples t
+          JOIN concepts s ON t.subject_id = s.id
+          WHERE t.team_id = $1 AND t.status = 'active'
+            AND (t.display_text ~* $2 OR s.type ~* $2 OR t.relationship ~* $2)
+          GROUP BY s.id, s.name, s.type
+          HAVING COUNT(t.id) >= 2
+          ORDER BY triple_count DESC
+          LIMIT 20
+        `, [teamId, listTarget]);
+        if (textResult.rows.length > result.rows.length) result = textResult;
+      }
+
+      // Strategy 3: Broadest fallback — get top concepts by connectivity
+      if (result.rows.length < 3) {
+        result = await db.query(`
+          SELECT c.name, c.type, COUNT(t.id) as triple_count
+          FROM concepts c
+          JOIN triples t ON (t.subject_id = c.id OR t.object_id = c.id) AND t.status = 'active'
+          WHERE c.team_id = $1
+          GROUP BY c.id, c.name, c.type
+          HAVING COUNT(t.id) >= 3
+          ORDER BY triple_count DESC
+          LIMIT 20
+        `, [teamId]);
+      }
+
       return {
         type: 'list',
         items: result.rows,
-        description: `${result.rows.length} concepts with their connection counts`,
+        description: `Found ${result.rows.length} ${listTarget || 'items'}:\n${result.rows.map(i => `- ${i.name} (${i.type}, ${i.triple_count} facts)`).join('\n')}`,
       };
     }
 
