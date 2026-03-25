@@ -152,16 +152,18 @@ async function executeGraphScan(teamId, plan, scopeIds) {
     }
 
     if (qt === 'listing') {
-      // Extract what we're listing from natural language
-      const q = plan.scanQuery || scan;
-      let listTarget = q.match(/list (?:all )?(\w+)/i)?.[1] || '';
-      if (!listTarget) {
-        // Try natural patterns: "What X do we...", "Which X are...", "Our X"
-        listTarget = q.match(/(?:what|which|our|all|the)\s+(\w+)\s+(?:do|are|did|have|is|does|can|will|should|were)/i)?.[1] || '';
-      }
-      if (!listTarget) {
-        // Try extracting nouns: "games", "products", "people", "deadlines"
-        listTarget = q.match(/\b(games?|products?|projects?|people|team|members?|targets?|goals?|deadlines?|features?|services?|apps?|tools?|platforms?)\b/i)?.[1] || '';
+      // Use LLM to extract what we're listing — more robust than regex
+      let listTarget = '';
+      try {
+        const extraction = await callOpenAI([
+          { role: 'system', content: 'Extract the TYPE of thing being listed from this question. Return ONLY the singular noun (e.g., "game", "product", "person", "deadline", "target"). If unclear, return "item".' },
+          { role: 'user', content: plan.scanQuery || scan }
+        ], { model: 'gpt-4o-mini', maxTokens: 10, temperature: 0 });
+        listTarget = extraction.trim().toLowerCase().replace(/[^a-z]/g, '');
+      } catch {
+        // Fallback to simple keyword extraction
+        const q = plan.scanQuery || scan;
+        listTarget = q.match(/\b(games?|products?|projects?|people|team|members?|targets?|goals?|deadlines?)\b/i)?.[1] || 'item';
       }
       const typeVariants = expandTypeVariants(listTarget);
 

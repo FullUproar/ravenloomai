@@ -134,7 +134,7 @@ Also extract WHY it changed if stated (e.g., "due to manufacturing delays" → s
  * Example: FUG → uses for payments → Stripe, FUG → uses for hosting → Vercel, FUG → uses for SMS → Twilio
  * Becomes: FUG → has technology stack, Technology Stack → includes → Stripe, etc.
  */
-function detectAndInsertHierarchy(triples) {
+async function detectAndInsertHierarchy(triples) {
   if (triples.length < 4) return triples; // too few to cluster
 
   // Group triples by subject
@@ -152,8 +152,8 @@ function detectAndInsertHierarchy(triples) {
       continue;
     }
 
-    // Cluster relationships by keyword similarity
-    const clusters = clusterRelationships(group);
+    // Cluster relationships by semantic similarity (LLM-powered)
+    const clusters = await clusterRelationships(group);
 
     for (const cluster of clusters) {
       if (cluster.triples.length >= 3 && cluster.categoryName) {
@@ -199,69 +199,59 @@ function detectAndInsertHierarchy(triples) {
 }
 
 /**
- * Cluster triples by relationship similarity.
- * Groups like "uses for payments", "uses for hosting", "uses for SMS" into one cluster.
+ * Cluster triples by relationship similarity using LLM.
+ * Groups semantically similar relationships and infers category names.
  */
-function clusterRelationships(triples) {
-  // Extract relationship keywords
-  const clusters = [];
-  const used = new Set();
+async function clusterRelationships(group) {
+  // If small enough, use LLM to cluster properly
+  if (group.length >= 4 && group.length <= 30) {
+    try {
+      const items = group.map((t, i) =>
+        `${i + 1}. ${t.subject.name} → ${t.relationship} → ${t.object.name}`
+      ).join('\n');
 
-  for (let i = 0; i < triples.length; i++) {
-    if (used.has(i)) continue;
+      const response = await callOpenAI([
+        {
+          role: 'system',
+          content: `You are analyzing triples extracted from text. Group them by semantic theme.
 
-    const rel = triples[i].relationship.toLowerCase();
-    const cluster = { triples: [triples[i]], categoryName: null };
-    used.add(i);
+Return JSON: {"clusters": [{"name": "Category Name", "indices": [1, 2, 3]}]}
 
-    // Find similar relationships
-    for (let j = i + 1; j < triples.length; j++) {
-      if (used.has(j)) continue;
-      const rel2 = triples[j].relationship.toLowerCase();
+Rules:
+- Only create a cluster if 3+ triples share a semantic theme
+- The "name" should be a noun phrase that describes the group (e.g., "Technology Stack", "Product Portfolio", "Team Roles")
+- Triples that don't fit any cluster should go in a cluster named null
+- Be conservative — only cluster things that genuinely belong together`
+        },
+        { role: 'user', content: `Group these triples:\n${items}` }
+      ], { model: 'gpt-4o-mini', maxTokens: 200, temperature: 0 });
 
-      // Simple similarity: shared prefix or same verb
-      const verb1 = rel.split(/\s+/)[0];
-      const verb2 = rel2.split(/\s+/)[0];
-      if (verb1 === verb2 && verb1.length > 2) {
-        cluster.triples.push(triples[j]);
-        used.add(j);
+      const parsed = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
+      const clusters = [];
+      const used = new Set();
+
+      for (const c of (parsed.clusters || [])) {
+        const clusterTriples = (c.indices || [])
+          .map(i => group[i - 1])
+          .filter(Boolean);
+        clusterTriples.forEach((_, i) => used.add(c.indices[i] - 1));
+        clusters.push({ triples: clusterTriples, categoryName: c.name || null });
       }
+
+      // Add unclustered triples
+      const unclustered = group.filter((_, i) => !used.has(i));
+      if (unclustered.length > 0) {
+        clusters.push({ triples: unclustered, categoryName: null });
+      }
+
+      return clusters;
+    } catch {
+      // Fallback to simple clustering
     }
-
-    // Infer category name from the shared relationship pattern
-    if (cluster.triples.length >= 3) {
-      const commonVerb = cluster.triples[0].relationship.toLowerCase().split(/\s+/)[0];
-      const objectTypes = cluster.triples.map(t => t.object.type).filter(Boolean);
-      const commonType = objectTypes.length > 0 ? mostCommon(objectTypes) : null;
-
-      // Map common patterns to category names
-      const categoryMap = {
-        'has': commonType === 'person' ? 'Team' : commonType === 'date' ? 'Timeline' : 'Properties',
-        'uses': 'Technology Stack',
-        'includes': 'Components',
-        'defines': 'Definitions',
-        'enforces': 'Policies',
-        'requires': 'Requirements',
-        'prohibits': 'Restrictions',
-        'filed': 'Legal Filings',
-        'holds': 'Assets',
-        'produces': 'Products',
-        'targets': 'Targets',
-        'launched': 'Launches',
-      };
-      cluster.categoryName = categoryMap[commonVerb] || null;
-    }
-
-    clusters.push(cluster);
   }
 
-  return clusters;
-}
-
-function mostCommon(arr) {
-  const counts = {};
-  for (const v of arr) counts[v] = (counts[v] || 0) + 1;
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  // Fallback: no clustering (treat all as one group)
+  return [{ triples: group, categoryName: null }];
 }
 
 // ============================================================================
