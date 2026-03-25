@@ -440,17 +440,40 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
     extractEntitiesFromQuestion(question),
   ]);
 
-  // Strategy 3c: Keyword matching on concept names
-  const questionWords = question.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  // Strategy 3c: Keyword matching on concept names (include short words for abbreviations)
+  const questionWords = question.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
   let keywordConcepts = [];
   if (questionWords.length > 0) {
-    const patterns = questionWords.map(w => `%${w}%`);
-    const placeholders = patterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' OR ');
-    const keywordResult = await db.query(
-      `SELECT id, name, 0.85 AS similarity FROM concepts WHERE team_id = $1 AND (${placeholders}) LIMIT 5`,
-      [teamId, ...patterns]
-    );
-    keywordConcepts = keywordResult.rows;
+    // For short words (2-3 chars), do exact alias match. For longer, do ILIKE.
+    const shortWords = questionWords.filter(w => w.length <= 3);
+    const longWords = questionWords.filter(w => w.length > 3);
+
+    // Exact alias match for short words (catches "HYD", "ISS", etc.)
+    if (shortWords.length > 0) {
+      for (const sw of shortWords) {
+        try {
+          const aliasResult = await db.query(
+            `SELECT id, name, 0.95 AS similarity FROM concepts WHERE team_id = $1
+              AND (UPPER(canonical_name) = UPPER($2) OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE UPPER(a) = UPPER($2)))
+             LIMIT 3`,
+            [teamId, sw]
+          );
+          keywordConcepts.push(...aliasResult.rows);
+        } catch {}
+      }
+    }
+
+    const patterns = longWords.map(w => `%${w}%`);
+    if (patterns.length === 0 && keywordConcepts.length > 0) {
+      // Short-word-only query — skip ILIKE, we have alias matches
+    } else if (patterns.length > 0) {
+      const placeholders = patterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' OR ');
+      const keywordResult = await db.query(
+        `SELECT id, name, 0.85 AS similarity FROM concepts WHERE team_id = $1 AND (${placeholders}) LIMIT 5`,
+        [teamId, ...patterns]
+      );
+      keywordConcepts.push(...keywordResult.rows);
+    }
   }
 
   // Strategy 3d: Match extracted entities against concept names AND aliases (fuzzy)
