@@ -30,6 +30,7 @@ import * as GraphGroomingService from '../../services/GraphGroomingService.js';
 import * as TripleService from '../../services/TripleService.js';
 import * as TripleGroomingService from '../../services/TripleGroomingService.js';
 import * as SimulationService from '../../services/SimulationService.js';
+import * as KnowledgeGapService from '../../services/KnowledgeGapService.js';
 // SlackImportService temporarily disabled - needs adm-zip dependency
 // import * as SlackImportService from '../../services/SlackImportService.js';
 
@@ -692,6 +693,17 @@ const resolvers = {
     getTemporallyOutdatedFacts: async (_, { teamId, limit }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');
       return KnowledgeFreshnessService.findTemporallyOutdated(teamId, { limit });
+    },
+
+    // Knowledge Gap Analysis
+    getKnowledgeGaps: async (_, { teamId, focus, maxQuestions }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeGapService.detectGaps(teamId, { focus, maxQuestions });
+    },
+
+    getGapSummary: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      return KnowledgeGapService.getGapSummary(teamId);
     }
   },
 

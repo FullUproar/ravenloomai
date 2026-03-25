@@ -994,6 +994,36 @@ export default gql`
   }
 
   # ============================================================================
+  # KNOWLEDGE GAP TYPES
+  # ============================================================================
+
+  type KnowledgeGap {
+    conceptId: ID!
+    conceptName: String!
+    conceptType: String
+    gapType: String!
+    question: String!
+    priority: Int!
+    context: String
+  }
+
+  type GapSummary {
+    totalConcepts: Int!
+    totalTriples: Int!
+    conceptsWithIdentity: Int!
+    conceptsWithoutIdentity: Int!
+    thinConcepts: Int!
+    undescribedConcepts: Int!
+    staleConcepts: Int!
+    topGapAreas: [GapArea!]!
+  }
+
+  type GapArea {
+    area: String!
+    gapCount: Int!
+  }
+
+  # ============================================================================
   # QUERIES
   # ============================================================================
 
@@ -1158,6 +1188,16 @@ export default gql`
 
     # Find facts with outdated temporal references
     getTemporallyOutdatedFacts(teamId: ID!, limit: Int): [TemporallyOutdatedFact!]!
+
+    # ============================================================================
+    # KNOWLEDGE GAP ANALYSIS
+    # ============================================================================
+
+    # Detect knowledge gaps and generate questions to fill them
+    getKnowledgeGaps(teamId: ID!, focus: String, maxQuestions: Int): [KnowledgeGap!]!
+
+    # Get high-level gap statistics
+    getGapSummary(teamId: ID!): GapSummary!
   }
 
   # ============================================================================
