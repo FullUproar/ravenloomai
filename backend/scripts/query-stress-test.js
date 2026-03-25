@@ -78,7 +78,7 @@ const QUERIES = [
   { q: 'Are we profitable?', expect: 'dont_know', type: 'adversarial' },
   { q: 'What\'s the biggest risk to our timeline?', expect: 'manufactur|proof|deadline|lead time', type: 'adversarial' },
   { q: 'Summarize our company in one paragraph', expect: 'Full Uproar|game|tabletop', type: 'adversarial' },
-  { q: 'What changed recently?', expect: 'dont_know_or_partial', type: 'adversarial' },
+  { q: 'What changed recently?', expect: 'recent|change|date|2025|2026|effective', type: 'adversarial' },
   { q: 'How does Afterroar HQ make money?', expect: 'Free|Pro|\\$5|Venue|\\$10|monetiz|tier', type: 'adversarial' },
 ];
 
