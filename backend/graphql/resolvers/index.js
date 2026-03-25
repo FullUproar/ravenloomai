@@ -476,6 +476,68 @@ const resolvers = {
       return RavenService.ask(scopeId, userId, question, conversationHistory || []);
     },
 
+    searchKnowledge: async (_, { teamId, query, limit }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+      const maxResults = limit || 20;
+      const q = query.toLowerCase();
+
+      // Search legacy facts
+      const factsResult = await pool.query(
+        `SELECT id, content, category, entity_name, trust_tier, created_at
+         FROM facts WHERE team_id = $1 AND status = 'active'
+         AND (LOWER(content) LIKE $2 OR LOWER(entity_name) LIKE $2 OR LOWER(source_quote) LIKE $2)
+         ORDER BY created_at DESC LIMIT $3`,
+        [teamId, `%${q}%`, maxResults]
+      );
+
+      // Search triples (display_text + concept names + relationships)
+      const triplesResult = await pool.query(
+        `SELECT DISTINCT t.id, t.display_text, t.relationship, t.confidence, t.trust_tier, t.created_at,
+                s.name as subject_name, o.name as object_name
+         FROM triples t
+         JOIN concepts s ON t.subject_id = s.id
+         JOIN concepts o ON t.object_id = o.id
+         WHERE t.team_id = $1 AND t.status = 'active'
+         AND (LOWER(t.display_text) LIKE $2 OR LOWER(s.name) LIKE $2 OR LOWER(o.name) LIKE $2
+              OR LOWER(t.relationship) LIKE $2 OR LOWER(s.canonical_name) LIKE $2
+              OR EXISTS (SELECT 1 FROM unnest(s.aliases) a WHERE LOWER(a) LIKE $2))
+         ORDER BY t.created_at DESC LIMIT $3`,
+        [teamId, `%${q}%`, maxResults]
+      );
+
+      // Merge and deduplicate
+      const results = [];
+
+      for (const f of factsResult.rows) {
+        results.push({
+          id: f.id,
+          content: f.content,
+          source: 'fact',
+          conceptName: f.entity_name,
+          category: f.category,
+          trustTier: f.trust_tier,
+          createdAt: f.created_at,
+        });
+      }
+
+      for (const t of triplesResult.rows) {
+        results.push({
+          id: t.id,
+          content: t.display_text || `${t.subject_name} ${t.relationship} ${t.object_name}`,
+          source: 'triple',
+          conceptName: t.subject_name,
+          relationship: t.relationship,
+          trustTier: t.trust_tier,
+          confidence: t.confidence,
+          createdAt: t.created_at,
+        });
+      }
+
+      // Sort by created_at desc, limit
+      results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return results.slice(0, maxResults);
+    },
+
     // Trust + usage queries
     getTrustScores: async (_, { teamId, sourceId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');

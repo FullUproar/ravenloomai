@@ -83,7 +83,7 @@ const TOOLS = [
   },
   {
     name: 'raven_search_facts',
-    description: 'Search confirmed facts by keyword.',
+    description: 'Search ALL knowledge (both legacy facts and graph triples) by keyword. Returns matching content from the entire knowledge base.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -238,20 +238,21 @@ async function handleTool(name, args) {
       const tid = args.teamId || DEFAULT_TEAM_ID;
       if (!tid) return [{ type: 'text', text: 'Error: No teamId provided.' }];
       const data = await gql(
-        `query GetFacts($teamId: ID!, $limit: Int) {
-          getFacts(teamId: $teamId, limit: $limit) {
-            id content category entityName trustTier createdAt
+        `query SearchKnowledge($teamId: ID!, $query: String!, $limit: Int) {
+          searchKnowledge(teamId: $teamId, query: $query, limit: $limit) {
+            id content source conceptName relationship category trustTier confidence createdAt
           }
         }`,
-        { teamId: tid, limit: args.limit || 200 }
+        { teamId: tid, query: args.query, limit: args.limit || 20 }
       );
-      const q = args.query.toLowerCase();
-      const filtered = (data.getFacts || [])
-        .filter(f => f.content.toLowerCase().includes(q) || (f.entityName || '').toLowerCase().includes(q))
-        .slice(0, args.limit || 20);
-      if (!filtered.length) return [{ type: 'text', text: `No facts found matching "${args.query}".` }];
-      let output = `**Found ${filtered.length} facts:**\n`;
-      for (const f of filtered) output += `\n- [${f.category || 'general'}] ${f.content}`;
+      const results = data.searchKnowledge || [];
+      if (!results.length) return [{ type: 'text', text: `No knowledge found matching "${args.query}".` }];
+      let output = `**Found ${results.length} results for "${args.query}":**\n`;
+      for (const r of results) {
+        const icon = r.source === 'triple' ? '🔗' : '📄';
+        const concept = r.conceptName ? ` (${r.conceptName})` : '';
+        output += `\n${icon} ${r.content}${concept}`;
+      }
       return [{ type: 'text', text: output }];
     }
 

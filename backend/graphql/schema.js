@@ -138,6 +138,19 @@ export default gql`
     success: Boolean!
   }
 
+  # Unified search result (from facts OR triples)
+  type SearchResult {
+    id: ID!
+    content: String!
+    source: String!           # "fact" or "triple"
+    conceptName: String
+    relationship: String
+    category: String
+    trustTier: String
+    confidence: Float
+    createdAt: DateTime
+  }
+
   # Response from Ask query (instant, no confirmation needed)
   type AskResponse {
     answer: String!
@@ -1151,6 +1164,9 @@ export default gql`
 
     # Ask a question - instant AI response (read-only)
     askRaven(scopeId: ID!, question: String!, conversationHistory: [ConversationMessageInput!]): AskResponse!
+
+    # Search knowledge — searches BOTH legacy facts AND triple graph
+    searchKnowledge(teamId: ID!, query: String!, limit: Int): [SearchResult!]!
 
     # Trust model
     getTrustScores(teamId: ID!, sourceId: String): [TrustScore!]!

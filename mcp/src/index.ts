@@ -259,64 +259,40 @@ server.tool(
 // @ts-ignore — TS 5.9 deep instantiation issue with Zod + MCP SDK optional params
 server.tool(
   "raven_search_facts",
-  "Search confirmed facts in the knowledge base. Returns matching facts with their content, category, source, and when they were confirmed.",
+  "Search ALL knowledge (both legacy facts and graph triples) by keyword. Returns matching content from the entire knowledge base.",
   {
     query: z.string().describe("Search terms or keywords"),
     teamId: z.string().optional().describe("Team UUID (uses default if not provided)"),
-    category: z.string().optional().describe("Filter by category: product, process, people, policy, technical, sales, marketing, financial, legal, general"),
     limit: z.number().optional().describe("Max results to return (default: 20)"),
   },
-  async ({ query, teamId, category, limit }) => {
+  async ({ query, teamId, limit }) => {
     const tid = teamId || DEFAULT_TEAM_ID;
     if (!tid) {
       return { content: [{ type: "text", text: "Error: No teamId provided and RAVENLOOM_TEAM_ID not set." }] };
     }
 
     try {
-      // Use getFacts with client-side filtering (semantic search via askRaven is also available)
       const data = await gql(
-        `query GetFacts($teamId: ID!, $category: String, $limit: Int) {
-          getFacts(teamId: $teamId, category: $category, limit: $limit) {
-            id
-            content
-            category
-            entityType
-            entityName
-            trustTier
-            sourceQuote
-            sourceUrl
-            createdByUser { displayName email }
-            createdAt
+        `query SearchKnowledge($teamId: ID!, $query: String!, $limit: Int) {
+          searchKnowledge(teamId: $teamId, query: $query, limit: $limit) {
+            id content source conceptName relationship category trustTier confidence createdAt
           }
         }`,
-        { teamId: tid, category: category || null, limit: limit || 200 }
+        { teamId: tid, query, limit: limit || 20 }
       );
 
-      const facts = data.getFacts || [];
+      const results = data.searchKnowledge || [];
 
-      // Client-side keyword filter
-      const q = query.toLowerCase();
-      const filtered = facts.filter((f: any) =>
-        f.content.toLowerCase().includes(q) ||
-        (f.entityName || "").toLowerCase().includes(q) ||
-        (f.sourceQuote || "").toLowerCase().includes(q)
-      ).slice(0, limit || 20);
-
-      if (filtered.length === 0) {
-        return { content: [{ type: "text", text: `No confirmed facts found matching "${query}".` }] };
+      if (results.length === 0) {
+        return { content: [{ type: "text", text: `No knowledge found matching "${query}".` }] };
       }
 
-      let output = `**Found ${filtered.length} facts matching "${query}":**\n`;
+      let output = `**Found ${results.length} results for "${query}":**\n`;
 
-      for (const f of filtered) {
-        const cat = f.category ? `[${f.category}]` : "";
-        const tier = f.trustTier === "official" ? " (Official)" : "";
-        const date = f.createdAt ? new Date(f.createdAt).toLocaleDateString() : "";
-        const who = f.createdByUser?.displayName || f.createdByUser?.email || "";
-
-        output += `\n- ${cat} ${f.content}${tier}`;
-        if (date || who) output += `\n  ${who ? `Confirmed by ${who}` : ""}${date ? ` on ${date}` : ""}`;
-        if (f.sourceQuote) output += `\n  Source: "${f.sourceQuote.substring(0, 80)}..."`;
+      for (const r of results) {
+        const icon = r.source === "triple" ? "🔗" : "📄";
+        const concept = r.conceptName ? ` (${r.conceptName})` : "";
+        output += `\n${icon} ${r.content}${concept}`;
       }
 
       return { content: [{ type: "text", text: output }] };
