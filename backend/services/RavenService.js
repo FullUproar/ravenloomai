@@ -179,7 +179,10 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     if (pd.type === 'count') {
       planContext = `\n\nGRAPH SCAN RESULT: There are exactly ${pd.count} items matching the query: ${pd.names.join(', ')}`;
     } else if (pd.type === 'list') {
-      planContext = `\n\nGRAPH SCAN RESULT:\n${pd.items.map(i => `- ${i.name} (${i.type}, ${i.triple_count} connections)`).join('\n')}`;
+      planContext = `\n\nGRAPH SCAN RESULT:\n${pd.items.map(i => {
+        const details = i.triples?.length > 0 ? `: ${i.triples.join('; ')}` : '';
+        return `- ${i.name} (${i.type}, ${i.triple_count} connections)${details}`;
+      }).join('\n')}`;
     } else if (pd.type === 'comparison') {
       planContext = `\n\nCOMPARISON DATA:\n${pd.comparisons.map(c =>
         `${c.concept}:\n${c.triples.map(t => `  - ${t}`).join('\n')}`
@@ -403,7 +406,10 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
     const pd = queryPlan.precomputedData;
     let planContext = '';
     if (pd.type === 'count') planContext = `\n\nGRAPH SCAN: ${pd.count} items found: ${pd.names.join(', ')}`;
-    else if (pd.type === 'list') planContext = `\n\nGRAPH SCAN:\n${pd.items.map(i => `- ${i.name} (${i.type})`).join('\n')}`;
+    else if (pd.type === 'list') planContext = `\n\nGRAPH SCAN:\n${pd.items.map(i => {
+      const details = i.triples?.length > 0 ? `: ${i.triples.join('; ')}` : '';
+      return `- ${i.name} (${i.type})${details}`;
+    }).join('\n')}`;
     else if (pd.type === 'comparison') planContext = `\n\nCOMPARISON:\n${pd.comparisons.map(c => `${c.concept}:\n${c.triples.map(t => `  - ${t}`).join('\n')}`).join('\n\n')}`;
     else if (pd.type === 'exhaustive') planContext = `\n\nDEEP SCAN (${pd.count} facts):\n${pd.triples.map(t => `- ${t}`).join('\n')}`;
     else if (pd.type === 'timeline') planContext = `\n\nTIMELINE (${pd.count} events):\n${pd.events.map(e => `- ${e.event} ${e.relationship} ${e.date}`).join('\n')}`;

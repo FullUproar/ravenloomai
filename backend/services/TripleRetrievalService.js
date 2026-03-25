@@ -152,8 +152,17 @@ async function executeGraphScan(teamId, plan, scopeIds) {
     }
 
     if (qt === 'listing') {
-      // Extract what we're listing from the scan query
-      const listTarget = (plan.scanQuery || scan).match(/list (?:all )?(\w+)/i)?.[1] || '';
+      // Extract what we're listing from natural language
+      const q = plan.scanQuery || scan;
+      let listTarget = q.match(/list (?:all )?(\w+)/i)?.[1] || '';
+      if (!listTarget) {
+        // Try natural patterns: "What X do we...", "Which X are...", "Our X"
+        listTarget = q.match(/(?:what|which|our|all|the)\s+(\w+)\s+(?:do|are|did|have|is|does|can|will|should|were)/i)?.[1] || '';
+      }
+      if (!listTarget) {
+        // Try extracting nouns: "games", "products", "people", "deadlines"
+        listTarget = q.match(/\b(games?|products?|projects?|people|team|members?|targets?|goals?|deadlines?|features?|services?|apps?|tools?|platforms?)\b/i)?.[1] || '';
+      }
       const typeVariants = expandTypeVariants(listTarget);
 
       // Strategy 1: Find concepts by type
@@ -198,10 +207,26 @@ async function executeGraphScan(teamId, plan, scopeIds) {
         `, [teamId]);
       }
 
+      // Fetch a representative triple for each listed concept so the LLM knows WHAT each item is
+      const enrichedItems = [];
+      for (const item of result.rows.slice(0, 15)) {
+        const rep = await db.query(`
+          SELECT t.display_text FROM triples t
+          WHERE t.team_id = $1 AND t.status = 'active'
+            AND (t.subject_id IN (SELECT id FROM concepts WHERE canonical_name = $2 AND team_id = $1))
+          ORDER BY t.confidence DESC NULLS LAST
+          LIMIT 3
+        `, [teamId, item.name.toLowerCase()]);
+        enrichedItems.push({
+          ...item,
+          triples: rep.rows.map(r => r.display_text),
+        });
+      }
+
       return {
         type: 'list',
-        items: result.rows,
-        description: `Found ${result.rows.length} ${listTarget || 'items'}:\n${result.rows.map(i => `- ${i.name} (${i.type}, ${i.triple_count} facts)`).join('\n')}`,
+        items: enrichedItems,
+        description: `Found ${enrichedItems.length} ${listTarget || 'items'}:\n${enrichedItems.map(i => `- ${i.name} (${i.type}): ${i.triples[0] || 'no details'}`).join('\n')}`,
       };
     }
 
@@ -357,16 +382,27 @@ async function executeGraphScan(teamId, plan, scopeIds) {
  * Expand a concept type into synonyms/variants for broader matching.
  */
 function expandTypeVariants(type) {
+  // Normalize: strip plural, lowercase
+  const normalized = type.toLowerCase().replace(/s$/, '');
   const synonyms = {
-    product: ['product', 'game', 'item', 'offering'],
-    game: ['game', 'product', 'card game', 'board game'],
-    person: ['person', 'employee', 'team member', 'contact'],
+    product: ['product', 'game', 'item', 'offering', 'app', 'platform', 'service'],
+    game: ['game', 'product', 'card game', 'board game', 'app'],
+    project: ['product', 'project', 'game', 'app', 'platform'],
+    person: ['person', 'employee', 'team member', 'contact', 'user'],
+    member: ['person', 'employee', 'team member', 'contact'],
     company: ['company', 'organization', 'partner', 'manufacturer'],
     location: ['location', 'place', 'city', 'venue'],
     date: ['date', 'deadline', 'milestone', 'event'],
     event: ['event', 'milestone', 'date', 'launch'],
+    target: ['target', 'goal', 'milestone', 'revenue'],
+    feature: ['feature', 'capability', 'mechanic'],
+    service: ['service', 'platform', 'product', 'app'],
+    tool: ['tool', 'product', 'platform', 'app'],
+    app: ['app', 'product', 'platform', 'service'],
+    platform: ['platform', 'product', 'service', 'app'],
+    deadline: ['date', 'deadline', 'milestone', 'event', 'launch'],
   };
-  return synonyms[type] || [type];
+  return synonyms[normalized] || [type, normalized];
 }
 
 // ============================================================================
