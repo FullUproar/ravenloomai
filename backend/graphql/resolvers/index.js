@@ -485,12 +485,12 @@ const resolvers = {
       const factsResult = await pool.query(
         `SELECT id, content, category, entity_name, trust_tier, created_at
          FROM facts WHERE team_id = $1 AND status = 'active'
-         AND (LOWER(content) LIKE $2 OR LOWER(entity_name) LIKE $2 OR LOWER(source_quote) LIKE $2)
+         AND (LOWER(content) LIKE $2 OR LOWER(COALESCE(entity_name,'')) LIKE $2 OR LOWER(COALESCE(source_quote,'')) LIKE $2)
          ORDER BY created_at DESC LIMIT $3`,
         [teamId, `%${q}%`, maxResults]
       );
 
-      // Search triples (display_text + concept names + relationships)
+      // Search triples (display_text + concept names + relationships + aliases)
       const triplesResult = await pool.query(
         `SELECT DISTINCT t.id, t.display_text, t.relationship, t.confidence, t.trust_tier, t.created_at,
                 s.name as subject_name, o.name as object_name
@@ -498,9 +498,9 @@ const resolvers = {
          JOIN concepts s ON t.subject_id = s.id
          JOIN concepts o ON t.object_id = o.id
          WHERE t.team_id = $1 AND t.status = 'active'
-         AND (LOWER(t.display_text) LIKE $2 OR LOWER(s.name) LIKE $2 OR LOWER(o.name) LIKE $2
+         AND (LOWER(COALESCE(t.display_text,'')) LIKE $2 OR LOWER(s.name) LIKE $2 OR LOWER(o.name) LIKE $2
               OR LOWER(t.relationship) LIKE $2 OR LOWER(s.canonical_name) LIKE $2
-              OR EXISTS (SELECT 1 FROM unnest(s.aliases) a WHERE LOWER(a) LIKE $2))
+              OR EXISTS (SELECT 1 FROM unnest(COALESCE(s.aliases, ARRAY[]::text[])) a WHERE LOWER(a) LIKE $2))
          ORDER BY t.created_at DESC LIMIT $3`,
         [teamId, `%${q}%`, maxResults]
       );
