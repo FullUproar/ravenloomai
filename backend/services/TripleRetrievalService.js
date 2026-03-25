@@ -41,6 +41,12 @@ export async function planQuery(teamId, question, scopeIds = []) {
   } else if (/\bcompare\b/i.test(q)) {
     const concepts = q.match(/compare\s+(.+?)\s+(?:and|vs|with|to)\s+(.+?)[\?.]?$/i);
     plan = { queryType: 'comparison', targetConcepts: [concepts?.[1] || '', concepts?.[2] || ''].filter(Boolean), needsGraphScan: true, scanQuery: q };
+  } else if (/\b(\w+)\b.+\band\b.+\b(\w+)\b.*\?/i.test(q) && q.split(/\band\b/i).length >= 2) {
+    // Cross-domain: "X and Y?" pattern with distinct topics
+    const parts = q.split(/\band\b/i).map(p => p.replace(/^(what|who|how|where|when|which|are|is|our|the|do|does)\s+/gi, '').replace(/[?.!]/g, '').trim()).filter(p => p.length > 2);
+    if (parts.length >= 2) {
+      plan = { queryType: 'cross_domain', targetConcepts: parts.slice(0, 4), needsGraphScan: true, scanQuery: q, warnSlowQuery: true };
+    }
   }
 
   if (!plan) return null; // Simple factual — use normal retrieval
@@ -212,17 +218,28 @@ async function executeGraphScan(teamId, plan, scopeIds) {
 
     // ── TIMELINE: aggregate all date-containing triples ──────────────
     if (qt === 'timeline') {
+      // Search BOTH concept names AND display_text for date patterns
       const dateTriples = await db.query(`
-        SELECT t.display_text, t.relationship, s.name AS subject, o.name AS object, o.type AS object_type
+        SELECT DISTINCT t.id, t.display_text, t.relationship,
+               s.name AS subject, o.name AS object, o.type AS object_type, s.type AS subject_type
         FROM triples t
         JOIN concepts s ON t.subject_id = s.id
         JOIN concepts o ON t.object_id = o.id
         WHERE t.team_id = $1 AND t.status = 'active'
-          AND (o.type IN ('date', 'deadline', 'milestone', 'event', 'time_period')
-            OR t.relationship ~* '(launch|release|due|deadline|target|schedule|start|open|ship|complete|deliver)'
-            OR o.name ~* '(january|february|march|april|may|june|july|august|september|october|november|december|20[0-9]{2}|Q[1-4])')
-        ORDER BY o.name ASC
-        LIMIT 50
+          AND (
+            -- Object is a date-like concept
+            o.type IN ('date', 'deadline', 'milestone', 'event', 'time_period', 'quarter')
+            -- Relationship involves timing
+            OR t.relationship ~* '(launch|release|due|deadline|target|schedule|start|open|ship|complete|deliver|goes live|doors open)'
+            -- Object name contains a date
+            OR o.name ~* '(january|february|march|april|may|june|july|august|september|october|november|december|20[0-9]{2}|Q[1-4]|spring|summer|fall|winter)'
+            -- Subject name contains a date
+            OR s.name ~* '(january|february|march|april|may|june|july|august|september|october|november|december|20[0-9]{2}|Q[1-4])'
+            -- Display text mentions dates
+            OR t.display_text ~* '(january|february|march|april|may|june|july|august|september|october|november|december|20[0-9]{2}|Q[1-4]|deadline|milestone|launch|target date)'
+          )
+        ORDER BY t.display_text ASC
+        LIMIT 60
       `, [teamId]);
 
       const timeline = dateTriples.rows.map(r => ({
@@ -236,7 +253,7 @@ async function executeGraphScan(teamId, plan, scopeIds) {
         type: 'timeline',
         events: timeline,
         count: timeline.length,
-        description: `Found ${timeline.length} dated events/deadlines:\n${timeline.map(t => `- ${t.event} ${t.relationship} ${t.date}`).join('\n')}`,
+        description: `Found ${timeline.length} dated events/deadlines:\n${timeline.map(t => `- ${t.displayText}`).join('\n')}`,
       };
     }
 
@@ -244,13 +261,16 @@ async function executeGraphScan(teamId, plan, scopeIds) {
     if (qt === 'cross_domain' && plan.targetConcepts?.length >= 2) {
       const domainResults = [];
       for (const name of plan.targetConcepts.slice(0, 4)) {
+        const triples = new Set();
+
+        // Strategy 1: Match concept names
         const conceptResult = await db.query(`
           SELECT id, name FROM concepts
-          WHERE team_id = $1 AND (LOWER(canonical_name) LIKE $2 OR LOWER(name) LIKE $2)
-          LIMIT 3
+          WHERE team_id = $1 AND (LOWER(canonical_name) LIKE $2 OR LOWER(name) LIKE $2
+            OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE LOWER(a) LIKE $2))
+          LIMIT 5
         `, [teamId, `%${name.toLowerCase()}%`]);
 
-        const triples = [];
         for (const concept of conceptResult.rows) {
           const tripleResult = await db.query(`
             SELECT t.display_text FROM triples t
@@ -258,9 +278,21 @@ async function executeGraphScan(teamId, plan, scopeIds) {
               AND (t.subject_id = $2 OR t.object_id = $2)
             ORDER BY t.confidence DESC LIMIT 15
           `, [teamId, concept.id]);
-          triples.push(...tripleResult.rows.map(r => r.display_text));
+          tripleResult.rows.forEach(r => triples.add(r.display_text));
         }
-        domainResults.push({ domain: name, triples: [...new Set(triples)] });
+
+        // Strategy 2: Search display_text directly for the topic
+        if (triples.size < 5) {
+          const textResult = await db.query(`
+            SELECT t.display_text FROM triples t
+            WHERE t.team_id = $1 AND t.status = 'active'
+              AND t.display_text ~* $2
+            ORDER BY t.confidence DESC LIMIT 10
+          `, [teamId, name.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3).join('|')]);
+          textResult.rows.forEach(r => triples.add(r.display_text));
+        }
+
+        domainResults.push({ domain: name, triples: [...triples] });
       }
 
       return {
