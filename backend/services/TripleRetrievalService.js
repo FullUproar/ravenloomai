@@ -57,9 +57,7 @@ export async function planQuery(teamId, question, scopeIds = []) {
     precomputedData = await executeGraphScan(teamId, plan, scopeIds);
   }
 
-  return plan.queryType === 'factual' && !plan.needsGraphScan
-    ? null // No special planning needed, use normal retrieval
-    : { ...plan, precomputedData, graphSummary };
+  return { ...plan, precomputedData };
 }
 
 /**
