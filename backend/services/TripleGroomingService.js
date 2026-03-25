@@ -544,7 +544,96 @@ async function materializeInferences(teamId, inferences) {
 }
 
 // ============================================================================
-// 8. DEMAND-DRIVEN: Analyze failed queries and create missing connections
+// 8. TOPOLOGY HEALTH CHECK
+// ============================================================================
+
+/**
+ * Analyze graph structure and propose fixes for topology problems:
+ * - Hub decomposition (nodes with >50 edges)
+ * - Orphan cleanup (nodes with 0 edges)
+ * - Inbound edge poverty (nodes with many outbound but 0 inbound)
+ * - Leaf clustering (groups of leaves that should share a category)
+ */
+async function checkTopologyHealth(teamId) {
+  const report = { hubsDetected: 0, orphansCleaned: 0, inboundFixed: 0, proposals: [] };
+
+  // 1. Detect hub nodes (>50 edges)
+  const hubs = await db.query(`
+    SELECT c.id, c.name, c.type,
+      (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') as degree
+    FROM concepts c
+    WHERE c.team_id = $1
+    HAVING (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') > 50
+    ORDER BY degree DESC
+  `, [teamId]);
+
+  for (const hub of hubs.rows) {
+    report.hubsDetected++;
+    // Get edge relationship types for this hub
+    const edgeTypes = await db.query(`
+      SELECT t.relationship, COUNT(*) as cnt
+      FROM triples t
+      WHERE t.status = 'active' AND (t.subject_id = $1 OR t.object_id = $1)
+      GROUP BY t.relationship
+      ORDER BY cnt DESC
+      LIMIT 10
+    `, [hub.id]);
+
+    // Propose category groupings for clusters of 3+ same-relationship edges
+    const clusters = edgeTypes.rows.filter(r => parseInt(r.cnt) >= 3);
+    if (clusters.length > 0) {
+      report.proposals.push({
+        type: 'hub_decomposition',
+        concept: hub.name,
+        degree: parseInt(hub.degree),
+        clusters: clusters.map(c => ({ relationship: c.relationship, count: parseInt(c.cnt) })),
+      });
+    }
+  }
+
+  // 2. Clean orphan concepts (0 edges, not protected)
+  const orphanResult = await db.query(`
+    DELETE FROM concepts
+    WHERE team_id = $1 AND is_protected IS NOT TRUE
+      AND type NOT LIKE 'merged_into%'
+      AND NOT EXISTS (
+        SELECT 1 FROM triples t
+        WHERE t.status = 'active' AND (t.subject_id = concepts.id OR t.object_id = concepts.id)
+      )
+    RETURNING name
+  `, [teamId]);
+  report.orphansCleaned = orphanResult.rowCount;
+  if (report.orphansCleaned > 0) {
+    console.log(`[Grooming] Cleaned ${report.orphansCleaned} orphan concepts`);
+  }
+
+  // 3. Detect inbound-poverty nodes (>10 outbound, 0 inbound)
+  const inboundPoor = await db.query(`
+    SELECT c.id, c.name,
+      (SELECT COUNT(*) FROM triples WHERE subject_id = c.id AND status = 'active') as out_deg,
+      (SELECT COUNT(*) FROM triples WHERE object_id = c.id AND status = 'active') as in_deg
+    FROM concepts c
+    WHERE c.team_id = $1
+      AND (SELECT COUNT(*) FROM triples WHERE subject_id = c.id AND status = 'active') > 10
+      AND (SELECT COUNT(*) FROM triples WHERE object_id = c.id AND status = 'active') = 0
+  `, [teamId]);
+
+  for (const node of inboundPoor.rows) {
+    report.proposals.push({
+      type: 'inbound_poverty',
+      concept: node.name,
+      outDegree: parseInt(node.out_deg),
+      inDegree: 0,
+      suggestion: `"${node.name}" has ${node.out_deg} outbound edges but nothing points to it. Add an inbound edge from a parent category.`,
+    });
+  }
+
+  console.log(`[Grooming] Topology: ${report.hubsDetected} hubs, ${report.orphansCleaned} orphans cleaned, ${inboundPoor.rows.length} inbound-poor nodes`);
+  return report;
+}
+
+// ============================================================================
+// 9. DEMAND-DRIVEN: Analyze failed queries and create missing connections
 // ============================================================================
 
 /**
@@ -607,6 +696,10 @@ export async function groomGraph(teamId) {
   // Phase 4: Demand-driven (learn from failures)
   console.log(`[Grooming] Phase 4: Learning from failures`);
   const demandDriven = await groomFromFailedQueries(teamId);
+
+  // Phase 5: Topology health check
+  console.log(`[Grooming] Phase 5: Topology health`);
+  const topology = await checkTopologyHealth(teamId);
 
   const stats = await TripleService.getGraphStats(teamId);
   const durationMs = Date.now() - startTime;

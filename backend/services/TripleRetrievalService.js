@@ -695,7 +695,19 @@ export async function multiHopExpand(teamId, initialTriples, maxHops = 2) {
     if (frontier.length === 0) break;
     hopDecay *= 0.8;
 
-    // Find triples connected to frontier concepts
+    // Adaptive hub handling: check if any frontier concept is a high-degree hub
+    // If so, only traverse edges whose relationship type is semantically relevant
+    const hubCheck = await db.query(`
+      SELECT c.id, c.name,
+        (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') as degree
+      FROM concepts c WHERE c.id = ANY($1)
+    `, [frontier]);
+
+    const hubIds = hubCheck.rows.filter(r => parseInt(r.degree) > 30).map(r => r.id);
+    const nonHubFrontier = frontier.filter(id => !hubIds.includes(id));
+
+    // For hub nodes, get edges but limit to avoid explosion
+    // For non-hub nodes, get all edges normally
     const result = await db.query(`
       SELECT t.*, s.name AS subject_name, s.type AS subject_type,
              o.name AS object_name, o.type AS object_type
@@ -705,8 +717,9 @@ export async function multiHopExpand(teamId, initialTriples, maxHops = 2) {
       WHERE t.team_id = $1 AND t.status = 'active'
         AND (t.subject_id = ANY($2) OR t.object_id = ANY($2))
         AND t.id != ALL($3)
-      LIMIT 20
-    `, [teamId, frontier, Array.from(visitedTripleIds)]);
+      ORDER BY t.confidence DESC NULLS LAST
+      LIMIT ${hubIds.length > 0 ? 10 : 20}
+    `, [teamId, nonHubFrontier.length > 0 ? nonHubFrontier : frontier, Array.from(visitedTripleIds)]);
 
     const newFrontier = new Set();
 

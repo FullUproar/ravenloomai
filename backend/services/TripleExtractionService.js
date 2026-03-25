@@ -111,15 +111,157 @@ Also extract WHY it changed if stated (e.g., "due to manufacturing delays" → s
     const triples = parsed.triples || [];
 
     // Generate display text for each triple
-    return triples.map(t => ({
+    const extracted = triples.map(t => ({
       ...t,
       displayText: `${t.subject.name} ${t.relationship} ${t.object.name}`,
-      isNew: true // will be updated during concept resolution
+      isNew: true
     }));
+
+    // Post-extraction: detect fan-out patterns and introduce category nodes
+    return detectAndInsertHierarchy(extracted);
   } catch (err) {
     console.error('[TripleExtraction] Extraction failed:', err.message);
     return [];
   }
+}
+
+/**
+ * Detect fan-out patterns in extracted triples and auto-create intermediate categories.
+ *
+ * Pattern: 3+ triples from the same subject with semantically similar relationships
+ * → introduce a category node to prevent star topology.
+ *
+ * Example: FUG → uses for payments → Stripe, FUG → uses for hosting → Vercel, FUG → uses for SMS → Twilio
+ * Becomes: FUG → has technology stack, Technology Stack → includes → Stripe, etc.
+ */
+function detectAndInsertHierarchy(triples) {
+  if (triples.length < 4) return triples; // too few to cluster
+
+  // Group triples by subject
+  const bySubject = new Map();
+  for (const t of triples) {
+    const key = t.subject.name.toLowerCase();
+    if (!bySubject.has(key)) bySubject.set(key, []);
+    bySubject.get(key).push(t);
+  }
+
+  const result = [];
+  for (const [subjectKey, group] of bySubject) {
+    if (group.length < 4) {
+      result.push(...group);
+      continue;
+    }
+
+    // Cluster relationships by keyword similarity
+    const clusters = clusterRelationships(group);
+
+    for (const cluster of clusters) {
+      if (cluster.triples.length >= 3 && cluster.categoryName) {
+        // Fan-out detected — introduce category node
+        const subject = cluster.triples[0].subject;
+
+        // Add: Subject → has → Category
+        result.push({
+          subject,
+          relationship: `has ${cluster.categoryName.toLowerCase()}`,
+          object: { name: cluster.categoryName, type: 'concept' },
+          contexts: [],
+          confidence: 0.7,
+          trustTier: 'tribal',
+          isCore: false,
+          displayText: `${subject.name} has ${cluster.categoryName.toLowerCase()}`,
+          isNew: true,
+          _isAutoCategory: true,
+        });
+
+        // Add: Category → includes → each Object
+        for (const t of cluster.triples) {
+          result.push({
+            subject: { name: cluster.categoryName, type: 'concept' },
+            relationship: t.relationship,
+            object: t.object,
+            contexts: t.contexts || [],
+            confidence: t.confidence,
+            trustTier: t.trustTier,
+            isCore: t.isCore,
+            displayText: `${cluster.categoryName} ${t.relationship} ${t.object.name}`,
+            isNew: true,
+          });
+        }
+      } else {
+        // Not enough to cluster — keep originals
+        result.push(...cluster.triples);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Cluster triples by relationship similarity.
+ * Groups like "uses for payments", "uses for hosting", "uses for SMS" into one cluster.
+ */
+function clusterRelationships(triples) {
+  // Extract relationship keywords
+  const clusters = [];
+  const used = new Set();
+
+  for (let i = 0; i < triples.length; i++) {
+    if (used.has(i)) continue;
+
+    const rel = triples[i].relationship.toLowerCase();
+    const cluster = { triples: [triples[i]], categoryName: null };
+    used.add(i);
+
+    // Find similar relationships
+    for (let j = i + 1; j < triples.length; j++) {
+      if (used.has(j)) continue;
+      const rel2 = triples[j].relationship.toLowerCase();
+
+      // Simple similarity: shared prefix or same verb
+      const verb1 = rel.split(/\s+/)[0];
+      const verb2 = rel2.split(/\s+/)[0];
+      if (verb1 === verb2 && verb1.length > 2) {
+        cluster.triples.push(triples[j]);
+        used.add(j);
+      }
+    }
+
+    // Infer category name from the shared relationship pattern
+    if (cluster.triples.length >= 3) {
+      const commonVerb = cluster.triples[0].relationship.toLowerCase().split(/\s+/)[0];
+      const objectTypes = cluster.triples.map(t => t.object.type).filter(Boolean);
+      const commonType = objectTypes.length > 0 ? mostCommon(objectTypes) : null;
+
+      // Map common patterns to category names
+      const categoryMap = {
+        'has': commonType === 'person' ? 'Team' : commonType === 'date' ? 'Timeline' : 'Properties',
+        'uses': 'Technology Stack',
+        'includes': 'Components',
+        'defines': 'Definitions',
+        'enforces': 'Policies',
+        'requires': 'Requirements',
+        'prohibits': 'Restrictions',
+        'filed': 'Legal Filings',
+        'holds': 'Assets',
+        'produces': 'Products',
+        'targets': 'Targets',
+        'launched': 'Launches',
+      };
+      cluster.categoryName = categoryMap[commonVerb] || null;
+    }
+
+    clusters.push(cluster);
+  }
+
+  return clusters;
+}
+
+function mostCommon(arr) {
+  const counts = {};
+  for (const v of arr) counts[v] = (counts[v] || 0) + 1;
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
 }
 
 // ============================================================================
