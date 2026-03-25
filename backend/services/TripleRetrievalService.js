@@ -21,71 +21,31 @@ import * as TripleService from './TripleService.js';
  * Returns: { queryType, strategy, precomputedData, augmentedQuestion }
  */
 export async function planQuery(teamId, question, scopeIds = []) {
-  // Step 1: Get graph summary (fast — cached metadata)
-  const [conceptSummary, tripleCount] = await Promise.all([
-    db.query(`
-      SELECT type, COUNT(*) as count, array_agg(DISTINCT name ORDER BY name) as names
-      FROM concepts WHERE team_id = $1
-      GROUP BY type ORDER BY count DESC LIMIT 10
-    `, [teamId]),
-    db.query(`SELECT COUNT(*) as count FROM triples WHERE team_id = $1 AND status = 'active'`, [teamId]),
-  ]);
+  const q = question.toLowerCase();
 
-  const graphSummary = conceptSummary.rows.map(r =>
-    `${r.type}: ${r.count} (${r.names.slice(0, 8).join(', ')}${r.names.length > 8 ? '...' : ''})`
-  ).join('\n');
+  // ── Rule-based classification (no LLM call — saves 2-3s) ──────────
+  let plan = null;
 
-  const totalTriples = tripleCount.rows[0]?.count || 0;
-
-  // Step 2: Ask LLM to classify the query and plan execution
-  const planResponse = await callOpenAI([
-    {
-      role: 'system',
-      content: `You are a query planner for a knowledge graph. Given a question and a summary of available data, determine the best retrieval strategy.
-
-AVAILABLE DATA:
-${graphSummary}
-Total knowledge triples: ${totalTriples}
-
-QUERY TYPES:
-- factual: Simple fact lookup ("When does X launch?")
-- counting: Requires counting entities ("How many products?")
-- comparison: Comparing two entities ("Which is cheaper?")
-- listing: Listing items that match criteria ("What games are under $20?")
-- exhaustive: Broad query wanting ALL info about a topic ("Tell me everything about Fugly's Mayhem Machine", "What do we know about manufacturing?")
-- timeline: Wants dates/deadlines aggregated chronologically ("All upcoming deadlines", "What's our timeline?", "Upcoming milestones")
-- cross_domain: Combines multiple distinct topics ("Who handles manufacturing AND what brand principles apply?", "How does our budget relate to product launches?")
-- relational: About relationships between entities ("Who works with whom?")
-
-Return ONLY JSON:
-{
-  "queryType": "factual|counting|comparison|listing|exhaustive|timeline|cross_domain|relational",
-  "targetConcepts": ["concept names to search for"],
-  "needsGraphScan": true/false,
-  "scanQuery": "description of what to scan for",
-  "domains": ["domain1", "domain2"],
-  "warnSlowQuery": false
-}
-
-For COUNTING: set needsGraphScan=true, scanQuery describes what to count.
-For LISTING: set needsGraphScan=true, scanQuery describes the filter.
-For COMPARISON: list both concepts in targetConcepts.
-For EXHAUSTIVE: set needsGraphScan=true, scanQuery="all triples for [concept]". targetConcepts lists the main topic(s).
-For TIMELINE: set needsGraphScan=true, scanQuery="all date-containing triples". warnSlowQuery=true.
-For CROSS_DOMAIN: set needsGraphScan=true, list multiple concepts in targetConcepts, domains lists the topic areas. warnSlowQuery=true.
-For simple FACTUAL: just list the main concept, needsGraphScan=false.`
-    },
-    { role: 'user', content: question }
-  ], { model: 'gpt-4o-mini', maxTokens: 200, temperature: 0, teamId, operation: 'query_plan' });
-
-  let plan;
-  try {
-    plan = JSON.parse(planResponse.match(/\{[\s\S]*\}/)?.[0] || '{}');
-  } catch {
-    plan = { queryType: 'factual', targetConcepts: [], needsGraphScan: false };
+  if (/\beverything\b|\btell me all\b|\bwhat do (we|you) know about\b|\bsummarize\b.*\babout\b/i.test(q)) {
+    // Extract the topic
+    const topicMatch = q.match(/(?:everything|all|know) (?:about|regarding|on) (.+?)[\?.]?$/i);
+    const topic = topicMatch?.[1]?.trim() || q.replace(/tell me |everything |about /gi, '').trim();
+    plan = { queryType: 'exhaustive', targetConcepts: [topic], needsGraphScan: true, scanQuery: `all triples for ${topic}` };
+  } else if (/\bdeadlines?\b|\btimeline\b|\bupcoming\b|\bschedule\b|\bmilestones?\b|\bwhen.*all\b|\ball.*dates?\b/i.test(q)) {
+    plan = { queryType: 'timeline', targetConcepts: [], needsGraphScan: true, scanQuery: 'all date-containing triples' };
+  } else if (/\bhow many\b/i.test(q)) {
+    const typeMatch = q.match(/how many (\w+)/i);
+    plan = { queryType: 'counting', targetConcepts: [], needsGraphScan: true, scanQuery: `count ${typeMatch?.[1] || 'items'}` };
+  } else if (/\blist (all|every|the)\b/i.test(q)) {
+    plan = { queryType: 'listing', targetConcepts: [], needsGraphScan: true, scanQuery: q };
+  } else if (/\bcompare\b/i.test(q)) {
+    const concepts = q.match(/compare\s+(.+?)\s+(?:and|vs|with|to)\s+(.+?)[\?.]?$/i);
+    plan = { queryType: 'comparison', targetConcepts: [concepts?.[1] || '', concepts?.[2] || ''].filter(Boolean), needsGraphScan: true, scanQuery: q };
   }
 
-  // Step 3: Execute graph scan if needed
+  if (!plan) return null; // Simple factual — use normal retrieval
+
+  // Execute graph scan based on rule-based plan (no LLM call needed)
   let precomputedData = null;
   if (plan.needsGraphScan && plan.scanQuery) {
     precomputedData = await executeGraphScan(teamId, plan, scopeIds);
