@@ -79,8 +79,11 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   const traversalSteps = [];
   const traversalStart = Date.now();
 
-  // Step 3: Dual-embedding search on triples table
-  let triples = await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
+  // For exhaustive/timeline plans, skip normal embedding search — the scan has the data
+  const skipEmbeddingSearch = queryPlan?.precomputedData && ['exhaustive', 'timeline', 'cross_domain'].includes(queryPlan.queryType);
+
+  // Step 3: Dual-embedding search on triples table (skip if plan already scanned)
+  let triples = skipEmbeddingSearch ? [] : await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
     scopeIds: searchScopeIds,
     sstNodeId: sstNode?.id || null,
     topK: 15
