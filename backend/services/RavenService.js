@@ -150,6 +150,33 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     }
   }
 
+  // Step 4b: MANDATORY collection expansion — follow category/collection edges explicitly
+  // This is the "mandatory second hop" for hierarchical structures.
+  // When we find nodes connected by containment relationships, fetch their children AND grandchildren.
+  const collectionExpanded = await expandCollectionNodes(teamId, triples);
+  if (collectionExpanded.length > 0) {
+    const existingIds = new Set(triples.map(t => t.id));
+    const newFromCollection = collectionExpanded.filter(t => !existingIds.has(t.id));
+    console.log(`[RavenService.ask] Collection expansion found ${newFromCollection.length} additional triples`);
+    triples = [...triples, ...newFromCollection].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+
+    if (newFromCollection.length > 0) {
+      traversalSteps.push({
+        phase: 'collection_expand',
+        timestamp: Date.now() - traversalStart,
+        nodesVisited: newFromCollection.map(t => ({
+          id: t.id, subjectId: t.subjectId || t.subject_id,
+          objectId: t.objectId || t.object_id,
+          subjectName: t.subjectName || t.subject_name,
+          objectName: t.objectName || t.object_name,
+          relationship: t.relationship,
+          similarity: t.similarity,
+          displayText: t.displayText || t.display_text,
+        })),
+      });
+    }
+  }
+
   // Step 5: Filter low-similarity noise, then re-rank with LLM
   const filteredTriples = triples.filter(t => (t.similarity || 0) > 0.3);
   const reranked = await TripleRetrievalService.rerankTriples(standaloneQuestion, filteredTriples);
@@ -394,6 +421,17 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
         phase: 'multi_hop',
         nodesVisited: multiHopTriples.map(mapTriple),
       });
+    }
+  }
+
+  // Step 4b: Mandatory collection expansion (streaming path)
+  const collectionExpanded = await expandCollectionNodes(teamId, triples);
+  if (collectionExpanded.length > 0) {
+    const existingIds = new Set(triples.map(t => t.id));
+    const newFromCollection = collectionExpanded.filter(t => !existingIds.has(t.id));
+    triples = [...triples, ...newFromCollection].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+    if (newFromCollection.length > 0) {
+      emit('phase', { phase: 'collection_expand', nodesVisited: newFromCollection.map(mapTriple) });
     }
   }
 
@@ -1020,6 +1058,130 @@ export async function logCorrection(teamId, userId, correction) {
       return logCorrection(teamId, userId, correction);
     } catch { return { success: false }; }
   }
+}
+
+// ============================================================================
+// COLLECTION EXPANSION — Mandatory traversal of hierarchical structures
+// ============================================================================
+
+/**
+ * Explicit collection/category expansion.
+ *
+ * For every concept found in the current results, check if it has collection-style
+ * outbound edges (contains, includes, is responsible for, asks, solves, etc.).
+ * If yes, fetch those children AND their immediate triples.
+ *
+ * This guarantees 2-hop traversal through hierarchies:
+ *   Parent → has category → Category → contains → Item
+ *   9 High Rules ← is a rule within ← Return Rule → asks → "come back?"
+ */
+async function expandCollectionNodes(teamId, triples) {
+  if (!triples || triples.length === 0) return [];
+
+  // Collect ALL unique concept IDs from current results
+  const conceptIds = new Set();
+  for (const t of triples) {
+    const sid = t.subjectId || t.subject_id;
+    const oid = t.objectId || t.object_id;
+    if (sid) conceptIds.add(sid);
+    if (oid) conceptIds.add(oid);
+  }
+
+  if (conceptIds.size === 0) return [];
+
+  const existingTripleIds = new Set(triples.map(t => t.id));
+
+  // Step 1: For ALL concepts in results, fetch their OUTBOUND triples
+  // (these are the children we're missing)
+  const childrenResult = await db.query(`
+    SELECT t.*, s.name AS subject_name, s.type AS subject_type,
+           o.name AS object_name, o.type AS object_type,
+           'collection_child' AS match_type
+    FROM triples t
+    JOIN concepts s ON t.subject_id = s.id
+    JOIN concepts o ON t.object_id = o.id
+    WHERE t.team_id = $1 AND t.status = 'active'
+      AND (t.subject_id = ANY($2) OR t.object_id = ANY($2))
+      AND t.id != ALL($3)
+    ORDER BY t.confidence DESC NULLS LAST
+    LIMIT 60
+  `, [teamId, Array.from(conceptIds), Array.from(existingTripleIds)]);
+
+  const childTriples = childrenResult.rows.map(row => ({
+    id: row.id,
+    teamId: row.team_id,
+    scopeId: row.scope_id,
+    subjectId: row.subject_id,
+    subjectName: row.subject_name,
+    subjectType: row.subject_type,
+    relationship: row.relationship,
+    objectId: row.object_id,
+    objectName: row.object_name,
+    objectType: row.object_type,
+    displayText: row.display_text,
+    confidence: row.confidence,
+    trustTier: row.trust_tier,
+    sourceText: row.source_text,
+    sourceUrl: row.source_url,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    similarity: (row.confidence || 0.5) * 0.9, // slight discount for being 1 hop away
+    matchType: 'collection_child',
+    hopDistance: 1,
+  }));
+
+  // Step 2: Collect NEW concept IDs from children (the grandchildren level)
+  const grandchildConceptIds = new Set();
+  for (const t of childTriples) {
+    if (!conceptIds.has(t.subjectId)) grandchildConceptIds.add(t.subjectId);
+    if (!conceptIds.has(t.objectId)) grandchildConceptIds.add(t.objectId);
+  }
+
+  // Step 3: For grandchild concepts, fetch THEIR triples (2nd hop)
+  let grandchildTriples = [];
+  if (grandchildConceptIds.size > 0) {
+    const allExisting = new Set([...existingTripleIds, ...childTriples.map(t => t.id)]);
+    const gcResult = await db.query(`
+      SELECT t.*, s.name AS subject_name, s.type AS subject_type,
+             o.name AS object_name, o.type AS object_type,
+             'collection_grandchild' AS match_type
+      FROM triples t
+      JOIN concepts s ON t.subject_id = s.id
+      JOIN concepts o ON t.object_id = o.id
+      WHERE t.team_id = $1 AND t.status = 'active'
+        AND (t.subject_id = ANY($2) OR t.object_id = ANY($2))
+        AND t.id != ALL($3)
+      ORDER BY t.confidence DESC NULLS LAST
+      LIMIT 40
+    `, [teamId, Array.from(grandchildConceptIds), Array.from(allExisting)]);
+
+    grandchildTriples = gcResult.rows.map(row => ({
+      id: row.id,
+      teamId: row.team_id,
+      scopeId: row.scope_id,
+      subjectId: row.subject_id,
+      subjectName: row.subject_name,
+      subjectType: row.subject_type,
+      relationship: row.relationship,
+      objectId: row.object_id,
+      objectName: row.object_name,
+      objectType: row.object_type,
+      displayText: row.display_text,
+      confidence: row.confidence,
+      trustTier: row.trust_tier,
+      sourceText: row.source_text,
+      sourceUrl: row.source_url,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      similarity: (row.confidence || 0.5) * 0.8, // 2 hops away
+      matchType: 'collection_grandchild',
+      hopDistance: 2,
+    }));
+  }
+
+  console.log(`[expandCollectionNodes] ${conceptIds.size} seed concepts → ${childTriples.length} children → ${grandchildConceptIds.size} grandchild concepts → ${grandchildTriples.length} grandchild triples`);
+
+  return [...childTriples, ...grandchildTriples];
 }
 
 export default {

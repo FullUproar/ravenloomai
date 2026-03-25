@@ -505,26 +505,37 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
     if (patterns.length === 0 && keywordConcepts.length > 0) {
       // Short-word-only query — skip ILIKE, we have alias matches
     } else if (patterns.length > 0) {
+      // Bug 2 fix: Boost exact name matches over partial/alias matches
       const placeholders = patterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' OR ');
       const keywordResult = await db.query(
-        `SELECT id, name, 0.85 AS similarity FROM concepts WHERE team_id = $1 AND (${placeholders}) LIMIT 5`,
-        [teamId, ...patterns]
+        `SELECT id, name, canonical_name,
+           CASE WHEN LOWER(canonical_name) = ANY($${patterns.length + 2}::text[]) THEN 0.98
+                WHEN LOWER(name) = ANY($${patterns.length + 2}::text[]) THEN 0.95
+                ELSE 0.80 END AS similarity
+         FROM concepts WHERE team_id = $1 AND (${placeholders}) LIMIT 8`,
+        [teamId, ...patterns, longWords]
       );
       keywordConcepts.push(...keywordResult.rows);
     }
   }
 
   // Strategy 3d: Match extracted entities against concept names AND aliases (fuzzy)
+  // Bug 2 fix: exact name matches get higher similarity than alias matches
   let entityConcepts = [];
   if (extractedEntities.length > 0) {
     const entityPatterns = extractedEntities.map(e => `%${e}%`);
+    const entityLower = extractedEntities.map(e => e.toLowerCase());
     const entityPlaceholders = entityPatterns.map((_, i) =>
       `canonical_name ILIKE $${i + 2} OR name ILIKE $${i + 2} OR EXISTS (SELECT 1 FROM unnest(aliases) alias WHERE alias ILIKE $${i + 2})`
     ).join(' OR ');
     try {
       const entityResult = await db.query(
-        `SELECT id, name, 0.95 AS similarity FROM concepts WHERE team_id = $1 AND (${entityPlaceholders}) LIMIT 8`,
-        [teamId, ...entityPatterns]
+        `SELECT id, name, canonical_name,
+           CASE WHEN LOWER(canonical_name) = ANY($${entityPatterns.length + 2}::text[]) THEN 0.98
+                WHEN LOWER(name) = ANY($${entityPatterns.length + 2}::text[]) THEN 0.96
+                ELSE 0.82 END AS similarity
+         FROM concepts WHERE team_id = $1 AND (${entityPlaceholders}) LIMIT 10`,
+        [teamId, ...entityPatterns, entityLower]
       );
       entityConcepts = entityResult.rows;
     } catch { /* ignore if query fails */ }
