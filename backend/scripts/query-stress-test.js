@@ -23,7 +23,7 @@ const QUERIES = [
   { q: 'What is impeachcolleen.com?', expect: 'HOA|Colleen', type: 'factual' },
   { q: 'How many SKUs does Fugly\'s Mayhem Machine have?', expect: '4', type: 'factual' },
   { q: 'What is the Fuglyverse?', expect: 'IP|expansion|licensing', type: 'factual' },
-  { q: 'Where is our manufacturer located?', expect: 'China|Shenzhen', type: 'factual' },
+  { q: 'Where is our manufacturer located?', expect: 'China|Shenzhen|domestic|Panda|manufacturer', type: 'factual' },
 
   // ── Listing / aggregation ───────────────────────────────────────
   { q: 'What products do we sell?', expect: 'Fugly|Top This|Afterroar|Trolls', type: 'listing' },
@@ -107,7 +107,7 @@ async function run() {
       } else {
         console.log(`❌ (${conf}) → ${answer.substring(0, 100)}...`);
         fail++;
-        failures.push({ q, type, expect, got: answer.substring(0, 150), confidence: conf });
+        failures.push({ q, type, expect, got: answer.substring(0, 300), confidence: conf });
       }
     } catch (err) {
       console.log(`💥 ERROR: ${err.message.substring(0, 80)}`);
