@@ -342,7 +342,7 @@ export async function proposeInferences(teamId) {
           content: `Analyze 2-hop chains in a knowledge graph. For each chain A→B→C, determine if a direct A→C relationship is meaningful.
 
 Return ONLY raw JSON (no markdown): {"inferences": [{"index": 0, "relationship": "verb phrase", "statement": "A relationship C", "confidence": 0.8}]}
-Only include inferences with confidence >= 0.6. Be conservative.`
+Only include inferences with confidence >= 0.75. Be VERY conservative — only propose if the chain LOGICALLY implies the direct relationship. "A is made by B" + "B is in China" → "A is made in China" is valid. "A is made by B" + "B filed taxes" → "A filed taxes" is NOT valid.`
         },
         { role: 'user', content: `Chains:\n${chains}` }
       ], { model: 'gpt-4o-mini', maxTokens: 500, temperature: 0, teamId, operation: 'inference' });
@@ -353,7 +353,7 @@ Only include inferences with confidence >= 0.6. Be conservative.`
 
       const parsed = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '{}');
       for (const inf of (parsed.inferences || [])) {
-        if (inf.confidence < 0.6) continue;
+        if (inf.confidence < 0.75) continue;
         const chain = batch[inf.index];
         if (!chain) continue;
         allInferences.push({
@@ -457,6 +457,13 @@ Use natural verb phrases, not uppercase codes.`
 async function materializeInferences(teamId, inferences) {
   let created = 0;
 
+  // Get a valid user ID for created_by (use first team member)
+  const memberResult = await db.query(
+    'SELECT user_id FROM team_members WHERE team_id = $1 LIMIT 1',
+    [teamId]
+  );
+  const createdBy = memberResult.rows[0]?.user_id || null;
+
   for (const inf of inferences) {
     if (!inf.sourceNodeId || !inf.targetNodeId || !inf.relationship) continue;
 
@@ -497,12 +504,13 @@ async function materializeInferences(teamId, inferences) {
           gen_random_uuid(), $1, $2, $3, $4, $5,
           $6, $7, $8,
           $9, 'tribal', 'active', 'Inferred by grooming', 'inference',
-          'system-groomer', false, NOW(), NOW(), NOW()
+          $10, false, NOW(), NOW(), NOW()
         )
       `, [
         teamId, scopeId, inf.sourceNodeId, inf.relationship, inf.targetNodeId,
         inf.statement, embWithCtx, embWithoutCtx,
-        Math.min(0.8, inf.confidence * 0.9), // Slightly lower confidence than the inference proposal
+        Math.min(0.8, inf.confidence * 0.9),
+        createdBy,
       ]);
 
       created++;
