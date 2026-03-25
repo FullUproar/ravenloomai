@@ -1066,7 +1066,6 @@ export default gql`
     getFactCount(teamId: ID!): Int!
     getFacts(teamId: ID!, category: String, entityType: String, limit: Int): [Fact!]!
     getDecisions(teamId: ID!, limit: Int): [Decision!]!
-    searchKnowledge(teamId: ID!, query: String!): KnowledgeResult!
 
     # Triple-based knowledge
     getTriples(teamId: ID!, scopeId: ID, conceptId: ID, limit: Int): [Triple!]!
