@@ -160,13 +160,19 @@ async function detectAndInsertHierarchy(triples) {
         // Fan-out detected — introduce category node
         const subject = cluster.triples[0].subject;
 
+        // Issue 3 fix: Bridge edge inherits average confidence from its children
+        // If children are 95-99% confident, the bridge should be too
+        const childConfidences = cluster.triples.map(t => t.confidence || 0.8);
+        const avgChildConfidence = childConfidences.reduce((a, b) => a + b, 0) / childConfidences.length;
+        const bridgeConfidence = Math.max(0.85, avgChildConfidence * 0.98); // Slight discount, floor at 0.85
+
         // Add: Subject → has → Category
         result.push({
           subject,
           relationship: `has ${cluster.categoryName.toLowerCase()}`,
           object: { name: cluster.categoryName, type: 'concept' },
           contexts: [],
-          confidence: 0.7,
+          confidence: bridgeConfidence,
           trustTier: 'tribal',
           isCore: false,
           displayText: `${subject.name} has ${cluster.categoryName.toLowerCase()}`,

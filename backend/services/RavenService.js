@@ -260,9 +260,22 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
       createdAt: t.createdAt,
     })),
     // Backward compat: render triples as "facts" for existing consumers
-    // If no triples, use legacy facts
+    // Issue 5 fix: Prefer concept-anchored and multi-hop triples for citations
+    // (these came from graph traversal, not just semantic similarity)
+    // This prevents citing unrelated high-similarity results
     factsUsed: topTriples.length > 0
-      ? topTriples.slice(0, 5).map(t => ({
+      ? topTriples
+          .filter(t => t.displayText) // must have display text
+          .sort((a, b) => {
+            // Prioritize: concept_anchor > hop_N > semantic matches
+            const aScore = a.matchType === 'concept_anchor' ? 3 :
+              (a.matchType || '').startsWith('hop_') ? 2 : 1;
+            const bScore = b.matchType === 'concept_anchor' ? 3 :
+              (b.matchType || '').startsWith('hop_') ? 2 : 1;
+            if (aScore !== bScore) return bScore - aScore;
+            return (b.similarity || 0) - (a.similarity || 0);
+          })
+          .slice(0, 5).map(t => ({
           id: t.id,
           content: t.displayText,
           sourceQuote: t.sourceText,

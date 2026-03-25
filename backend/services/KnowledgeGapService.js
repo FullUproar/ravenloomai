@@ -24,13 +24,22 @@ import { callOpenAI } from './AIService.js';
 async function detectMissingIdentity(teamId, focusFilter) {
   const result = await db.query(`
     WITH concept_triple_counts AS (
-      SELECT subject_id AS concept_id, COUNT(*) AS triple_count
-      FROM triples
-      WHERE team_id = $1 AND status = 'active'
-      GROUP BY subject_id
-      HAVING COUNT(*) >= 3
+      -- Count triples where concept appears as EITHER subject or object
+      SELECT concept_id, SUM(cnt) AS triple_count FROM (
+        SELECT subject_id AS concept_id, COUNT(*) AS cnt
+        FROM triples WHERE team_id = $1 AND status = 'active'
+        GROUP BY subject_id
+        UNION ALL
+        SELECT object_id AS concept_id, COUNT(*) AS cnt
+        FROM triples WHERE team_id = $1 AND status = 'active'
+        GROUP BY object_id
+      ) combined
+      GROUP BY concept_id
+      HAVING SUM(cnt) >= 3
     ),
     identity_concepts AS (
+      -- A concept has identity if it's the SUBJECT of an identity-defining triple
+      -- OR if it's the OBJECT of a "something is a [this concept]" pattern
       SELECT DISTINCT subject_id AS concept_id
       FROM triples
       WHERE team_id = $1 AND status = 'active'
@@ -40,6 +49,25 @@ async function detectMissingIdentity(teamId, focusFilter) {
           OR LOWER(relationship) LIKE '%type%'
           OR LOWER(relationship) LIKE '%described as%'
           OR LOWER(relationship) LIKE '%defined as%'
+          OR LOWER(relationship) LIKE '%is an%'
+          OR LOWER(relationship) = 'is'
+          OR LOWER(relationship) LIKE '%serves as%'
+          OR LOWER(relationship) LIKE '%functions as%'
+          OR LOWER(relationship) LIKE '%operates as%'
+          OR LOWER(relationship) LIKE '%platform%'
+          OR LOWER(relationship) LIKE '%is a type of%'
+        )
+      UNION
+      -- Also count concepts that appear as objects with many triples (well-described)
+      SELECT DISTINCT object_id AS concept_id
+      FROM triples
+      WHERE team_id = $1 AND status = 'active'
+        AND (
+          LOWER(relationship) LIKE '%is a%'
+          OR LOWER(relationship) LIKE '%is_a%'
+          OR LOWER(relationship) LIKE '%is an%'
+          OR LOWER(relationship) = 'is'
+          OR LOWER(relationship) LIKE '%is a type of%'
         )
     )
     SELECT c.id AS concept_id, c.name AS concept_name, c.type AS concept_type,

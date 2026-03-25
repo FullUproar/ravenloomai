@@ -542,7 +542,21 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
   const anchoredTriples = [];
   const topConcepts = Array.from(conceptMap.values()).filter(c => parseFloat(c.similarity) > 0.45);
 
-  for (const concept of topConcepts.slice(0, 5)) {
+  // Issue 2 fix: When multiple concepts match the same name (e.g., "Afterroar" product vs concept),
+  // traverse ALL of them and merge results. Prefer higher-degree nodes for disambiguation.
+  // Sort by degree (connection count) descending so richer nodes come first
+  const conceptsWithDegree = [];
+  for (const c of topConcepts.slice(0, 8)) {
+    const degreeResult = await db.query(
+      `SELECT COUNT(*) as degree FROM triples WHERE (subject_id = $1 OR object_id = $1) AND status = 'active'`,
+      [c.id]
+    );
+    conceptsWithDegree.push({ ...c, degree: parseInt(degreeResult.rows[0]?.degree || 0) });
+  }
+  // Sort: higher degree first (more connected = more likely the right entity)
+  conceptsWithDegree.sort((a, b) => b.degree - a.degree);
+
+  for (const concept of conceptsWithDegree.slice(0, 6)) {
     const conceptTriples = await db.query(`
       SELECT t.*, s.name AS subject_name, s.type AS subject_type,
              o.name AS object_name, o.type AS object_type,
@@ -555,8 +569,9 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
     `, [teamId, concept.id]);
 
     for (const row of conceptTriples.rows) {
-      // Concept-anchored triples get high similarity based on concept match quality
-      row.similarity = parseFloat(concept.similarity) * 0.95;
+      // Concept-anchored triples get similarity based on concept match + degree boost
+      const degreeBoost = Math.min(0.1, concept.degree / 500); // small boost for well-connected nodes
+      row.similarity = Math.min(1.0, parseFloat(concept.similarity) * 0.95 + degreeBoost);
       anchoredTriples.push(row);
     }
   }
@@ -678,39 +693,43 @@ function mergeAndRank(...rowArrays) {
  *
  * Only expands from the TOP results (highest similarity) to avoid noise.
  */
-export async function multiHopExpand(teamId, initialTriples, maxHops = 2) {
+export async function multiHopExpand(teamId, initialTriples, maxHops = 3) {
   const visitedTripleIds = new Set(initialTriples.map(t => t.id));
   const visitedConceptIds = new Set();
 
-  // Only use top 5 results as seeds for expansion (prevents noise)
-  const seeds = initialTriples.slice(0, 5);
+  // Use top 8 results as seeds (more generous for hierarchical graphs)
+  const seeds = initialTriples.slice(0, 8);
   for (const t of seeds) {
-    visitedConceptIds.add(t.subjectId);
-    visitedConceptIds.add(t.objectId);
+    if (t.subjectId || t.subject_id) visitedConceptIds.add(t.subjectId || t.subject_id);
+    if (t.objectId || t.object_id) visitedConceptIds.add(t.objectId || t.object_id);
   }
 
   let expanded = [];
-  let frontier = Array.from(visitedConceptIds);
+  let frontier = Array.from(visitedConceptIds).filter(Boolean);
   let hopDecay = 1.0;
+
+  // Track which concepts are category/bridge nodes — these get mandatory traversal
+  const categoryRelationships = ['has', 'includes', 'contains', 'has category', 'is a type of',
+    'has department', 'has product line', 'has role', 'has pain point'];
 
   for (let hop = 0; hop < maxHops; hop++) {
     if (frontier.length === 0) break;
-    hopDecay *= 0.8;
+    hopDecay *= 0.85; // Gentler decay (was 0.8) — preserves signal through categories
 
-    // Adaptive hub handling: check if any frontier concept is a high-degree hub
-    // If so, only traverse edges whose relationship type is semantically relevant
+    // Check degree of frontier concepts — but raise hub threshold
     const hubCheck = await db.query(`
       SELECT c.id, c.name,
         (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') as degree
       FROM concepts c WHERE c.id = ANY($1)
     `, [frontier]);
 
-    const hubIds = hubCheck.rows.filter(r => parseInt(r.degree) > 30).map(r => r.id);
-    const nonHubFrontier = frontier.filter(id => !hubIds.includes(id));
+    // Hub threshold raised to 60 (was 30) — category nodes with 35 children shouldn't be treated as hubs
+    const hubIds = hubCheck.rows.filter(r => parseInt(r.degree) > 60).map(r => r.id);
+    const traverseFrontier = frontier.filter(id => !hubIds.includes(id));
 
-    // For hub nodes, get edges but limit to avoid explosion
-    // For non-hub nodes, get all edges normally
-    const result = await db.query(`
+    // For hub nodes: still traverse but only structural relationships (contains, includes, etc.)
+    // For regular nodes: traverse all edges
+    const regularResult = await db.query(`
       SELECT t.*, s.name AS subject_name, s.type AS subject_type,
              o.name AS object_name, o.type AS object_type
       FROM triples t
@@ -720,8 +739,27 @@ export async function multiHopExpand(teamId, initialTriples, maxHops = 2) {
         AND (t.subject_id = ANY($2) OR t.object_id = ANY($2))
         AND t.id != ALL($3)
       ORDER BY t.confidence DESC NULLS LAST
-      LIMIT ${hubIds.length > 0 ? 10 : 20}
-    `, [teamId, nonHubFrontier.length > 0 ? nonHubFrontier : frontier, Array.from(visitedTripleIds)]);
+      LIMIT 30
+    `, [teamId, traverseFrontier.length > 0 ? traverseFrontier : frontier, Array.from(visitedTripleIds)]);
+
+    // For hub nodes: get structural/category edges only (don't skip them entirely)
+    let hubResult = { rows: [] };
+    if (hubIds.length > 0) {
+      hubResult = await db.query(`
+        SELECT t.*, s.name AS subject_name, s.type AS subject_type,
+               o.name AS object_name, o.type AS object_type
+        FROM triples t
+        JOIN concepts s ON t.subject_id = s.id
+        JOIN concepts o ON t.object_id = o.id
+        WHERE t.team_id = $1 AND t.status = 'active'
+          AND (t.subject_id = ANY($2) OR t.object_id = ANY($2))
+          AND t.id != ALL($3)
+        ORDER BY t.confidence DESC NULLS LAST
+        LIMIT 15
+      `, [teamId, hubIds, Array.from(visitedTripleIds)]);
+    }
+
+    const result = { rows: [...regularResult.rows, ...hubResult.rows] };
 
     const newFrontier = new Set();
 
@@ -911,24 +949,32 @@ export async function rewriteFollowUp(question, conversationHistory = []) {
 
 /**
  * Determine if multi-hop expansion is needed based on initial results.
- * More conservative: only expand when the top result isn't strongly relevant,
- * or when we have very few results.
+ *
+ * ALWAYS expand when initial results contain category/collection/department nodes,
+ * because those nodes are bridges — their content lives behind them.
+ * Otherwise, be conservative to avoid noise.
  */
 export function shouldExpand(initialResults) {
   if (initialResults.length === 0) return false; // Nothing to expand from
   if (initialResults.length < 2) return true; // Too few, need more
 
-  // Check if top result is strong enough to answer directly
-  const topSimilarity = initialResults[0]?.similarity || 0;
-  if (topSimilarity >= 0.7) return false; // Strong direct match
+  // ALWAYS expand if any top result looks like a category/bridge node
+  // (e.g., "Technology Stack", "Product Lines", "Venue Pain Points")
+  const bridgeRelationships = ['has', 'includes', 'contains', 'has category', 'is a type of',
+    'has department', 'has product line', 'has role', 'has pain point'];
+  const hasBridgeNodes = initialResults.slice(0, 8).some(t => {
+    const rel = (t.relationship || '').toLowerCase();
+    return bridgeRelationships.some(br => rel.includes(br));
+  });
+  if (hasBridgeNodes) return true;
 
-  // Check if we have enough concept-anchored results
+  // ALWAYS expand if top results are concept-anchored (we found the node, now look inside it)
   const anchoredCount = initialResults.filter(t => t.matchType === 'concept_anchor').length;
-  if (anchoredCount >= 3) return false; // Plenty of anchored results
+  if (anchoredCount > 0 && anchoredCount <= 5) return true; // Found a node, explore it
 
   // Expand when top results are mediocre
   const top3Avg = initialResults.slice(0, 3).reduce((sum, t) => sum + (t.similarity || 0), 0) / Math.min(initialResults.length, 3);
-  return top3Avg < 0.55;
+  return top3Avg < 0.6;
 }
 
 // ============================================================================
