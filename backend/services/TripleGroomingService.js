@@ -115,6 +115,7 @@ export async function mergeSemanticDuplicates(teamId) {
     JOIN concepts c2 ON c1.team_id = c2.team_id AND c1.id < c2.id AND c1.type = c2.type
     WHERE c1.team_id = $1
       AND c1.embedding IS NOT NULL AND c2.embedding IS NOT NULL
+      AND c1.is_protected IS NOT TRUE AND c2.is_protected IS NOT TRUE
       AND 1 - (c1.embedding <=> c2.embedding) > 0.90
     ORDER BY similarity DESC
     LIMIT 100
@@ -168,6 +169,7 @@ export async function pruneUniversalKnowledge(teamId) {
   const result = await db.query(`
     SELECT id, display_text FROM triples
     WHERE team_id = $1 AND status = 'active' AND is_universal IS NOT TRUE
+      AND is_protected IS NOT TRUE
     ORDER BY created_at ASC
     LIMIT 50
   `, [teamId]);
