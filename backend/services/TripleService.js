@@ -165,7 +165,8 @@ export async function createTriple(teamId, scopeId, {
   subjectId, relationship, objectId, contexts = [],
   sourceText, sourceUrl, createdBy, confidence = 0.8,
   trustTier = 'tribal', sourceType = 'user_statement',
-  isChunky = false, groomedFromId = null
+  isChunky = false, groomedFromId = null,
+  isProtected = false, protectionReason = null
 }) {
   // Get concept names for display text and embedding generation
   const subjectResult = await db.query('SELECT name FROM concepts WHERE id = $1', [subjectId]);
@@ -190,13 +191,15 @@ export async function createTriple(teamId, scopeId, {
       display_text, embedding_with_context, embedding_without_context,
       confidence, trust_tier, status,
       source_text, source_url, source_type, created_by,
-      is_chunky, groomed_from_id
+      is_chunky, groomed_from_id,
+      is_protected, protection_reason
     ) VALUES (
       $1, $2, $3, $4, $5,
       $6, $7, $8,
       $9, $10, 'active',
       $11, $12, $13, $14,
-      $15, $16
+      $15, $16,
+      $17, $18
     ) RETURNING *
   `, [
     teamId, scopeId || null, subjectId, relationship, objectId,
@@ -205,7 +208,8 @@ export async function createTriple(teamId, scopeId, {
     withoutContext ? `[${withoutContext.join(',')}]` : null,
     confidence, trustTier,
     sourceText || null, sourceUrl || null, sourceType, createdBy || null,
-    isChunky, groomedFromId || null
+    isChunky, groomedFromId || null,
+    isProtected, protectionReason
   ]);
 
   const triple = result.rows[0];

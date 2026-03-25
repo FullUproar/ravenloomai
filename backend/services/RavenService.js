@@ -228,8 +228,23 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   // }).catch(() => {});
 
   // Step 10: Learn aliases from the query (fire-and-forget)
-  // If the question used different words than the matched concepts, learn the mapping
   learnAliasesFromQuery(teamId, standaloneQuestion, topTriples).catch(() => {});
+
+  // Step 11: Recall reinforcement — increment recall_count, auto-protect at 3+
+  if (topTriples.length > 0) {
+    const tripleIds = topTriples.map(t => t.id).filter(Boolean);
+    if (tripleIds.length > 0) {
+      db.query(
+        `UPDATE triples SET recall_count = COALESCE(recall_count, 0) + 1 WHERE id = ANY($1)`,
+        [tripleIds]
+      ).catch(() => {});
+      db.query(
+        `UPDATE triples SET is_protected = true, protection_reason = 'recall_reinforced'
+         WHERE id = ANY($1) AND COALESCE(recall_count, 0) >= 3 AND is_protected IS NOT TRUE`,
+        [tripleIds]
+      ).catch(() => {});
+    }
+  }
 
   return {
     answer: answer.text,
@@ -809,6 +824,8 @@ export async function confirmRemember(previewId, skipConflictIds = [], confirmin
       createdBy: userId,
       confidence: extracted.confidence || 0.8,
       trustTier: extracted.trustTier || 'tribal',
+      isProtected: extracted.isCore || false,
+      protectionReason: extracted.isCore ? 'llm_core_fact' : null,
     });
 
     // Complete supersession: link old triple to new one
@@ -830,6 +847,12 @@ export async function confirmRemember(previewId, skipConflictIds = [], confirmin
     // Step 6: Update trust scores for source×topic
     TrustService.updateTrustForTriple(teamId, userId, 'user', triple.id, 'confirmed')
       .catch(err => console.error('[confirmRemember] Trust update error:', err.message));
+
+    // Step 7: Auto-protect — human-confirmed triples are prune-proof
+    db.query(
+      "UPDATE triples SET is_protected = true, protection_reason = 'human_confirmed' WHERE id = $1 AND is_protected IS NOT TRUE",
+      [triple.id]
+    ).catch(() => {});
   }
 
   // Extract user model traits passively (fire-and-forget)

@@ -43,6 +43,7 @@ RULES:
    - contexts: optional array of { name, type } — conditions under which this triple is true
    - confidence: 0.0-1.0 how certain you are this was stated (not inferred)
    - trustTier: "official" (from canonical docs) or "tribal" (from conversation/flow of work)
+   - isCore: boolean — true ONLY for foundational/defining facts (what something IS, key dates, primary relationships). Most triples are NOT core. Core = removing it would fundamentally change understanding of the subject.
 
 3. Concept types: person, product, company, concept, date, event, location
 4. Context types: temporal, spatial, organizational, conditional, audience, formality, work_stage
@@ -71,7 +72,7 @@ RULES:
    Bad: "LAUNCHES_ON", "IS_A", "HAS"
 
 Return ONLY a raw JSON object (no markdown, no \`\`\`json blocks, no explanation):
-{"triples": [{"subject": {"name": "Entity Name", "type": "product"}, "relationship": "launches on", "object": {"name": "May 1, 2026", "type": "date"}, "contexts": [], "confidence": 0.95, "trustTier": "tribal"}]}`;
+{"triples": [{"subject": {"name": "Entity Name", "type": "product"}, "relationship": "launches on", "object": {"name": "May 1, 2026", "type": "date"}, "contexts": [], "confidence": 0.95, "trustTier": "tribal", "isCore": true}]}`;
 
   // Detect explicit update/correction language and add extraction guidance
   const isExplicitUpdate = /^(update|correction|revised|fyi|heads up)[\s:]/i.test(text.trim())
