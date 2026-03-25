@@ -223,8 +223,9 @@ If none are universal, return { "universal": [] }. It is BETTER to return an emp
           continue;
         }
 
+        // Flag as universal but keep active — don't remove from graph
         await db.query(
-          "UPDATE triples SET is_universal = true, status = 'pruned', groomed_at = NOW() WHERE id = $1",
+          "UPDATE triples SET is_universal = true, groomed_at = NOW() WHERE id = $1",
           [row.id]
         );
         pruned.push({ id: row.id, displayText: row.display_text });
@@ -592,20 +593,20 @@ async function checkTopologyHealth(teamId) {
     }
   }
 
-  // 2. Clean orphan concepts (0 edges, not protected)
+  // 2. Flag orphan concepts (0 edges) — do NOT delete, just count them
   const orphanResult = await db.query(`
-    DELETE FROM concepts
+    SELECT COUNT(*) as cnt FROM concepts
     WHERE team_id = $1 AND is_protected IS NOT TRUE
       AND type NOT LIKE 'merged_into%'
       AND NOT EXISTS (
         SELECT 1 FROM triples t
         WHERE t.status = 'active' AND (t.subject_id = concepts.id OR t.object_id = concepts.id)
       )
-    RETURNING name
   `, [teamId]);
-  report.orphansCleaned = orphanResult.rowCount;
-  if (report.orphansCleaned > 0) {
-    console.log(`[Grooming] Cleaned ${report.orphansCleaned} orphan concepts`);
+  report.orphansCleaned = 0; // No longer deleting — just reporting
+  report.orphansDetected = parseInt(orphanResult.rows[0].cnt);
+  if (report.orphansDetected > 0) {
+    console.log(`[Grooming] Found ${report.orphansDetected} orphan concepts (preserved — no deletion)`);
   }
 
   // 3. Detect inbound-poverty nodes (>10 outbound, 0 inbound)
