@@ -21,37 +21,46 @@ import * as TripleService from './TripleService.js';
  * Returns: { queryType, strategy, precomputedData, augmentedQuestion }
  */
 export async function planQuery(teamId, question, scopeIds = []) {
-  const q = question.toLowerCase();
-
-  // ── Rule-based classification (no LLM call — saves 2-3s) ──────────
+  // ── Lightweight LLM classification (~200ms with gpt-4o-mini) ────────
   let plan = null;
+  try {
+    const classification = await callOpenAI([
+      {
+        role: 'system',
+        content: `Classify this question into ONE type. Return ONLY a JSON object, no markdown.
 
-  if (/\beverything\b|\btell me all\b|\bwhat do (we|you) know about\b|\bsummarize\b.*\babout\b/i.test(q)) {
-    // Extract the topic
-    const topicMatch = q.match(/(?:everything|all|know) (?:about|regarding|on) (.+?)[\?.]?$/i);
-    const topic = topicMatch?.[1]?.trim() || q.replace(/tell me |everything |about /gi, '').trim();
-    plan = { queryType: 'exhaustive', targetConcepts: [topic], needsGraphScan: true, scanQuery: `all triples for ${topic}` };
-  } else if (/\bdeadlines?\b|\btimeline\b|\bupcoming\b|\bschedule\b|\bmilestones?\b|\bwhen.*all\b|\ball.*dates?\b/i.test(q)) {
-    plan = { queryType: 'timeline', targetConcepts: [], needsGraphScan: true, scanQuery: 'all date-containing triples' };
-  } else if (/\bhow many\b/i.test(q)) {
-    const typeMatch = q.match(/how many (\w+)/i);
-    plan = { queryType: 'counting', targetConcepts: [], needsGraphScan: true, scanQuery: `count ${typeMatch?.[1] || 'items'}` };
-  } else if (/\blist (all|every|the)\b/i.test(q)) {
-    plan = { queryType: 'listing', targetConcepts: [], needsGraphScan: true, scanQuery: q };
-  } else if (/\bcompare\b/i.test(q)) {
-    const concepts = q.match(/compare\s+(.+?)\s+(?:and|vs|with|to)\s+(.+?)[\?.]?$/i);
-    plan = { queryType: 'comparison', targetConcepts: [concepts?.[1] || '', concepts?.[2] || ''].filter(Boolean), needsGraphScan: true, scanQuery: q };
-  } else if (/\b(\w+)\b.+\band\b.+\b(\w+)\b.*\?/i.test(q) && q.split(/\band\b/i).length >= 2) {
-    // Cross-domain: "X and Y?" pattern with distinct topics
-    const parts = q.split(/\band\b/i).map(p => p.replace(/^(what|who|how|where|when|which|are|is|our|the|do|does)\s+/gi, '').replace(/[?.!]/g, '').trim()).filter(p => p.length > 2);
-    if (parts.length >= 2) {
-      plan = { queryType: 'cross_domain', targetConcepts: parts.slice(0, 4), needsGraphScan: true, scanQuery: q, warnSlowQuery: true };
-    }
+Types:
+- factual: simple fact lookup ("When does X launch?")
+- exhaustive: wants ALL info about a topic ("Tell me everything about X", "What do we know about X?")
+- timeline: wants dates/deadlines aggregated ("All deadlines", "What's our schedule?", "Upcoming milestones")
+- listing: wants a list of items ("What games do we make?", "Which products are in development?", "What are our projects?")
+- counting: wants a count ("How many products?")
+- comparison: comparing items ("Compare X and Y")
+- cross_domain: combines multiple distinct topics ("X and Y?", "Who does A and what about B?")
+
+{"type":"factual","topics":[],"scanQuery":null}`
+      },
+      { role: 'user', content: question }
+    ], { model: 'gpt-4o-mini', maxTokens: 80, temperature: 0, teamId, operation: 'classify_query' });
+
+    const parsed = JSON.parse(classification.match(/\{[\s\S]*\}/)?.[0] || '{}');
+    const qt = parsed.type || 'factual';
+    const topics = parsed.topics || [];
+
+    if (qt === 'factual') return null; // Normal retrieval
+
+    plan = {
+      queryType: qt,
+      targetConcepts: topics,
+      needsGraphScan: true,
+      scanQuery: parsed.scanQuery || question,
+      warnSlowQuery: ['timeline', 'cross_domain', 'exhaustive'].includes(qt),
+    };
+  } catch {
+    return null; // Classification failed — fall back to normal retrieval
   }
 
-  if (!plan) return null; // Simple factual — use normal retrieval
-
-  // Execute graph scan based on rule-based plan (no LLM call needed)
+  // Execute graph scan based on plan
   let precomputedData = null;
   if (plan.needsGraphScan && plan.scanQuery) {
     precomputedData = await executeGraphScan(teamId, plan, scopeIds);

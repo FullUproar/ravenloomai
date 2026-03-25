@@ -60,7 +60,8 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   // Step 2b: Query execution planning — decides retrieval strategy
   // Triggers for anything beyond simple factual lookups
   let queryPlan = null;
-  const needsPlanning = /\bhow many\b|\bhow much\b|\blist (all|every|the)\b|\bcompare\b|\bcheapest\b|\bmost expensive\b|\btotal\b|\ball (our|the|upcoming)\b|\beverything (about|regarding|on)\b|\btimeline\b|\bdeadlines?\b|\bupcoming\b|\bschedule\b|\bmilestones?\b|\btell me (everything|all)\b/i.test(standaloneQuestion);
+  // Always classify — the LLM planner is fast (~200ms) and returns null for simple factual queries
+  const needsPlanning = true;
   if (needsPlanning) {
     try {
       queryPlan = await TripleRetrievalService.planQuery(teamId, standaloneQuestion, searchScopeIds);
@@ -295,7 +296,8 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
 
   // Step 2b: Query planning
   let queryPlan = null;
-  const needsPlanning = /\bhow many\b|\bhow much\b|\blist (all|every|the)\b|\bcompare\b|\bcheapest\b|\bmost expensive\b|\btotal\b|\ball (our|the|upcoming)\b|\beverything (about|regarding|on)\b|\btimeline\b|\bdeadlines?\b|\bupcoming\b|\bschedule\b|\bmilestones?\b|\btell me (everything|all)\b/i.test(standaloneQuestion);
+  // Always classify — the LLM planner is fast (~200ms) and returns null for simple factual queries
+  const needsPlanning = true;
   if (needsPlanning) {
     emit('status', { phase: 'planning', message: 'Planning retrieval strategy...' });
     try {
