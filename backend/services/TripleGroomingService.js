@@ -633,7 +633,97 @@ async function checkTopologyHealth(teamId) {
 }
 
 // ============================================================================
-// 9. DEMAND-DRIVEN: Analyze failed queries and create missing connections
+// 9. LLM TOPOLOGY EVALUATION
+// ============================================================================
+
+/**
+ * Let an LLM evaluate the graph topology and suggest structural improvements.
+ * Instead of hardcoded thresholds, the LLM assesses branching factors,
+ * hub/leaf ratios, and connectivity situationally.
+ */
+async function evaluateTopologyWithLLM(teamId, topologyReport) {
+  try {
+    // Gather topology stats
+    const stats = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM concepts WHERE team_id = $1) as total_concepts,
+        (SELECT COUNT(*) FROM triples WHERE team_id = $1 AND status = 'active') as total_triples
+    `, [teamId]);
+
+    const degreeStats = await db.query(`
+      SELECT degree, COUNT(*) as node_count FROM (
+        SELECT c.id,
+          (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') as degree
+        FROM concepts c WHERE c.team_id = $1
+      ) sub GROUP BY degree ORDER BY degree
+    `, [teamId]);
+
+    const topHubs = await db.query(`
+      SELECT c.name, c.type,
+        (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') as degree
+      FROM concepts c WHERE c.team_id = $1
+      ORDER BY degree DESC LIMIT 10
+    `, [teamId]);
+
+    const totalConcepts = parseInt(stats.rows[0].total_concepts);
+    const totalTriples = parseInt(stats.rows[0].total_triples);
+
+    // Build a concise topology summary for the LLM
+    const degreeDist = degreeStats.rows.map(r => `degree ${r.degree}: ${r.node_count} nodes`).join(', ');
+    const hubList = topHubs.rows.map(r => `${r.name} (${r.type}): ${r.degree} edges`).join('\n');
+    const orphanCount = topologyReport?.orphansCleaned || 0;
+    const hubCount = topologyReport?.hubsDetected || 0;
+
+    const response = await callOpenAI([
+      {
+        role: 'system',
+        content: `You are a knowledge graph architect evaluating a graph's structural health.
+
+Analyze the topology stats and provide:
+1. An overall health grade (A-F)
+2. The biggest structural problem (if any)
+3. One specific actionable recommendation
+
+Consider:
+- Is the graph a "dandelion" (few mega-hubs, many leaves)?
+- Are branching factors balanced?
+- Is average degree too low (sparse) or too high (noisy)?
+- Are there disconnected islands?
+
+Return JSON: {"grade": "B", "problem": "...", "recommendation": "...", "metrics": {"avgDegree": N, "leafRatio": N, "hubConcentration": N}}`
+      },
+      {
+        role: 'user',
+        content: `Graph topology:
+- ${totalConcepts} concepts, ${totalTriples} triples
+- Degree distribution: ${degreeDist}
+- Top hubs:\n${hubList}
+- Orphans cleaned this run: ${orphanCount}
+- Hubs detected (>50 edges): ${hubCount}
+- Hub decomposition proposals: ${topologyReport?.proposals?.length || 0}`
+      }
+    ], { model: 'gpt-4o-mini', maxTokens: 200, temperature: 0.3, teamId, operation: 'topology_eval' });
+
+    const parsed = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
+    console.log(`[Grooming] Topology grade: ${parsed.grade || '?'} — ${parsed.problem || 'No issues'}`);
+    if (parsed.recommendation) {
+      console.log(`[Grooming] Recommendation: ${parsed.recommendation}`);
+    }
+
+    return {
+      grade: parsed.grade || null,
+      problem: parsed.problem || null,
+      recommendation: parsed.recommendation || null,
+      metrics: parsed.metrics || null,
+    };
+  } catch (err) {
+    console.error(`[Grooming] LLM topology eval error: ${err.message}`);
+    return { grade: null, problem: null, recommendation: null };
+  }
+}
+
+// ============================================================================
+// 10. DEMAND-DRIVEN: Analyze failed queries and create missing connections
 // ============================================================================
 
 /**
@@ -697,9 +787,13 @@ export async function groomGraph(teamId) {
   console.log(`[Grooming] Phase 4: Learning from failures`);
   const demandDriven = await groomFromFailedQueries(teamId);
 
-  // Phase 5: Topology health check
+  // Phase 5: Topology health check (LLM-evaluated)
   console.log(`[Grooming] Phase 5: Topology health`);
   const topology = await checkTopologyHealth(teamId);
+
+  // Phase 6: LLM topology evaluation — let the LLM assess branching factors
+  console.log(`[Grooming] Phase 6: LLM topology evaluation`);
+  const topoEval = await evaluateTopologyWithLLM(teamId, topology);
 
   const stats = await TripleService.getGraphStats(teamId);
   const durationMs = Date.now() - startTime;
