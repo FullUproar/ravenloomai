@@ -179,8 +179,8 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     if (pd.type === 'count') {
       planContext = `\n\nGRAPH SCAN RESULT: There are exactly ${pd.count} items matching the query: ${pd.names.join(', ')}`;
     } else if (pd.type === 'list') {
-      planContext = `\n\nGRAPH SCAN RESULT:\n${pd.items.map(i => {
-        const details = i.triples?.length > 0 ? `: ${i.triples.join('; ')}` : '';
+      planContext = `\n\nIMPORTANT — GRAPH SCAN found ${pd.items.length} items. List ALL of them that are relevant to the question. Do not skip any. For each, include its name, type, and key details from the triples below:\n${pd.items.map(i => {
+        const details = i.triples?.length > 0 ? `\n    ${i.triples.join('\n    ')}` : '';
         return `- ${i.name} (${i.type}, ${i.triple_count} connections)${details}`;
       }).join('\n')}`;
     } else if (pd.type === 'comparison') {
