@@ -217,10 +217,12 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   const answer = await generateTripleBasedAnswer(standaloneQuestion, answerContext, topTriples, userModelPrompt);
 
   // Step 9: Extract user model traits from this interaction (fire-and-forget)
-  UserModelService.extractUserTraits(teamId, userId, {
-    type: 'ask', content: question,
-    topics: topTriples.slice(0, 3).map(t => t.subjectName).filter(Boolean),
-  }).catch(() => {});
+  // User model trait extraction disabled — creates noise triples about 'this_user'
+  // TODO: re-enable when extraction quality is improved
+  // UserModelService.extractUserTraits(teamId, userId, {
+  //   type: 'ask', content: question,
+  //   topics: topTriples.slice(0, 3).map(t => t.subjectName).filter(Boolean),
+  // }).catch(() => {});
 
   // Step 10: Learn aliases from the query (fire-and-forget)
   // If the question used different words than the matched concepts, learn the mapping
@@ -421,10 +423,12 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
   const answer = await generateTripleBasedAnswer(standaloneQuestion, answerContext, topTriples, userModelPrompt);
 
   // Fire-and-forget side effects
-  UserModelService.extractUserTraits(teamId, userId, {
-    type: 'ask', content: question,
-    topics: topTriples.slice(0, 3).map(t => t.subjectName).filter(Boolean),
-  }).catch(() => {});
+  // User model trait extraction disabled — creates noise triples about 'this_user'
+  // TODO: re-enable when extraction quality is improved
+  // UserModelService.extractUserTraits(teamId, userId, {
+  //   type: 'ask', content: question,
+  //   topics: topTriples.slice(0, 3).map(t => t.subjectName).filter(Boolean),
+  // }).catch(() => {});
   learnAliasesFromQuery(teamId, standaloneQuestion, topTriples).catch(() => {});
 
   // Final answer event
