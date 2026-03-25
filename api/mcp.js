@@ -115,6 +115,28 @@ const TOOLS = [
     },
   },
   {
+    name: 'raven_graph_stats',
+    description: 'Get graph topology metrics: total nodes/edges, average degree, hub nodes, orphan count, degree distribution. Reveals structural issues like star topologies or disconnected subgraphs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        teamId: { type: 'string', description: 'Team UUID (optional)' },
+      },
+    },
+  },
+  {
+    name: 'raven_node_inspect',
+    description: 'Deep-inspect a specific concept node: degree, all edges with relationships and targets, clustering coefficient, protection status, recall count, neighbor list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        conceptName: { type: 'string', description: 'Name of the concept to inspect (fuzzy matched)' },
+        teamId: { type: 'string', description: 'Team UUID (optional)' },
+      },
+      required: ['conceptName'],
+    },
+  },
+  {
     name: 'raven_detect_gaps',
     description: 'Detect knowledge gaps. Raven analyzes its own graph for missing identity, thin knowledge, or missing relationships and generates questions to fill gaps. Use focus to narrow to a domain.',
     inputSchema: {
@@ -288,6 +310,76 @@ async function handleTool(name, args) {
         output += '\n\n**By Operation:**';
         for (const op of r.byOperation) {
           output += `\n- ${op.operation}: ${op.callCount} calls, $${op.estimatedCostUsd.toFixed(4)}`;
+        }
+      }
+      return [{ type: 'text', text: output }];
+    }
+
+    case 'raven_graph_stats': {
+      const tid = args.teamId || DEFAULT_TEAM_ID;
+      if (!tid) return [{ type: 'text', text: 'Error: No teamId provided.' }];
+      const data = await gql(
+        `query GetGraphTopology($teamId: ID!) {
+          getGraphTopology(teamId: $teamId) {
+            totalConcepts totalTriples totalEdges avgDegree maxDegree
+            orphanCount connectedComponents
+            hubNodes { name type degree inDegree outDegree }
+            degreeDistribution { degree count }
+          }
+        }`,
+        { teamId: tid }
+      );
+      const t = data.getGraphTopology;
+      let output = `**Graph Topology**\n`;
+      output += `- Concepts: ${t.totalConcepts} | Triples: ${t.totalTriples} | Edges: ${t.totalEdges}\n`;
+      output += `- Avg degree: ${t.avgDegree} | Max degree: ${t.maxDegree}\n`;
+      output += `- Orphans: ${t.orphanCount} | Components: ${t.connectedComponents}\n`;
+      output += `\n**Top Hub Nodes:**\n`;
+      for (const h of t.hubNodes) {
+        output += `- **${h.name}** (${h.type}): ${h.degree} edges (${h.outDegree} out, ${h.inDegree} in)\n`;
+      }
+      output += `\n**Degree Distribution:**\n`;
+      const buckets = t.degreeDistribution.slice(0, 15);
+      for (const b of buckets) {
+        output += `- Degree ${b.degree}: ${b.count} nodes\n`;
+      }
+      return [{ type: 'text', text: output }];
+    }
+
+    case 'raven_node_inspect': {
+      const tid = args.teamId || DEFAULT_TEAM_ID;
+      if (!tid) return [{ type: 'text', text: 'Error: No teamId provided.' }];
+      const data = await gql(
+        `query InspectNode($teamId: ID!, $conceptName: String!) {
+          inspectNode(teamId: $teamId, conceptName: $conceptName) {
+            id name type aliases degree inDegree outDegree
+            clusteringCoefficient isProtected recallCount
+            edges { direction relationship targetName targetType displayText confidence }
+            neighborConcepts { name type sharedEdgeCount }
+          }
+        }`,
+        { teamId: tid, conceptName: args.conceptName }
+      );
+      const n = data.inspectNode;
+      if (!n) return [{ type: 'text', text: `Concept "${args.conceptName}" not found.` }];
+
+      let output = `**${n.name}** (${n.type})\n`;
+      if (n.aliases?.length) output += `Aliases: ${n.aliases.join(', ')}\n`;
+      output += `Degree: ${n.degree} (${n.outDegree} out, ${n.inDegree} in)\n`;
+      output += `Clustering: ${n.clusteringCoefficient ?? 'N/A'} | Protected: ${n.isProtected ? 'Yes' : 'No'} | Recalls: ${n.recallCount}\n`;
+
+      output += `\n**Edges (${n.edges.length}):**\n`;
+      for (const e of n.edges) {
+        const dir = e.direction === 'outbound' ? '→' : '←';
+        output += `- ${dir} _${e.relationship}_ → **${e.targetName}** (${e.targetType || '?'})`;
+        if (e.confidence) output += ` [${Math.round(e.confidence * 100)}%]`;
+        output += `\n`;
+      }
+
+      if (n.neighborConcepts?.length) {
+        output += `\n**Neighbors (${n.neighborConcepts.length}):**\n`;
+        for (const nb of n.neighborConcepts.slice(0, 15)) {
+          output += `- ${nb.name} (${nb.type || '?'}) — ${nb.sharedEdgeCount} shared edges\n`;
         }
       }
       return [{ type: 'text', text: output }];

@@ -538,6 +538,168 @@ const resolvers = {
       return results.slice(0, maxResults);
     },
 
+    // Graph topology analysis
+    getGraphTopology: async (_, { teamId }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      const [concepts, triples, degrees, orphans, components] = await Promise.all([
+        pool.query('SELECT COUNT(*) as cnt FROM concepts WHERE team_id = $1', [teamId]),
+        pool.query("SELECT COUNT(*) as cnt FROM triples WHERE team_id = $1 AND status = 'active'", [teamId]),
+        pool.query(`
+          SELECT c.id, c.name, c.type,
+            COALESCE(out_deg.cnt, 0) + COALESCE(in_deg.cnt, 0) as degree,
+            COALESCE(out_deg.cnt, 0) as out_degree,
+            COALESCE(in_deg.cnt, 0) as in_degree
+          FROM concepts c
+          LEFT JOIN (SELECT subject_id, COUNT(*) as cnt FROM triples WHERE team_id = $1 AND status = 'active' GROUP BY subject_id) out_deg ON c.id = out_deg.subject_id
+          LEFT JOIN (SELECT object_id, COUNT(*) as cnt FROM triples WHERE team_id = $1 AND status = 'active' GROUP BY object_id) in_deg ON c.id = in_deg.object_id
+          WHERE c.team_id = $1
+          ORDER BY degree DESC
+        `, [teamId]),
+        pool.query(`
+          SELECT COUNT(*) as cnt FROM concepts c
+          WHERE c.team_id = $1
+            AND NOT EXISTS (SELECT 1 FROM triples t WHERE t.status = 'active' AND (t.subject_id = c.id OR t.object_id = c.id))
+        `, [teamId]),
+        // Connected components approximation: count concepts that share no edges with each other
+        pool.query(`
+          SELECT COUNT(DISTINCT component) as cnt FROM (
+            SELECT COALESCE(MIN(t.subject_id), c.id) as component
+            FROM concepts c
+            LEFT JOIN triples t ON (t.subject_id = c.id OR t.object_id = c.id) AND t.status = 'active'
+            WHERE c.team_id = $1
+            GROUP BY c.id
+          ) sub
+        `, [teamId]),
+      ]);
+
+      const totalConcepts = parseInt(concepts.rows[0].cnt);
+      const totalTriples = parseInt(triples.rows[0].cnt);
+      const degreeRows = degrees.rows;
+      const totalEdges = totalTriples; // each triple = one edge
+
+      const avgDegree = totalConcepts > 0
+        ? degreeRows.reduce((sum, r) => sum + parseInt(r.degree), 0) / totalConcepts
+        : 0;
+      const maxDegree = degreeRows.length > 0 ? parseInt(degreeRows[0].degree) : 0;
+
+      // Hub nodes (top 10 by degree)
+      const hubNodes = degreeRows.slice(0, 10).map(r => ({
+        id: r.id, name: r.name, type: r.type,
+        degree: parseInt(r.degree),
+        inDegree: parseInt(r.in_degree),
+        outDegree: parseInt(r.out_degree),
+      }));
+
+      // Degree distribution
+      const degreeCounts = {};
+      for (const r of degreeRows) {
+        const d = parseInt(r.degree);
+        degreeCounts[d] = (degreeCounts[d] || 0) + 1;
+      }
+      const degreeDistribution = Object.entries(degreeCounts)
+        .map(([degree, count]) => ({ degree: parseInt(degree), count }))
+        .sort((a, b) => a.degree - b.degree);
+
+      return {
+        totalConcepts, totalTriples, totalEdges,
+        avgDegree: parseFloat(avgDegree.toFixed(2)),
+        maxDegree,
+        orphanCount: parseInt(orphans.rows[0].cnt),
+        connectedComponents: parseInt(components.rows[0].cnt),
+        avgPathLength: null, // expensive to compute, skip for now
+        hubNodes,
+        degreeDistribution,
+      };
+    },
+
+    inspectNode: async (_, { teamId, conceptName }, { userId }) => {
+      if (!userId) throw new Error('Not authenticated');
+
+      // Find concept by name (fuzzy)
+      const conceptResult = await pool.query(
+        `SELECT id, name, type, aliases, is_protected, canonical_name FROM concepts
+         WHERE team_id = $1 AND (LOWER(canonical_name) = $2 OR LOWER(name) = $2
+           OR $2 = ANY(SELECT LOWER(a) FROM unnest(COALESCE(aliases, ARRAY[]::text[])) a))
+         LIMIT 1`,
+        [teamId, conceptName.toLowerCase()]
+      );
+
+      if (!conceptResult.rows[0]) return null;
+      const concept = conceptResult.rows[0];
+
+      // Get all edges (outbound + inbound)
+      const [outEdges, inEdges, recallResult] = await Promise.all([
+        pool.query(`
+          SELECT t.id as triple_id, t.relationship, t.display_text, t.confidence,
+                 o.id as target_id, o.name as target_name, o.type as target_type
+          FROM triples t JOIN concepts o ON t.object_id = o.id
+          WHERE t.subject_id = $1 AND t.status = 'active'
+          ORDER BY t.confidence DESC NULLS LAST
+        `, [concept.id]),
+        pool.query(`
+          SELECT t.id as triple_id, t.relationship, t.display_text, t.confidence,
+                 s.id as target_id, s.name as target_name, s.type as target_type
+          FROM triples t JOIN concepts s ON t.subject_id = s.id
+          WHERE t.object_id = $1 AND t.status = 'active'
+          ORDER BY t.confidence DESC NULLS LAST
+        `, [concept.id]),
+        pool.query('SELECT COALESCE(SUM(recall_count), 0) as total FROM triples WHERE (subject_id = $1 OR object_id = $1) AND status = \'active\'', [concept.id]),
+      ]);
+
+      const edges = [
+        ...outEdges.rows.map(e => ({
+          tripleId: e.triple_id, direction: 'outbound', relationship: e.relationship,
+          targetId: e.target_id, targetName: e.target_name, targetType: e.target_type,
+          displayText: e.display_text, confidence: e.confidence,
+        })),
+        ...inEdges.rows.map(e => ({
+          tripleId: e.triple_id, direction: 'inbound', relationship: e.relationship,
+          targetId: e.target_id, targetName: e.target_name, targetType: e.target_type,
+          displayText: e.display_text, confidence: e.confidence,
+        })),
+      ];
+
+      // Neighbor concepts (unique targets with shared edge count)
+      const neighborMap = new Map();
+      for (const e of edges) {
+        if (!neighborMap.has(e.targetId)) {
+          neighborMap.set(e.targetId, { id: e.targetId, name: e.targetName, type: e.targetType, sharedEdgeCount: 0 });
+        }
+        neighborMap.get(e.targetId).sharedEdgeCount++;
+      }
+
+      // Clustering coefficient: how many of this node's neighbors are connected to each other?
+      let clusteringCoefficient = null;
+      const neighborIds = [...neighborMap.keys()];
+      if (neighborIds.length >= 2) {
+        const neighborEdges = await pool.query(`
+          SELECT COUNT(*) as cnt FROM triples
+          WHERE status = 'active'
+            AND subject_id = ANY($1) AND object_id = ANY($1)
+        `, [neighborIds]);
+        const possibleEdges = neighborIds.length * (neighborIds.length - 1);
+        clusteringCoefficient = possibleEdges > 0
+          ? parseFloat(parseInt(neighborEdges.rows[0].cnt) / possibleEdges).toFixed(3)
+          : 0;
+      }
+
+      return {
+        id: concept.id,
+        name: concept.name,
+        type: concept.type,
+        aliases: concept.aliases || [],
+        degree: edges.length,
+        inDegree: inEdges.rows.length,
+        outDegree: outEdges.rows.length,
+        clusteringCoefficient: clusteringCoefficient ? parseFloat(clusteringCoefficient) : null,
+        isProtected: concept.is_protected || false,
+        recallCount: parseInt(recallResult.rows[0].total),
+        edges,
+        neighborConcepts: [...neighborMap.values()].sort((a, b) => b.sharedEdgeCount - a.sharedEdgeCount),
+      };
+    },
+
     // Trust + usage queries
     getTrustScores: async (_, { teamId, sourceId }, { userId }) => {
       if (!userId) throw new Error('Not authenticated');

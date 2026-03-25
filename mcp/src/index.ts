@@ -414,7 +414,85 @@ server.tool(
   }
 );
 
-// ── Tool 7: raven_detect_gaps ─────────────────────────────────────────────────
+// ── Tool 7: raven_graph_stats ─────────────────────────────────────────────────
+
+server.tool(
+  "raven_graph_stats",
+  "Get graph topology metrics: total nodes/edges, average degree, hub nodes, orphan count, degree distribution. Reveals structural issues like star topologies.",
+  {
+    teamId: z.string().optional().describe("Team UUID (uses default if not provided)"),
+  },
+  async ({ teamId }) => {
+    const tid = teamId || DEFAULT_TEAM_ID;
+    if (!tid) return { content: [{ type: "text", text: "Error: No teamId." }] };
+    try {
+      const data = await gql(
+        `query GetGraphTopology($teamId: ID!) {
+          getGraphTopology(teamId: $teamId) {
+            totalConcepts totalTriples totalEdges avgDegree maxDegree
+            orphanCount connectedComponents
+            hubNodes { name type degree inDegree outDegree }
+            degreeDistribution { degree count }
+          }
+        }`,
+        { teamId: tid }
+      );
+      const t = data.getGraphTopology;
+      let output = `**Graph Topology**\n`;
+      output += `- Concepts: ${t.totalConcepts} | Triples: ${t.totalTriples}\n`;
+      output += `- Avg degree: ${t.avgDegree} | Max: ${t.maxDegree} | Orphans: ${t.orphanCount}\n`;
+      output += `\n**Hub Nodes:**\n`;
+      for (const h of t.hubNodes) output += `- **${h.name}** (${h.type}): ${h.degree} edges\n`;
+      output += `\n**Degree Distribution:**\n`;
+      for (const b of t.degreeDistribution.slice(0, 10)) output += `- Degree ${b.degree}: ${b.count} nodes\n`;
+      return { content: [{ type: "text", text: output }] };
+    } catch (err: any) { return { content: [{ type: "text", text: `Error: ${err.message}` }] }; }
+  }
+);
+
+// ── Tool 8: raven_node_inspect ────────────────────────────────────────────────
+
+server.tool(
+  "raven_node_inspect",
+  "Deep-inspect a concept node: degree, all edges, clustering coefficient, protection status, recall count, neighbor list.",
+  {
+    conceptName: z.string().describe("Name of the concept to inspect"),
+    teamId: z.string().optional().describe("Team UUID (uses default if not provided)"),
+  },
+  async ({ conceptName, teamId }) => {
+    const tid = teamId || DEFAULT_TEAM_ID;
+    if (!tid) return { content: [{ type: "text", text: "Error: No teamId." }] };
+    try {
+      const data = await gql(
+        `query InspectNode($teamId: ID!, $conceptName: String!) {
+          inspectNode(teamId: $teamId, conceptName: $conceptName) {
+            name type aliases degree inDegree outDegree
+            clusteringCoefficient isProtected recallCount
+            edges { direction relationship targetName targetType confidence }
+            neighborConcepts { name type sharedEdgeCount }
+          }
+        }`,
+        { teamId: tid, conceptName }
+      );
+      const n = data.inspectNode;
+      if (!n) return { content: [{ type: "text", text: `Concept "${conceptName}" not found.` }] };
+      let output = `**${n.name}** (${n.type})\n`;
+      if (n.aliases?.length) output += `Aliases: ${n.aliases.join(', ')}\n`;
+      output += `Degree: ${n.degree} (${n.outDegree}→, ${n.inDegree}←) | Clustering: ${n.clusteringCoefficient ?? 'N/A'}\n`;
+      output += `Protected: ${n.isProtected ? 'Yes' : 'No'} | Recalls: ${n.recallCount}\n`;
+      output += `\n**Edges (${n.edges.length}):**\n`;
+      for (const e of n.edges) {
+        output += `- ${e.direction === 'outbound' ? '→' : '←'} _${e.relationship}_ → **${e.targetName}**\n`;
+      }
+      if (n.neighborConcepts?.length) {
+        output += `\n**Neighbors:** ${n.neighborConcepts.slice(0, 10).map((nb: any) => nb.name).join(', ')}`;
+      }
+      return { content: [{ type: "text", text: output }] };
+    } catch (err: any) { return { content: [{ type: "text", text: `Error: ${err.message}` }] }; }
+  }
+);
+
+// ── Tool 9: raven_detect_gaps ─────────────────────────────────────────────────
 
 // @ts-ignore
 server.tool(

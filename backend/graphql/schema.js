@@ -381,6 +381,67 @@ export default gql`
     isRoot: Boolean!
   }
 
+  # Graph topology analysis
+  type GraphTopology {
+    totalConcepts: Int!
+    totalTriples: Int!
+    totalEdges: Int!
+    avgDegree: Float!
+    maxDegree: Int!
+    orphanCount: Int!
+    connectedComponents: Int!
+    avgPathLength: Float
+    hubNodes: [HubNode!]!
+    degreeDistribution: [DegreeBucket!]!
+  }
+
+  type HubNode {
+    id: ID!
+    name: String!
+    type: String
+    degree: Int!
+    inDegree: Int!
+    outDegree: Int!
+  }
+
+  type DegreeBucket {
+    degree: Int!
+    count: Int!
+  }
+
+  type NodeInspection {
+    id: ID!
+    name: String!
+    type: String
+    aliases: [String!]
+    degree: Int!
+    inDegree: Int!
+    outDegree: Int!
+    clusteringCoefficient: Float
+    isProtected: Boolean
+    recallCount: Int
+    edges: [NodeEdge!]!
+    neighborConcepts: [NeighborConcept!]!
+  }
+
+  type NodeEdge {
+    tripleId: ID!
+    direction: String!
+    relationship: String!
+    targetId: ID!
+    targetName: String!
+    targetType: String
+    displayText: String
+    confidence: Float
+  }
+
+  type NeighborConcept {
+    id: ID!
+    name: String!
+    type: String
+    sharedEdgeCount: Int!
+  }
+
   # Graph statistics
   type TripleGraphStats {
     totalConcepts: Int!
@@ -1166,6 +1227,10 @@ export default gql`
 
     # Search knowledge — searches BOTH legacy facts AND triple graph
     searchKnowledge(teamId: ID!, query: String!, limit: Int): [SearchResult!]!
+
+    # Graph topology analysis
+    getGraphTopology(teamId: ID!): GraphTopology!
+    inspectNode(teamId: ID!, conceptName: String!): NodeInspection
 
     # Trust model
     getTrustScores(teamId: ID!, sourceId: String): [TrustScore!]!
