@@ -125,7 +125,7 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   let multiHopTriples = [];
   if (triples.length > 0 && TripleRetrievalService.shouldExpand(triples)) {
     console.log(`[RavenService.ask] Expanding with multi-hop...`);
-    const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 2);
+    const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 3);
     console.log(`[RavenService.ask] Multi-hop found ${expanded.length} additional triples`);
 
     const existingIds = new Set(triples.map(t => t.id));
@@ -370,7 +370,7 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
   if (triples.length > 0 && TripleRetrievalService.shouldExpand(triples)) {
     emit('status', { phase: 'expanding', message: 'Following connections...' });
 
-    const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 2);
+    const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 3);
     const existingIds = new Set(triples.map(t => t.id));
     multiHopTriples = expanded.filter(t => !existingIds.has(t.id));
     triples = [...triples, ...multiHopTriples].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));

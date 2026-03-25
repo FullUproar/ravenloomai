@@ -20,6 +20,44 @@ import { generateEmbedding } from './AIService.js';
 export async function upsertConcept(teamId, { name, type, description, aliases, scopeId }) {
   const canonicalName = name.trim().toLowerCase();
 
+  // First check: does a concept with this name already exist (ANY type)?
+  // This prevents creating "Afterroar" (concept) when "Afterroar" (product) already exists.
+  // Prefer existing concept over creating a duplicate with a different type.
+  const existing = await db.query(
+    `SELECT * FROM concepts WHERE team_id = $1 AND canonical_name = $2 ORDER BY mention_count DESC LIMIT 1`,
+    [teamId, canonicalName]
+  );
+
+  if (existing.rows[0]) {
+    // Found existing concept — increment mention_count and update metadata
+    const row = existing.rows[0];
+    await db.query(`
+      UPDATE concepts SET
+        mention_count = mention_count + 1,
+        description = COALESCE($1, description),
+        aliases = (SELECT ARRAY(SELECT DISTINCT unnest(COALESCE(aliases, ARRAY[]::text[]) || COALESCE($2, ARRAY[]::text[])))),
+        updated_at = NOW()
+      WHERE id = $3
+    `, [description || null, aliases || [], row.id]);
+
+    const updated = await db.query('SELECT *, false AS is_new FROM concepts WHERE id = $1', [row.id]);
+    const concept = updated.rows[0];
+
+    // Generate embedding if missing
+    if (!concept.embedding) {
+      const embeddingText = concept.description
+        ? `${concept.name} (${concept.type}): ${concept.description}`
+        : `${concept.name} (${concept.type})`;
+      const embedding = await generateEmbedding(embeddingText);
+      if (embedding) {
+        await db.query('UPDATE concepts SET embedding = $1 WHERE id = $2', [`[${embedding.join(',')}]`, concept.id]);
+      }
+    }
+
+    return mapConcept(concept);
+  }
+
+  // No existing concept — create new
   const result = await db.query(`
     INSERT INTO concepts (team_id, scope_id, name, canonical_name, type, description, aliases)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
