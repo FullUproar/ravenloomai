@@ -559,11 +559,12 @@ async function checkTopologyHealth(teamId) {
 
   // 1. Detect hub nodes (>50 edges)
   const hubs = await db.query(`
-    SELECT c.id, c.name, c.type,
-      (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') as degree
-    FROM concepts c
-    WHERE c.team_id = $1
-    HAVING (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') > 50
+    SELECT * FROM (
+      SELECT c.id, c.name, c.type,
+        (SELECT COUNT(*) FROM triples WHERE (subject_id = c.id OR object_id = c.id) AND status = 'active') as degree
+      FROM concepts c
+      WHERE c.team_id = $1
+    ) sub WHERE degree > 50
     ORDER BY degree DESC
   `, [teamId]);
 
