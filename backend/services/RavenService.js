@@ -319,10 +319,15 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
     } catch {}
   }
 
-  // Step 3: Embedding search
-  emit('status', { phase: 'searching', message: 'Searching knowledge base...' });
+  // For exhaustive/timeline plans, skip embedding search — the scan has the data
+  const skipEmbeddingSearch = queryPlan?.precomputedData && ['exhaustive', 'timeline', 'cross_domain'].includes(queryPlan?.queryType);
 
-  let triples = await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
+  // Step 3: Embedding search (skip if plan already scanned)
+  if (!skipEmbeddingSearch) {
+    emit('status', { phase: 'searching', message: 'Searching knowledge base...' });
+  }
+
+  let triples = skipEmbeddingSearch ? [] : await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
     scopeIds: searchScopeIds, sstNodeId: sstNode?.id || null, topK: 15
   });
 
@@ -486,7 +491,7 @@ Return ONLY the phrase (2-5 words) or "NONE" if the question doesn't clearly ref
  * Generate answer from triple-based context.
  */
 async function generateTripleBasedAnswer(question, answerContext, triples, userModelPrompt = '') {
-  if (!answerContext && triples.length === 0) {
+  if ((!answerContext || answerContext.trim().length === 0) && triples.length === 0) {
     return {
       text: "I don't have any confirmed knowledge about that yet.",
       confidence: 0,
