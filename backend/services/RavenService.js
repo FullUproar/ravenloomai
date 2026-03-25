@@ -121,10 +121,11 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
     }
   }
 
-  // Step 4: Multi-hop expansion if initial results are sparse
+  // Step 4: Multi-hop expansion — ALWAYS expand when we have seed results
+  // The expansion function has its own controls (maxHops, limits, hub handling)
   let multiHopTriples = [];
-  if (triples.length > 0 && TripleRetrievalService.shouldExpand(triples)) {
-    console.log(`[RavenService.ask] Expanding with multi-hop...`);
+  if (triples.length > 0) {
+    console.log(`[RavenService.ask] Expanding with multi-hop (${triples.length} seeds)...`);
     const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 3);
     console.log(`[RavenService.ask] Multi-hop found ${expanded.length} additional triples`);
 
@@ -152,7 +153,7 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   // Step 5: Filter low-similarity noise, then re-rank with LLM
   const filteredTriples = triples.filter(t => (t.similarity || 0) > 0.3);
   const reranked = await TripleRetrievalService.rerankTriples(standaloneQuestion, filteredTriples);
-  const topTriples = reranked.slice(0, 8);
+  const topTriples = reranked.slice(0, 15);
 
   // Track: final selected triples
   traversalSteps.push({
@@ -378,9 +379,9 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
     nodesVisited: triples.map(mapTriple),
   });
 
-  // Step 4: Multi-hop
+  // Step 4: Multi-hop — ALWAYS expand
   let multiHopTriples = [];
-  if (triples.length > 0 && TripleRetrievalService.shouldExpand(triples)) {
+  if (triples.length > 0) {
     emit('status', { phase: 'expanding', message: 'Following connections...' });
 
     const expanded = await TripleRetrievalService.multiHopExpand(teamId, triples, 3);
@@ -401,7 +402,7 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
 
   const filteredTriples = triples.filter(t => (t.similarity || 0) > 0.3);
   const reranked = await TripleRetrievalService.rerankTriples(standaloneQuestion, filteredTriples);
-  const topTriples = reranked.slice(0, 8);
+  const topTriples = reranked.slice(0, 15);
 
   emit('phase', {
     phase: 'selected',

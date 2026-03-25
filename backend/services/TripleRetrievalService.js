@@ -761,6 +761,8 @@ export async function multiHopExpand(teamId, initialTriples, maxHops = 3) {
 
     const result = { rows: [...regularResult.rows, ...hubResult.rows] };
 
+    console.error(`[multiHopExpand] Hop ${hop + 1}: frontier=${frontier.length} concepts, found ${result.rows.length} new triples (regular=${regularResult.rows.length}, hub=${hubResult.rows.length})`);
+
     const newFrontier = new Set();
 
     for (const row of result.rows) {
