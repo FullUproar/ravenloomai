@@ -203,6 +203,24 @@ If none are universal, return { "universal": [] }. It is BETTER to return an emp
     for (const idx of universalIndices) {
       const row = result.rows[idx - 1];
       if (row) {
+        // Check if this triple's concepts are connected to team-specific knowledge.
+        // "Stripe is a payment platform" is universal UNLESS "Full Uproar uses Stripe" exists.
+        const connected = await db.query(`
+          SELECT COUNT(*) as cnt FROM triples t2
+          WHERE t2.team_id = $1 AND t2.status = 'active' AND t2.id != $2
+            AND t2.is_universal IS NOT TRUE
+            AND (t2.subject_id IN (SELECT subject_id FROM triples WHERE id = $2)
+              OR t2.object_id IN (SELECT object_id FROM triples WHERE id = $2)
+              OR t2.subject_id IN (SELECT object_id FROM triples WHERE id = $2)
+              OR t2.object_id IN (SELECT subject_id FROM triples WHERE id = $2))
+        `, [teamId, row.id]);
+
+        if (parseInt(connected.rows[0].cnt) > 0) {
+          // Concept is connected to team-specific knowledge — keep it
+          console.log(`[Grooming] Keeping "${row.display_text}" — contextually linked (${connected.rows[0].cnt} connections)`);
+          continue;
+        }
+
         await db.query(
           "UPDATE triples SET is_universal = true, status = 'pruned', groomed_at = NOW() WHERE id = $1",
           [row.id]
