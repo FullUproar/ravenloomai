@@ -438,6 +438,175 @@ server.tool(
   }
 );
 
+// ── Tool 7: raven_detect_gaps ─────────────────────────────────────────────────
+
+// @ts-ignore
+server.tool(
+  "raven_detect_gaps",
+  "Detect knowledge gaps in the knowledge base. Raven analyzes its own graph to find concepts with missing identity, thin knowledge, or missing relationships, and generates natural questions to fill the gaps. Use 'focus' to narrow to a specific domain (e.g., 'games', 'accounting', 'products').",
+  {
+    focus: z.string().optional().describe("Optional focus area — e.g., 'games', 'accounting', 'manufacturing'. Narrows gap detection to related concepts."),
+    maxQuestions: z.number().optional().describe("Max number of gap questions to return (default: 10)"),
+    teamId: z.string().optional().describe("Team UUID (uses default if not provided)"),
+  },
+  async ({ focus, maxQuestions, teamId }) => {
+    const tid = teamId || DEFAULT_TEAM_ID;
+    if (!tid) {
+      return { content: [{ type: "text", text: "Error: No teamId provided and RAVENLOOM_TEAM_ID not set." }] };
+    }
+
+    try {
+      const data = await gql(
+        `query GetKnowledgeGaps($teamId: ID!, $focus: String, $maxQuestions: Int) {
+          getKnowledgeGaps(teamId: $teamId, focus: $focus, maxQuestions: $maxQuestions) {
+            conceptName
+            conceptType
+            gapType
+            question
+            priority
+            context
+          }
+        }`,
+        { teamId: tid, focus: focus || null, maxQuestions: maxQuestions || 10 }
+      );
+
+      const gaps = data.getKnowledgeGaps || [];
+      if (gaps.length === 0) {
+        return { content: [{ type: "text", text: focus ? `No knowledge gaps found for "${focus}". The knowledge base looks solid in that area!` : "No significant knowledge gaps detected. The knowledge base is in good shape!" }] };
+      }
+
+      let output = focus
+        ? `**Knowledge gaps related to "${focus}" (${gaps.length} found):**\n`
+        : `**Top knowledge gaps (${gaps.length} found):**\n`;
+
+      gaps.forEach((g: any, i: number) => {
+        const icon = g.gapType === 'missing_identity' ? '❓' : g.gapType === 'thin_knowledge' ? '📄' : g.gapType === 'missing_relationship' ? '🔗' : g.gapType === 'undescribed' ? '👻' : '⏰';
+        output += `\n${i + 1}. ${icon} **${g.conceptName}** (${g.gapType.replace(/_/g, ' ')})\n`;
+        output += `   ${g.question}\n`;
+        if (g.context) output += `   _${g.context}_\n`;
+      });
+
+      output += `\nTo fill a gap, use \`raven_remember_preview\` with the answer text, then \`raven_remember_confirm\` to save it.`;
+
+      return { content: [{ type: "text", text: output }] };
+    } catch (err: any) {
+      return { content: [{ type: "text", text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
+// ── Tool 8: raven_gap_summary ─────────────────────────────────────────────────
+
+server.tool(
+  "raven_gap_summary",
+  "Get a high-level summary of knowledge base health — how many concepts have identity, how many are thin, undescribed, or stale. Useful for understanding where the knowledge base needs attention.",
+  {
+    teamId: z.string().optional().describe("Team UUID (uses default if not provided)"),
+  },
+  async ({ teamId }) => {
+    const tid = teamId || DEFAULT_TEAM_ID;
+    if (!tid) {
+      return { content: [{ type: "text", text: "Error: No teamId provided and RAVENLOOM_TEAM_ID not set." }] };
+    }
+
+    try {
+      const data = await gql(
+        `query GetGapSummary($teamId: ID!) {
+          getGapSummary(teamId: $teamId) {
+            totalConcepts
+            totalTriples
+            conceptsWithIdentity
+            conceptsWithoutIdentity
+            thinConcepts
+            undescribedConcepts
+            staleConcepts
+            topGapAreas { area gapCount }
+          }
+        }`,
+        { teamId: tid }
+      );
+
+      const s = data.getGapSummary;
+      const identityPct = s.totalConcepts > 0 ? Math.round(s.conceptsWithIdentity / s.totalConcepts * 100) : 0;
+
+      let output = `**Knowledge Base Health**\n`;
+      output += `- **${s.totalConcepts}** concepts, **${s.totalTriples}** knowledge triples\n`;
+      output += `- **${identityPct}%** of concepts have identity (${s.conceptsWithIdentity}/${s.totalConcepts})\n`;
+      output += `- **${s.conceptsWithoutIdentity}** concepts missing identity ("what is this?")\n`;
+      output += `- **${s.thinConcepts}** thin concepts (fewer than 3 facts)\n`;
+      output += `- **${s.undescribedConcepts}** referenced but undescribed concepts\n`;
+      output += `- **${s.staleConcepts}** stale concepts (no updates in 30+ days)\n`;
+
+      if (s.topGapAreas?.length > 0) {
+        output += `\n**Gap areas by type:**\n`;
+        for (const a of s.topGapAreas) {
+          output += `- ${a.area}: ${a.gapCount} gaps\n`;
+        }
+      }
+
+      output += `\nUse \`raven_detect_gaps\` with a focus area to see specific questions.`;
+
+      return { content: [{ type: "text", text: output }] };
+    } catch (err: any) {
+      return { content: [{ type: "text", text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
+// ── Tool 9: raven_groom ───────────────────────────────────────────────────────
+
+server.tool(
+  "raven_groom",
+  "Trigger knowledge graph grooming. This runs automated maintenance: merging duplicate concepts, pruning universal knowledge, discovering missing contexts, proposing inferences, and refining generic relationships. Returns a report of what was done.",
+  {
+    teamId: z.string().optional().describe("Team UUID (uses default if not provided)"),
+  },
+  async ({ teamId }) => {
+    const tid = teamId || DEFAULT_TEAM_ID;
+    if (!tid) {
+      return { content: [{ type: "text", text: "Error: No teamId provided and RAVENLOOM_TEAM_ID not set." }] };
+    }
+
+    try {
+      const data = await gql(
+        `mutation GroomTripleGraph($teamId: ID!) {
+          groomTripleGraph(teamId: $teamId) {
+            decomposed pruned contextsDiscovered relationshipsRefined
+            autoMerged mergeProposals { conceptA { name } conceptB { name } similarity }
+            inferences
+            stats { totalConcepts totalTriples orphanConcepts }
+          }
+        }`,
+        { teamId: tid }
+      );
+
+      const r = data.groomTripleGraph;
+      const mergeCount = r.autoMerged?.length || (typeof r.autoMerged === 'number' ? r.autoMerged : 0);
+      const proposalCount = r.mergeProposals?.length || 0;
+      const infCount = r.inferences?.length || (typeof r.inferences === 'number' ? r.inferences : 0);
+      let output = `**Grooming Complete**\n\n`;
+      output += `- Decomposed: ${r.decomposed}\n`;
+      output += `- Auto-merged: ${mergeCount}\n`;
+      output += `- Merge proposals: ${proposalCount}\n`;
+      output += `- Pruned: ${r.pruned}\n`;
+      output += `- Contexts discovered: ${r.contextsDiscovered}\n`;
+      output += `- Inferences: ${infCount}\n`;
+      output += `- Relationships refined: ${r.relationshipsRefined}\n`;
+      if (r.stats) output += `\n**Graph:** ${r.stats.totalConcepts} concepts, ${r.stats.totalTriples} triples, ${r.stats.orphanConcepts} orphans\n`;
+      if (proposalCount > 0) {
+        output += `\n**Top merge proposals:**`;
+        for (const p of r.mergeProposals.slice(0, 5)) {
+          output += `\n- ${p.conceptA.name} ≈ ${p.conceptB.name} (${Math.round(p.similarity * 100)}%)`;
+        }
+      }
+
+      return { content: [{ type: "text", text: output }] };
+    } catch (err: any) {
+      return { content: [{ type: "text", text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
 // ── Start Server ─────────────────────────────────────────────────────────────
 
 const MCP_PORT = parseInt(process.env.MCP_PORT || "0", 10);

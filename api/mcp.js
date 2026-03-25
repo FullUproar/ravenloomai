@@ -114,6 +114,38 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'raven_detect_gaps',
+    description: 'Detect knowledge gaps. Raven analyzes its own graph for missing identity, thin knowledge, or missing relationships and generates questions to fill gaps. Use focus to narrow to a domain.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        focus: { type: 'string', description: 'Focus area — e.g., "games", "accounting", "products"' },
+        maxQuestions: { type: 'number', description: 'Max questions to return (default 10)' },
+        teamId: { type: 'string', description: 'Team UUID (optional)' },
+      },
+    },
+  },
+  {
+    name: 'raven_gap_summary',
+    description: 'Get knowledge base health summary — identity coverage, thin concepts, undescribed concepts, stale knowledge.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        teamId: { type: 'string', description: 'Team UUID (optional)' },
+      },
+    },
+  },
+  {
+    name: 'raven_groom',
+    description: 'Trigger knowledge graph grooming — merges duplicates, prunes universal knowledge, discovers contexts, proposes inferences, refines relationships.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        teamId: { type: 'string', description: 'Team UUID (optional)' },
+      },
+    },
+  },
 ];
 
 // ── Tool Handlers ────────────────────────────────────────────────────────────
@@ -255,6 +287,87 @@ async function handleTool(name, args) {
         output += '\n\n**By Operation:**';
         for (const op of r.byOperation) {
           output += `\n- ${op.operation}: ${op.callCount} calls, $${op.estimatedCostUsd.toFixed(4)}`;
+        }
+      }
+      return [{ type: 'text', text: output }];
+    }
+
+    case 'raven_detect_gaps': {
+      const tid = args.teamId || DEFAULT_TEAM_ID;
+      if (!tid) return [{ type: 'text', text: 'Error: No teamId provided.' }];
+      const data = await gql(
+        `query GetKnowledgeGaps($teamId: ID!, $focus: String, $maxQuestions: Int) {
+          getKnowledgeGaps(teamId: $teamId, focus: $focus, maxQuestions: $maxQuestions) {
+            conceptName conceptType gapType question priority context
+          }
+        }`,
+        { teamId: tid, focus: args.focus || null, maxQuestions: args.maxQuestions || 10 }
+      );
+      const gaps = data.getKnowledgeGaps || [];
+      if (!gaps.length) return [{ type: 'text', text: args.focus ? `No gaps found for "${args.focus}".` : 'No significant gaps detected!' }];
+      let output = args.focus ? `**Knowledge gaps for "${args.focus}" (${gaps.length}):**\n` : `**Top knowledge gaps (${gaps.length}):**\n`;
+      gaps.forEach((g, i) => {
+        output += `\n${i + 1}. **${g.conceptName}** (${g.gapType.replace(/_/g, ' ')})\n   ${g.question}\n`;
+        if (g.context) output += `   _${g.context}_\n`;
+      });
+      output += `\nUse \`raven_remember_preview\` with answer text to fill a gap.`;
+      return [{ type: 'text', text: output }];
+    }
+
+    case 'raven_gap_summary': {
+      const tid = args.teamId || DEFAULT_TEAM_ID;
+      if (!tid) return [{ type: 'text', text: 'Error: No teamId provided.' }];
+      const data = await gql(
+        `query GetGapSummary($teamId: ID!) {
+          getGapSummary(teamId: $teamId) {
+            totalConcepts totalTriples conceptsWithIdentity conceptsWithoutIdentity
+            thinConcepts undescribedConcepts staleConcepts
+            topGapAreas { area gapCount }
+          }
+        }`,
+        { teamId: tid }
+      );
+      const s = data.getGapSummary;
+      const pct = s.totalConcepts > 0 ? Math.round(s.conceptsWithIdentity / s.totalConcepts * 100) : 0;
+      let output = `**Knowledge Base Health**\n`;
+      output += `- ${s.totalConcepts} concepts, ${s.totalTriples} triples\n`;
+      output += `- ${pct}% identity coverage (${s.conceptsWithIdentity}/${s.totalConcepts})\n`;
+      output += `- ${s.conceptsWithoutIdentity} missing identity\n`;
+      output += `- ${s.thinConcepts} thin, ${s.undescribedConcepts} undescribed, ${s.staleConcepts} stale\n`;
+      if (s.topGapAreas?.length) {
+        output += `\n**Gap areas:** `;
+        output += s.topGapAreas.map(a => `${a.area} (${a.gapCount})`).join(', ');
+      }
+      return [{ type: 'text', text: output }];
+    }
+
+    case 'raven_groom': {
+      const tid = args.teamId || DEFAULT_TEAM_ID;
+      if (!tid) return [{ type: 'text', text: 'Error: No teamId provided.' }];
+      const data = await gql(
+        `mutation GroomTripleGraph($teamId: ID!) {
+          groomTripleGraph(teamId: $teamId) {
+            decomposed pruned contextsDiscovered relationshipsRefined
+            autoMerged mergeProposals { conceptA { name } conceptB { name } similarity }
+            inferences
+            stats { totalConcepts totalTriples orphanConcepts }
+          }
+        }`,
+        { teamId: tid }
+      );
+      const r = data.groomTripleGraph;
+      const mergeCount = r.autoMerged?.length || (typeof r.autoMerged === 'number' ? r.autoMerged : 0);
+      const proposalCount = r.mergeProposals?.length || 0;
+      const infCount = r.inferences?.length || (typeof r.inferences === 'number' ? r.inferences : 0);
+      let output = `**Grooming Complete**\n`;
+      output += `- Decomposed: ${r.decomposed} | Merged: ${mergeCount} | Pruned: ${r.pruned}\n`;
+      output += `- Contexts: ${r.contextsDiscovered} | Refined: ${r.relationshipsRefined}\n`;
+      output += `- Merge proposals: ${proposalCount} | Inferences: ${infCount}\n`;
+      if (r.stats) output += `- Graph: ${r.stats.totalConcepts} concepts, ${r.stats.totalTriples} triples, ${r.stats.orphanConcepts} orphans`;
+      if (proposalCount > 0) {
+        output += `\n\n**Merge proposals:**`;
+        for (const p of r.mergeProposals.slice(0, 5)) {
+          output += `\n- ${p.conceptA.name} ≈ ${p.conceptB.name} (${Math.round(p.similarity * 100)}%)`;
         }
       }
       return [{ type: 'text', text: output }];
