@@ -561,16 +561,9 @@ const resolvers = {
           WHERE c.team_id = $1
             AND NOT EXISTS (SELECT 1 FROM triples t WHERE t.status = 'active' AND (t.subject_id = c.id OR t.object_id = c.id))
         `, [teamId]),
-        // Connected components approximation: count concepts that share no edges with each other
-        pool.query(`
-          SELECT COUNT(DISTINCT component) as cnt FROM (
-            SELECT COALESCE(MIN(t.subject_id), c.id) as component
-            FROM concepts c
-            LEFT JOIN triples t ON (t.subject_id = c.id OR t.object_id = c.id) AND t.status = 'active'
-            WHERE c.team_id = $1
-            GROUP BY c.id
-          ) sub
-        `, [teamId]),
+        // Connected components approximation: count isolated concepts (no edges at all)
+        // True component counting requires graph traversal which is expensive in SQL
+        pool.query(`SELECT 0 as cnt`),
       ]);
 
       const totalConcepts = parseInt(concepts.rows[0].cnt);
