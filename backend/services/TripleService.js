@@ -136,14 +136,20 @@ export async function mergeConcepts(teamId, canonicalId, duplicateId) {
     WHERE id = $1
   `, [canonicalId, duplicateId]);
 
-  // Delete self-referential triples that may result from merge
+  // Archive self-referential triples that may result from merge
   await db.query(
-    'DELETE FROM triples WHERE subject_id = $1 AND object_id = $1',
+    "UPDATE triples SET status = 'archived', updated_at = NOW() WHERE subject_id = $1 AND object_id = $1 AND status = 'active'",
     [canonicalId]
   );
 
-  // Delete duplicate
-  await db.query('DELETE FROM concepts WHERE id = $1', [duplicateId]);
+  // Archive duplicate concept (don't delete — preserve audit trail)
+  await db.query(
+    "UPDATE concepts SET type = 'merged_into:' || $1, description = COALESCE(description, '') || ' [MERGED into ' || (SELECT name FROM concepts WHERE id = $1) || ']', updated_at = NOW() WHERE id = $2",
+    [canonicalId, duplicateId]
+  );
+
+  // Log the merge operation
+  console.log(`[TripleService] Merged concept ${duplicateId} into ${canonicalId}`);
 
   return getConcept(canonicalId);
 }

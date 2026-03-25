@@ -530,9 +530,10 @@ STRICT RULES — FOLLOW EXACTLY:
 3. Every claim must trace to a specific knowledge statement below. If you can't point to it, don't say it.
 4. CRITICAL: Do NOT merge statements about different entities. Each statement is about the specific entities it names.
 5. Multi-hop connections must share a COMMON entity: "X is Y" + "Y is Z" → "X is Z" is valid. Different entities → no connection.
-6. If contexts are listed, mention them naturally.
-7. Be concise and conversational. No filler.
-8. If a statement is marked [SUPERSEDED], use the newer version instead.
+6. NEVER invent relationships, dependencies, or connections that are not EXPLICITLY stated in the knowledge below. If a dependency or relationship is not listed, it does not exist. Do not infer "X depends on Y" unless a statement says so.
+7. If contexts are listed, mention them naturally.
+8. Be concise and conversational. No filler.
+9. If a statement is marked [SUPERSEDED], use the newer version instead.
 ${conflictWarning ? `9. CONFLICTING INFORMATION DETECTED: ${conflictWarning}
    Present ALL perspectives and clearly note the discrepancy.` : ''}
 
