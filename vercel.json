@@ -5,11 +5,15 @@
   "framework": null,
   "functions": {
     "api/graphql.js": {
-      "maxDuration": 30,
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/ask-stream.js": {
+      "maxDuration": 60,
       "memory": 1024
     },
     "api/mcp.js": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "memory": 512
     }
   },
