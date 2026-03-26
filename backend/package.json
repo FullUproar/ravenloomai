@@ -18,7 +18,7 @@
   "type": "module",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
-    "@apollo/server": "^4.12.2",
+    "@apollo/server": "^5.5.0",
     "@vercel/blob": "^2.0.0",
     "adm-zip": "^0.5.16",
     "apollo-server": "^3.13.0",
