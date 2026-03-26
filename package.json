@@ -11,8 +11,8 @@
     "vercel-build": "cd frontend && npm install && npx vite build"
   },
   "dependencies": {
-    "@apollo/server": "^4.12.2",
-    "@as-integrations/next": "^3.0.0",
+    "@apollo/server": "^5.5.0",
+    "@as-integrations/next": "^4.1.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
