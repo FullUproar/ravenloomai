@@ -561,12 +561,15 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
       try {
         const collPlaceholders = collectionPatterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' OR ');
         const collResult = await db.query(
-          `SELECT DISTINCT c.id, c.name, 0.95 AS similarity
+          `SELECT DISTINCT ON (c.id) c.id, c.name,
+             CASE WHEN ${collectionPatterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' AND ')} THEN 0.98
+                  ELSE 0.90 END AS similarity
            FROM concepts c
            JOIN triples t ON (t.subject_id = c.id AND t.status = 'active'
              AND LOWER(t.relationship) IN ('contains', 'includes', 'has category', 'has department', 'has product line'))
            WHERE c.team_id = $1 AND (${collPlaceholders})
-           LIMIT 3`,
+           ORDER BY c.id, similarity DESC
+           LIMIT 5`,
           [teamId, ...collectionPatterns]
         );
         for (const c of collResult.rows) {
@@ -579,7 +582,18 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
   }
 
   // Re-filter after adding collection nodes
-  const allConcepts = Array.from(conceptMap.values()).filter(c => parseFloat(c.similarity) > 0.45);
+  // Also filter out concepts that don't share any significant words with the question
+  // This prevents "Full Uproar Games 5-year horizon" from anchoring a query about "Mayhem Machine Line"
+  const significantWords = questionWords.filter(w => w.length > 4 && !['about', 'their', 'which', 'these', 'those', 'where', 'there'].includes(w));
+  const allConcepts = Array.from(conceptMap.values()).filter(c => {
+    if (parseFloat(c.similarity) <= 0.45) return false;
+    // Concepts from collection search always pass (they were specifically found)
+    if (parseFloat(c.similarity) >= 0.95) return true;
+    // For embedding/keyword matches, require at least one significant word overlap with concept name
+    if (significantWords.length === 0) return true;
+    const conceptNameLower = (c.name || '').toLowerCase();
+    return significantWords.some(w => conceptNameLower.includes(w));
+  });
 
   // When multiple concepts match the same name, traverse ALL and merge.
   // Check degree + collection edges to prefer the right entity.
