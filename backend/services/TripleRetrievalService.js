@@ -617,10 +617,15 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
         AND (t.subject_id = $2 OR t.object_id = $2)
     `, [teamId, concept.id]);
 
-    for (const row of conceptTriples.rows) {
-      // Concept-anchored triples get similarity based on concept match + degree boost
-      const degreeBoost = Math.min(0.1, concept.degree / 500); // small boost for well-connected nodes
-      row.similarity = Math.min(1.0, parseFloat(concept.similarity) * 0.95 + degreeBoost);
+    // Limit triples per concept — hubs (FUG with 200+ triples) shouldn't flood results
+    const maxPerConcept = concept.degree > 50 ? 5 : 15;
+    const selectedRows = conceptTriples.rows.slice(0, maxPerConcept);
+
+    for (const row of selectedRows) {
+      // Concept-anchored triples get similarity based on concept match
+      // PENALIZE hubs — they match many queries but are usually too broad
+      const hubPenalty = concept.degree > 50 ? 0.15 : 0;
+      row.similarity = Math.max(0.3, parseFloat(concept.similarity) * 0.95 - hubPenalty);
       anchoredTriples.push(row);
     }
   }
