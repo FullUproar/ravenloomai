@@ -505,15 +505,16 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
     if (patterns.length === 0 && keywordConcepts.length > 0) {
       // Short-word-only query — skip ILIKE, we have alias matches
     } else if (patterns.length > 0) {
-      // Bug 2 fix: Boost exact name matches over partial/alias matches
+      // Score by how many question words match the concept name (more matches = more relevant)
+      const matchCountExpr = patterns.map((_, i) => `CASE WHEN canonical_name ILIKE $${i + 2} THEN 1 ELSE 0 END`).join(' + ');
       const placeholders = patterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' OR ');
       const keywordResult = await db.query(
         `SELECT id, name, canonical_name,
-           CASE WHEN LOWER(canonical_name) = ANY($${patterns.length + 2}::text[]) THEN 0.98
-                WHEN LOWER(name) = ANY($${patterns.length + 2}::text[]) THEN 0.95
-                ELSE 0.80 END AS similarity
-         FROM concepts WHERE team_id = $1 AND (${placeholders}) LIMIT 8`,
-        [teamId, ...patterns, longWords]
+           0.70 + 0.08 * (${matchCountExpr}) AS similarity
+         FROM concepts WHERE team_id = $1 AND (${placeholders})
+         ORDER BY (${matchCountExpr}) DESC, length(name) ASC
+         LIMIT 8`,
+        [teamId, ...patterns]
       );
       keywordConcepts.push(...keywordResult.rows);
     }
@@ -581,13 +582,14 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
     }
   }
 
-  // Re-filter: ONLY use concepts found by keyword/entity/collection search for anchoring
-  // The embedding concept search is too broad — "Full Uproar Games" matches everything
-  // Keyword search (0.80-0.98) and collection search (0.90-0.98) are name-matched and specific
-  // Embedding search (0.45-0.75) catches semantically similar but often wrong concepts
+  // Re-filter: Only use concepts with good name-match quality
+  // Keyword scores: 1 word match = 0.78, 2 = 0.86, 3 = 0.94
+  // Collection search = 0.90-0.98, Entity match = 0.82-0.98
+  // Embedding-only = 0.45-0.75
+  // Threshold at 0.82 keeps 2+ word matches and entity matches, filters 1-word noise
   const allConcepts = Array.from(conceptMap.values()).filter(c => {
     const sim = parseFloat(c.similarity);
-    return sim >= 0.78; // Only keyword-matched, entity-matched, and collection-search concepts
+    return sim >= 0.82;
   });
 
   // When multiple concepts match the same name, traverse ALL and merge.
