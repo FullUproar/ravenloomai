@@ -582,17 +582,19 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
   }
 
   // Re-filter after adding collection nodes
-  // Also filter out concepts that don't share any significant words with the question
-  // This prevents "Full Uproar Games 5-year horizon" from anchoring a query about "Mayhem Machine Line"
-  const significantWords = questionWords.filter(w => w.length > 4 && !['about', 'their', 'which', 'these', 'those', 'where', 'there'].includes(w));
+  // Use extracted entities (from LLM) to filter out unrelated concept anchors
+  // This prevents "Full Uproar Games trademark" from anchoring a query about "Mayhem Machine Line"
+  const entityNames = extractedEntities.map(e => e.toLowerCase());
   const allConcepts = Array.from(conceptMap.values()).filter(c => {
     if (parseFloat(c.similarity) <= 0.45) return false;
-    // Concepts from collection search always pass (they were specifically found)
-    if (parseFloat(c.similarity) >= 0.95) return true;
-    // For embedding/keyword matches, require at least one significant word overlap with concept name
-    if (significantWords.length === 0) return true;
+    // Collection-search nodes (similarity 0.95+) always pass
+    if (parseFloat(c.similarity) >= 0.93) return true;
+    // Keyword-matched concepts (similarity 0.80+) always pass — they matched by name
+    if (parseFloat(c.similarity) >= 0.80) return true;
+    // For embedding-only matches, require entity name overlap
+    if (entityNames.length === 0) return true;
     const conceptNameLower = (c.name || '').toLowerCase();
-    return significantWords.some(w => conceptNameLower.includes(w));
+    return entityNames.some(e => conceptNameLower.includes(e) || e.includes(conceptNameLower));
   });
 
   // When multiple concepts match the same name, traverse ALL and merge.
