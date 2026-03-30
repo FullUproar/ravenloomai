@@ -561,12 +561,12 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
       try {
         const collPlaceholders = collectionPatterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' OR ');
         const collResult = await db.query(
-          `SELECT DISTINCT c.id, c.name, 0.90 AS similarity
+          `SELECT DISTINCT c.id, c.name, 0.95 AS similarity
            FROM concepts c
            JOIN triples t ON (t.subject_id = c.id AND t.status = 'active'
              AND LOWER(t.relationship) IN ('contains', 'includes', 'has category', 'has department', 'has product line'))
            WHERE c.team_id = $1 AND (${collPlaceholders})
-           LIMIT 5`,
+           LIMIT 3`,
           [teamId, ...collectionPatterns]
         );
         for (const c of collResult.rows) {
@@ -605,7 +605,7 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
     return b.degree - a.degree;
   });
 
-  for (const concept of conceptsWithDegree.slice(0, 8)) {
+  for (const concept of conceptsWithDegree.slice(0, 10)) {
     const conceptTriples = await db.query(`
       SELECT t.*, s.name AS subject_name, s.type AS subject_type,
              o.name AS object_name, o.type AS object_type,
