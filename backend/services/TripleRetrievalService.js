@@ -1040,8 +1040,16 @@ export function shouldExpand(initialResults) {
 export async function rerankTriples(question, triples) {
   if (triples.length <= 3) return triples; // Not enough to re-rank
 
-  const candidates = triples.slice(0, 12); // Cap candidates
-  const numbered = candidates.map((t, i) => `${i + 1}. ${t.displayText}`).join('\n');
+  // Separate collection/hop triples — these ALWAYS survive reranking
+  const collectionTriples = triples.filter(t =>
+    t.matchType === 'collection_child' || t.matchType === 'collection_grandchild'
+  );
+  const rankableTriples = triples.filter(t =>
+    t.matchType !== 'collection_child' && t.matchType !== 'collection_grandchild'
+  );
+
+  const candidates = rankableTriples.slice(0, 12); // Cap candidates
+  const numbered = candidates.map((t, i) => `${i + 1}. ${t.displayText || t.display_text || 'unknown'}`).join('\n');
 
   const response = await callOpenAI([
     {
@@ -1076,9 +1084,21 @@ Example: [3, 1, 7]`
         reranked.push(t);
       }
     }
+
+    // Always append collection triples — they bypass reranking
+    // These are structural relationships (contains, includes) that the LLM reranker
+    // might dismiss as "not answering the question" but are essential for hierarchy traversal
+    for (const t of collectionTriples) {
+      if (!rankedIds.has(t.id)) {
+        t.similarity = Math.max(t.similarity || 0, 0.85); // Ensure they rank high
+        reranked.push(t);
+      }
+    }
+
     return reranked;
   } catch {
-    return triples; // Fallback to original ranking
+    // Fallback: return original triples + collection triples
+    return [...triples.filter(t => t.matchType !== 'collection_child' && t.matchType !== 'collection_grandchild'), ...collectionTriples];
   }
 }
 
