@@ -1082,25 +1082,15 @@ Example: [3, 1, 7]`
         reranked.push(t);
       }
     }
-    // Append any candidates not included by the ranker (with low similarity)
-    const rankedIds = new Set(reranked.map(t => t.id));
-    for (const t of candidates) {
-      if (!rankedIds.has(t.id)) {
-        t.similarity = 0.2;
-        reranked.push(t);
-      }
-    }
-
-    // Collection triples go FIRST — they're the structural backbone the answer needs.
-    // Then append the LLM-ranked descriptive triples.
-    // Remove any ranked triples the LLM assigned 0.200 (it said "irrelevant") — they're noise.
+    // Collection triples go FIRST — structural backbone the answer needs.
+    // Filter out noise: LLM-assigned 0.200 = "irrelevant"
     const relevantRanked = reranked.filter(t => (t.similarity || 0) > 0.25);
-    const rankedIds = new Set(relevantRanked.map(t => t.id));
+    const allRankedIds = new Set(relevantRanked.map(t => t.id));
 
     const result = [];
-    // 1. Collection triples first (structural hierarchy: contains, includes, modifies, etc.)
+    // 1. Collection triples first (contains, includes, modifies, etc.)
     for (const t of collectionTriples) {
-      if (!rankedIds.has(t.id)) {
+      if (!allRankedIds.has(t.id)) {
         t.similarity = Math.max(t.similarity || 0, 0.85);
         result.push(t);
       }
@@ -1111,8 +1101,7 @@ Example: [3, 1, 7]`
     return result;
   } catch {
     // Fallback: collection triples first, then rest
-    const rest = triples.filter(t => !isCollectionTriple(t));
-    return [...collectionTriples, ...rest];
+    return [...collectionTriples, ...rankableTriples];
   }
 }
 
