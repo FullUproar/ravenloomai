@@ -1091,20 +1091,28 @@ Example: [3, 1, 7]`
       }
     }
 
-    // Always append collection triples — they bypass reranking
-    // These are structural relationships (contains, includes) that the LLM reranker
-    // might dismiss as "not answering the question" but are essential for hierarchy traversal
+    // Collection triples go FIRST — they're the structural backbone the answer needs.
+    // Then append the LLM-ranked descriptive triples.
+    // Remove any ranked triples the LLM assigned 0.200 (it said "irrelevant") — they're noise.
+    const relevantRanked = reranked.filter(t => (t.similarity || 0) > 0.25);
+    const rankedIds = new Set(relevantRanked.map(t => t.id));
+
+    const result = [];
+    // 1. Collection triples first (structural hierarchy: contains, includes, modifies, etc.)
     for (const t of collectionTriples) {
       if (!rankedIds.has(t.id)) {
-        t.similarity = Math.max(t.similarity || 0, 0.85); // Ensure they rank high
-        reranked.push(t);
+        t.similarity = Math.max(t.similarity || 0, 0.85);
+        result.push(t);
       }
     }
+    // 2. Then LLM-ranked descriptive triples
+    result.push(...relevantRanked);
 
-    return reranked;
+    return result;
   } catch {
-    // Fallback: return original triples + collection triples
-    return [...triples.filter(t => t.matchType !== 'collection_child' && t.matchType !== 'collection_grandchild'), ...collectionTriples];
+    // Fallback: collection triples first, then rest
+    const rest = triples.filter(t => !isCollectionTriple(t));
+    return [...collectionTriples, ...rest];
   }
 }
 
