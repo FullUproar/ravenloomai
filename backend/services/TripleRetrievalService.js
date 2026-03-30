@@ -1040,38 +1040,19 @@ export function shouldExpand(initialResults) {
 export async function rerankTriples(question, triples) {
   if (triples.length <= 3) return triples; // Not enough to re-rank
 
-  // Separate structural/collection triples — these bypass reranking.
-  // BUT only for triples directly connected to concepts from the INITIAL search
-  // (not random hop-1 expansions to Monthly Mailer, etc.)
-  const collectionRelationships = ['contains', 'includes', 'has category', 'has department',
-    'has product line', 'has role', 'is a rule within', 'belongs to', 'is contained in',
-    'modifies', 'has game components', 'has game features'];
-
-  // Build set of concept IDs from seed results (concept_anchor and embedding matches)
-  const seedConceptIds = new Set();
-  for (const t of triples) {
-    if (t.matchType === 'concept_anchor' || t.matchType === 'with_context' || t.matchType === 'without_context') {
-      const sid = t.subjectId || t.subject_id;
-      const oid = t.objectId || t.object_id;
-      if (sid) seedConceptIds.add(sid);
-      if (oid) seedConceptIds.add(oid);
-    }
+  // For large result sets (multi-hop + collection expansion), skip the LLM reranker entirely.
+  // The LLM reranker was designed for 10-15 embedding results. With 100+ triples from expansion,
+  // it only sees 12 candidates (often wrong ones) and misranks everything.
+  // Instead, just sort by the original similarity scores which already reflect:
+  // - Embedding distance (for direct matches)
+  // - Concept-anchor quality (for entity matches)
+  // - Confidence * decay (for hop results)
+  if (triples.length > 30) {
+    console.error(`[rerankTriples] Skipping LLM rerank for ${triples.length} triples (too many — using similarity sort)`);
+    return [...triples].sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
   }
 
-  const isCollectionTriple = (t) => {
-    if (t.matchType === 'collection_child' || t.matchType === 'collection_grandchild') return true;
-    const rel = (t.relationship || '').toLowerCase();
-    const isCollectionRel = collectionRelationships.some(cr => rel.includes(cr));
-    if (!isCollectionRel) return false;
-    // Only treat as collection if connected to a SEED concept (not random hop expansion)
-    const sid = t.subjectId || t.subject_id;
-    const oid = t.objectId || t.object_id;
-    return seedConceptIds.has(sid) || seedConceptIds.has(oid);
-  };
-  const collectionTriples = triples.filter(isCollectionTriple);
-  const rankableTriples = triples.filter(t => !isCollectionTriple(t));
-
-  const candidates = rankableTriples.slice(0, 12); // Cap candidates
+  const candidates = triples.slice(0, 12); // Cap candidates
   const numbered = candidates.map((t, i) => `${i + 1}. ${t.displayText || t.display_text || 'unknown'}`).join('\n');
 
   const response = await callOpenAI([
@@ -1099,26 +1080,17 @@ Example: [3, 1, 7]`
         reranked.push(t);
       }
     }
-    // Collection triples go FIRST — structural backbone the answer needs.
-    // Filter out noise: LLM-assigned 0.200 = "irrelevant"
-    const relevantRanked = reranked.filter(t => (t.similarity || 0) > 0.25);
-    const allRankedIds = new Set(relevantRanked.map(t => t.id));
-
-    const result = [];
-    // 1. Collection triples first (contains, includes, modifies, etc.)
-    for (const t of collectionTriples) {
-      if (!allRankedIds.has(t.id)) {
-        t.similarity = Math.max(t.similarity || 0, 0.85);
-        result.push(t);
+    // Append any candidates not included by the ranker (with low similarity)
+    const rankedIds = new Set(reranked.map(t => t.id));
+    for (const t of candidates) {
+      if (!rankedIds.has(t.id)) {
+        t.similarity = 0.2;
+        reranked.push(t);
       }
     }
-    // 2. Then LLM-ranked descriptive triples
-    result.push(...relevantRanked);
-
-    return result;
+    return reranked;
   } catch {
-    // Fallback: collection triples first, then rest
-    return [...collectionTriples, ...rankableTriples];
+    return triples; // Fallback to original order
   }
 }
 
