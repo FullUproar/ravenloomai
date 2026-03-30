@@ -1130,7 +1130,7 @@ async function expandCollectionNodes(teamId, triples) {
     sourceUrl: row.source_url,
     createdBy: row.created_by,
     createdAt: row.created_at,
-    similarity: (row.confidence || 0.5) * 0.9, // slight discount for being 1 hop away
+    similarity: Math.min((row.confidence || 0.5) * 0.9, 0.65), // Cap below embedding results
     matchType: 'collection_child',
     hopDistance: 1,
   }));
@@ -1178,7 +1178,7 @@ async function expandCollectionNodes(teamId, triples) {
       sourceUrl: row.source_url,
       createdBy: row.created_by,
       createdAt: row.created_at,
-      similarity: (row.confidence || 0.5) * 0.8, // 2 hops away
+      similarity: Math.min((row.confidence || 0.5) * 0.8, 0.55), // 2 hops, capped below embedding results
       matchType: 'collection_grandchild',
       hopDistance: 2,
     }));

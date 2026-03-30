@@ -834,7 +834,7 @@ export async function multiHopExpand(teamId, initialTriples, maxHops = 3) {
         sourceUrl: row.source_url,
         createdBy: row.created_by,
         createdAt: row.created_at,
-        similarity: (row.confidence || 0.5) * hopDecay, // decay similarity by hop distance
+        similarity: Math.min((row.confidence || 0.5) * hopDecay, 0.6), // Cap below embedding results — hop triples are supplementary
         matchType: `hop_${hop + 1}`,
         hopDistance: hop + 1,
       });
