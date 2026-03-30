@@ -1040,13 +1040,19 @@ export function shouldExpand(initialResults) {
 export async function rerankTriples(question, triples) {
   if (triples.length <= 3) return triples; // Not enough to re-rank
 
-  // Separate collection/hop triples — these ALWAYS survive reranking
-  const collectionTriples = triples.filter(t =>
-    t.matchType === 'collection_child' || t.matchType === 'collection_grandchild'
-  );
-  const rankableTriples = triples.filter(t =>
-    t.matchType !== 'collection_child' && t.matchType !== 'collection_grandchild'
-  );
+  // Separate structural/collection triples — these ALWAYS survive reranking
+  // The LLM reranker dismisses structural relationships ("contains", "includes") as
+  // "not answering the question" — but they're essential for hierarchical traversal
+  const collectionRelationships = ['contains', 'includes', 'has category', 'has department',
+    'has product line', 'has role', 'is a rule within', 'belongs to', 'is contained in',
+    'modifies', 'has game components', 'has game features'];
+  const isCollectionTriple = (t) => {
+    if (t.matchType === 'collection_child' || t.matchType === 'collection_grandchild') return true;
+    const rel = (t.relationship || '').toLowerCase();
+    return collectionRelationships.some(cr => rel.includes(cr));
+  };
+  const collectionTriples = triples.filter(isCollectionTriple);
+  const rankableTriples = triples.filter(t => !isCollectionTriple(t));
 
   const candidates = rankableTriples.slice(0, 12); // Cap candidates
   const numbered = candidates.map((t, i) => `${i + 1}. ${t.displayText || t.display_text || 'unknown'}`).join('\n');
