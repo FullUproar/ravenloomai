@@ -81,7 +81,8 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   const traversalStart = Date.now();
 
   // For exhaustive/timeline plans, skip normal embedding search — the scan has the data
-  const skipEmbeddingSearch = queryPlan?.precomputedData && ['exhaustive', 'timeline', 'cross_domain', 'listing'].includes(queryPlan.queryType);
+  // NOTE: Never skip for 'listing' — listing queries need collection expansion to traverse hierarchies
+  const skipEmbeddingSearch = queryPlan?.precomputedData && ['exhaustive', 'timeline', 'cross_domain'].includes(queryPlan.queryType);
 
   // Step 3: Dual-embedding search on triples table (skip if plan already scanned)
   let triples = skipEmbeddingSearch ? [] : await TripleRetrievalService.searchTriples(teamId, standaloneQuestion, {
