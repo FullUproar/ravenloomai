@@ -581,20 +581,13 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
     }
   }
 
-  // Re-filter after adding collection nodes
-  // Use extracted entities (from LLM) to filter out unrelated concept anchors
-  // This prevents "Full Uproar Games trademark" from anchoring a query about "Mayhem Machine Line"
-  const entityNames = extractedEntities.map(e => e.toLowerCase());
+  // Re-filter: ONLY use concepts found by keyword/entity/collection search for anchoring
+  // The embedding concept search is too broad — "Full Uproar Games" matches everything
+  // Keyword search (0.80-0.98) and collection search (0.90-0.98) are name-matched and specific
+  // Embedding search (0.45-0.75) catches semantically similar but often wrong concepts
   const allConcepts = Array.from(conceptMap.values()).filter(c => {
-    if (parseFloat(c.similarity) <= 0.45) return false;
-    // Collection-search nodes (similarity 0.95+) always pass
-    if (parseFloat(c.similarity) >= 0.93) return true;
-    // Keyword-matched concepts (similarity 0.80+) always pass — they matched by name
-    if (parseFloat(c.similarity) >= 0.80) return true;
-    // For embedding-only matches, require entity name overlap
-    if (entityNames.length === 0) return true;
-    const conceptNameLower = (c.name || '').toLowerCase();
-    return entityNames.some(e => conceptNameLower.includes(e) || e.includes(conceptNameLower));
+    const sim = parseFloat(c.similarity);
+    return sim >= 0.78; // Only keyword-matched, entity-matched, and collection-search concepts
   });
 
   // When multiple concepts match the same name, traverse ALL and merge.
