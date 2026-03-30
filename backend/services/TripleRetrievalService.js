@@ -553,21 +553,59 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
   const anchoredTriples = [];
   const topConcepts = Array.from(conceptMap.values()).filter(c => parseFloat(c.similarity) > 0.45);
 
-  // Issue 2 fix: When multiple concepts match the same name (e.g., "Afterroar" product vs concept),
-  // traverse ALL of them and merge results. Prefer higher-degree nodes for disambiguation.
-  // Sort by degree (connection count) descending so richer nodes come first
+  // Also search for collection/container nodes that match query terms
+  // This catches "Fugly's Mayhem Machine Line" when user asks about "Fugly's Mayhem Machine product line"
+  if (questionWords.length > 0) {
+    const collectionPatterns = questionWords.filter(w => w.length > 3).map(w => `%${w}%`);
+    if (collectionPatterns.length > 0) {
+      try {
+        const collPlaceholders = collectionPatterns.map((_, i) => `canonical_name ILIKE $${i + 2}`).join(' OR ');
+        const collResult = await db.query(
+          `SELECT DISTINCT c.id, c.name, 0.90 AS similarity
+           FROM concepts c
+           JOIN triples t ON (t.subject_id = c.id AND t.status = 'active'
+             AND LOWER(t.relationship) IN ('contains', 'includes', 'has category', 'has department', 'has product line'))
+           WHERE c.team_id = $1 AND (${collPlaceholders})
+           LIMIT 5`,
+          [teamId, ...collectionPatterns]
+        );
+        for (const c of collResult.rows) {
+          if (!conceptMap.has(c.id)) {
+            conceptMap.set(c.id, c);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Re-filter after adding collection nodes
+  const allConcepts = Array.from(conceptMap.values()).filter(c => parseFloat(c.similarity) > 0.45);
+
+  // When multiple concepts match the same name, traverse ALL and merge.
+  // Check degree + collection edges to prefer the right entity.
   const conceptsWithDegree = [];
-  for (const c of topConcepts.slice(0, 8)) {
+  for (const c of allConcepts.slice(0, 12)) {
     const degreeResult = await db.query(
-      `SELECT COUNT(*) as degree FROM triples WHERE (subject_id = $1 OR object_id = $1) AND status = 'active'`,
+      `SELECT COUNT(*) as degree,
+              COUNT(*) FILTER (WHERE LOWER(relationship) IN ('contains','includes','has category','has department')) as collection_edges
+       FROM triples WHERE (subject_id = $1 OR object_id = $1) AND status = 'active'`,
       [c.id]
     );
-    conceptsWithDegree.push({ ...c, degree: parseInt(degreeResult.rows[0]?.degree || 0) });
+    const row = degreeResult.rows[0];
+    conceptsWithDegree.push({
+      ...c,
+      degree: parseInt(row?.degree || 0),
+      collectionEdges: parseInt(row?.collection_edges || 0),
+    });
   }
-  // Sort: higher degree first (more connected = more likely the right entity)
-  conceptsWithDegree.sort((a, b) => b.degree - a.degree);
+  // Sort: collection nodes first (they have "contains" edges), then by degree
+  conceptsWithDegree.sort((a, b) => {
+    if (a.collectionEdges > 0 && b.collectionEdges === 0) return -1;
+    if (b.collectionEdges > 0 && a.collectionEdges === 0) return 1;
+    return b.degree - a.degree;
+  });
 
-  for (const concept of conceptsWithDegree.slice(0, 6)) {
+  for (const concept of conceptsWithDegree.slice(0, 8)) {
     const conceptTriples = await db.query(`
       SELECT t.*, s.name AS subject_name, s.type AS subject_type,
              o.name AS object_name, o.type AS object_type,
