@@ -1040,16 +1040,33 @@ export function shouldExpand(initialResults) {
 export async function rerankTriples(question, triples) {
   if (triples.length <= 3) return triples; // Not enough to re-rank
 
-  // Separate structural/collection triples — these ALWAYS survive reranking
-  // The LLM reranker dismisses structural relationships ("contains", "includes") as
-  // "not answering the question" — but they're essential for hierarchical traversal
+  // Separate structural/collection triples — these bypass reranking.
+  // BUT only for triples directly connected to concepts from the INITIAL search
+  // (not random hop-1 expansions to Monthly Mailer, etc.)
   const collectionRelationships = ['contains', 'includes', 'has category', 'has department',
     'has product line', 'has role', 'is a rule within', 'belongs to', 'is contained in',
     'modifies', 'has game components', 'has game features'];
+
+  // Build set of concept IDs from seed results (concept_anchor and embedding matches)
+  const seedConceptIds = new Set();
+  for (const t of triples) {
+    if (t.matchType === 'concept_anchor' || t.matchType === 'with_context' || t.matchType === 'without_context') {
+      const sid = t.subjectId || t.subject_id;
+      const oid = t.objectId || t.object_id;
+      if (sid) seedConceptIds.add(sid);
+      if (oid) seedConceptIds.add(oid);
+    }
+  }
+
   const isCollectionTriple = (t) => {
     if (t.matchType === 'collection_child' || t.matchType === 'collection_grandchild') return true;
     const rel = (t.relationship || '').toLowerCase();
-    return collectionRelationships.some(cr => rel.includes(cr));
+    const isCollectionRel = collectionRelationships.some(cr => rel.includes(cr));
+    if (!isCollectionRel) return false;
+    // Only treat as collection if connected to a SEED concept (not random hop expansion)
+    const sid = t.subjectId || t.subject_id;
+    const oid = t.objectId || t.object_id;
+    return seedConceptIds.has(sid) || seedConceptIds.has(oid);
   };
   const collectionTriples = triples.filter(isCollectionTriple);
   const rankableTriples = triples.filter(t => !isCollectionTriple(t));
