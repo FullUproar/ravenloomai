@@ -201,14 +201,17 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   // Step 6: Build answer context (combining triples + legacy facts + precomputed data)
   let answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
 
-  // Inject precomputed data from query plan
-  if (queryPlan?.precomputedData) {
+  // Inject precomputed data from query plan — but ONLY when triple search didn't find enough
+  // For listing queries, the triple search + collection expansion is more accurate than the
+  // graph scan (which searches by concept type and often finds wrong entities)
+  const tripleSearchSufficient = topTriples.length >= 5;
+  if (queryPlan?.precomputedData && !(tripleSearchSufficient && queryPlan.queryType === 'listing')) {
     const pd = queryPlan.precomputedData;
     let planContext = '';
     if (pd.type === 'count') {
       planContext = `\n\nGRAPH SCAN RESULT: There are exactly ${pd.count} items matching the query: ${pd.names.join(', ')}`;
     } else if (pd.type === 'list') {
-      planContext = `\n\nIMPORTANT — GRAPH SCAN found ${pd.items.length} items. List ALL of them that are relevant to the question. Do not skip any. For each, include its name, type, and key details from the triples below:\n${pd.items.map(i => {
+      planContext = `\n\nADDITIONAL CONTEXT from graph scan (${pd.items.length} items found). Use these ONLY if they are relevant to the question — prioritize the knowledge statements above:\n${pd.items.map(i => {
         const details = i.triples?.length > 0 ? `\n    ${i.triples.join('\n    ')}` : '';
         return `- ${i.name} (${i.type}, ${i.triple_count} connections)${details}`;
       }).join('\n')}`;
@@ -469,12 +472,13 @@ export async function askStreaming(scopeId, userId, question, conversationHistor
     } catch {}
   }
 
-  // Inject precomputed data from query plan
-  if (queryPlan?.precomputedData) {
+  // Inject precomputed data — skip for listing queries when triple search found enough
+  const streamTriplesSufficient = topTriples.length >= 5;
+  if (queryPlan?.precomputedData && !(streamTriplesSufficient && queryPlan.queryType === 'listing')) {
     const pd = queryPlan.precomputedData;
     let planContext = '';
     if (pd.type === 'count') planContext = `\n\nGRAPH SCAN: ${pd.count} items found: ${pd.names.join(', ')}`;
-    else if (pd.type === 'list') planContext = `\n\nGRAPH SCAN:\n${pd.items.map(i => {
+    else if (pd.type === 'list') planContext = `\n\nADDITIONAL CONTEXT:\n${pd.items.map(i => {
       const details = i.triples?.length > 0 ? `: ${i.triples.join('; ')}` : '';
       return `- ${i.name} (${i.type})${details}`;
     }).join('\n')}`;
