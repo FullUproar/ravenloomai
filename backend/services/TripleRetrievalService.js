@@ -641,15 +641,17 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
         AND (t.subject_id = $2 OR t.object_id = $2)
     `, [teamId, concept.id]);
 
-    // Limit triples per concept — hubs (FUG with 200+ triples) shouldn't flood results
-    const maxPerConcept = concept.degree > 50 ? 5 : 15;
+    // Limit triples per concept — hubs shouldn't flood results
+    // But high-authority hubs (the actual company) get more slots than low-authority sub-nodes
+    const maxPerConcept = concept.authorityScore > 0.5 ? 10 :
+                          concept.degree > 50 ? 5 : 15;
     const selectedRows = conceptTriples.rows.slice(0, maxPerConcept);
 
     for (const row of selectedRows) {
-      // Concept-anchored triples get similarity based on concept match
-      // PENALIZE hubs — they match many queries but are usually too broad
-      const hubPenalty = concept.degree > 50 ? 0.15 : 0;
-      row.similarity = Math.max(0.3, parseFloat(concept.similarity) * 0.95 - hubPenalty);
+      // Use PageRank authority to boost high-authority concepts and penalize low-authority ones
+      // FUG Inc (authority=1.0) gets +0.05 boost, trademark (authority=0.01) gets no boost
+      const authorityBoost = 0.05 * (concept.authorityScore || 0);
+      row.similarity = Math.max(0.3, parseFloat(concept.similarity) * 0.95 + authorityBoost);
       anchoredTriples.push(row);
     }
   }
