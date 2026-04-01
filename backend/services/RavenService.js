@@ -18,8 +18,18 @@ import * as ConfirmationEventService from './ConfirmationEventService.js';
 import * as TrustService from './TrustService.js';
 import * as UserModelService from './UserModelService.js';
 import * as SSTService from './SSTService.js';
-import * as EpisodicMemoryService from './EpisodicMemoryService.js';
-import * as ProceduralMemoryService from './ProceduralMemoryService.js';
+// Lazy imports to avoid circular dependency / module init order issues in Vercel
+// These services import AIService which initializes OpenAI at module load
+let EpisodicMemoryService = null;
+let ProceduralMemoryService = null;
+async function getEpisodicMemory() {
+  if (!EpisodicMemoryService) EpisodicMemoryService = await import('./EpisodicMemoryService.js');
+  return EpisodicMemoryService;
+}
+async function getProceduralMemory() {
+  if (!ProceduralMemoryService) ProceduralMemoryService = await import('./ProceduralMemoryService.js');
+  return ProceduralMemoryService;
+}
 
 // ============================================================================
 // ASK (Instant read-only response)
@@ -252,7 +262,8 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
 
   // Step 7b: Inject relevant procedures (decision rules, reasoning patterns)
   try {
-    const proceduralContext = await ProceduralMemoryService.augmentAskContext(teamId, standaloneQuestion);
+    const pm = await getProceduralMemory();
+    const proceduralContext = await pm.augmentAskContext(teamId, standaloneQuestion);
     if (proceduralContext) {
       answerContext = (answerContext || '') + proceduralContext;
     }
@@ -273,11 +284,11 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   learnAliasesFromQuery(teamId, standaloneQuestion, topTriples).catch(() => {});
 
   // Step 10b: Log episodic memory (fire-and-forget)
-  EpisodicMemoryService.logQuery(teamId, userId, standaloneQuestion, {
+  getEpisodicMemory().then(em => em.logQuery(teamId, userId, standaloneQuestion, {
     confidence: answer.confidence,
     triplesUsed: topTriples,
     answer: answer.text,
-  }).catch(() => {});
+  })).catch(() => {});
 
   // Step 11: Recall reinforcement — increment recall_count, auto-protect at 3+
   if (topTriples.length > 0) {
