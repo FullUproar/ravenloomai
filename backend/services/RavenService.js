@@ -213,11 +213,9 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
   // Step 6: Build answer context (combining triples + legacy facts + precomputed data)
   let answerContext = await TripleRetrievalService.buildAnswerContext(topTriples);
 
-  // Inject precomputed data from query plan — but ONLY when triple search didn't find enough
-  // For listing queries, the triple search + collection expansion is more accurate than the
-  // graph scan (which searches by concept type and often finds wrong entities)
-  const tripleSearchSufficient = topTriples.length >= 5;
-  if (queryPlan?.precomputedData && !(tripleSearchSufficient && queryPlan.queryType === 'listing')) {
+  // Always inject precomputed data as supplementary context
+  // For listing queries, it catches items the triple search missed
+  if (queryPlan?.precomputedData) {
     const pd = queryPlan.precomputedData;
     let planContext = '';
     if (pd.type === 'count') {
