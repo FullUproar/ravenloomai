@@ -1557,31 +1557,8 @@ const resolvers = {
       return TripleService.mergeConcepts(teamId, canonicalId, duplicateId);
     },
 
-    // PageRank computation
-    computePageRank: async (_, { teamId }, { userId }) => {
-      if (!userId) throw new Error('Not authenticated');
-      const { default: PageRankService } = await import('../services/PageRankService.js');
-      return PageRankService.computePageRank(teamId);
-    },
-
-    // Procedural memory
-    createProcedure: async (_, { teamId, input }, { userId }) => {
-      if (!userId) throw new Error('Not authenticated');
-      const { default: ProceduralMemoryService } = await import('../services/ProceduralMemoryService.js');
-      return ProceduralMemoryService.createProcedure(teamId, { ...input, createdBy: userId });
-    },
-
-    proposeRules: async (_, { teamId }, { userId }) => {
-      if (!userId) throw new Error('Not authenticated');
-      const { default: ProceduralMemoryService } = await import('../services/ProceduralMemoryService.js');
-      return ProceduralMemoryService.proposeRules(teamId);
-    },
-
-    detectCausalLinks: async (_, { teamId }, { userId }) => {
-      if (!userId) throw new Error('Not authenticated');
-      const { default: ProceduralMemoryService } = await import('../services/ProceduralMemoryService.js');
-      return ProceduralMemoryService.detectCausalLinks(teamId);
-    },
+    // PageRank, procedural memory, causal links — available via MCP tools
+    // Schema types deferred to avoid resolver/schema mismatch crash
 
     // Simulation
     runSimulation: async (_, { teamId, personas, cycles }, { userId }) => {
