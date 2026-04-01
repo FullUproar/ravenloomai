@@ -18,6 +18,8 @@ import * as ConfirmationEventService from './ConfirmationEventService.js';
 import * as TrustService from './TrustService.js';
 import * as UserModelService from './UserModelService.js';
 import * as SSTService from './SSTService.js';
+import * as EpisodicMemoryService from './EpisodicMemoryService.js';
+import * as ProceduralMemoryService from './ProceduralMemoryService.js';
 
 // ============================================================================
 // ASK (Instant read-only response)
@@ -241,12 +243,20 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
       : legacyLines.join('\n');
   }
 
-  // Step 7: Apply user model to answer generation
+  // Step 7: Apply user model + procedural memory to answer generation
   let userModelPrompt = '';
   try {
     const userModel = await UserModelService.getUserModel(teamId, userId);
     userModelPrompt = UserModelService.applyUserModel(userModel);
   } catch { /* user model is best-effort */ }
+
+  // Step 7b: Inject relevant procedures (decision rules, reasoning patterns)
+  try {
+    const proceduralContext = await ProceduralMemoryService.augmentAskContext(teamId, standaloneQuestion);
+    if (proceduralContext) {
+      answerContext = (answerContext || '') + proceduralContext;
+    }
+  } catch { /* procedural augmentation is best-effort */ }
 
   // Step 8: Generate answer
   const answer = await generateTripleBasedAnswer(standaloneQuestion, answerContext, topTriples, userModelPrompt);
@@ -261,6 +271,13 @@ export async function ask(scopeId, userId, question, conversationHistory = []) {
 
   // Step 10: Learn aliases from the query (fire-and-forget)
   learnAliasesFromQuery(teamId, standaloneQuestion, topTriples).catch(() => {});
+
+  // Step 10b: Log episodic memory (fire-and-forget)
+  EpisodicMemoryService.logQuery(teamId, userId, standaloneQuestion, {
+    confidence: answer.confidence,
+    triplesUsed: topTriples,
+    answer: answer.text,
+  }).catch(() => {});
 
   // Step 11: Recall reinforcement — increment recall_count, auto-protect at 3+
   if (topTriples.length > 0) {

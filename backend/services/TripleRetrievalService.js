@@ -593,13 +593,17 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
   });
 
   // When multiple concepts match the same name, traverse ALL and merge.
-  // Check degree + collection edges to prefer the right entity.
+  // Check degree + collection edges + PageRank authority to prefer the right entity.
   const conceptsWithDegree = [];
   for (const c of allConcepts.slice(0, 12)) {
     const degreeResult = await db.query(
-      `SELECT COUNT(*) as degree,
-              COUNT(*) FILTER (WHERE LOWER(relationship) IN ('contains','includes','has category','has department')) as collection_edges
-       FROM triples WHERE (subject_id = $1 OR object_id = $1) AND status = 'active'`,
+      `SELECT c2.authority_score, c2.type as concept_type,
+              COUNT(t.*) as degree,
+              COUNT(t.*) FILTER (WHERE LOWER(t.relationship) IN ('contains','includes','has category','has department')) as collection_edges
+       FROM concepts c2
+       LEFT JOIN triples t ON (t.subject_id = c2.id OR t.object_id = c2.id) AND t.status = 'active'
+       WHERE c2.id = $1
+       GROUP BY c2.id`,
       [c.id]
     );
     const row = degreeResult.rows[0];
@@ -607,12 +611,21 @@ export async function searchTriples(teamId, question, { scopeIds = [], sstNodeId
       ...c,
       degree: parseInt(row?.degree || 0),
       collectionEdges: parseInt(row?.collection_edges || 0),
+      authorityScore: parseFloat(row?.authority_score || 0),
+      conceptType: row?.concept_type,
     });
   }
-  // Sort: collection nodes first (they have "contains" edges), then by degree
+  // Sort: collection nodes first, then by PageRank authority, then by degree
+  // PageRank ensures company entities rank above their trademark sub-nodes
   conceptsWithDegree.sort((a, b) => {
     if (a.collectionEdges > 0 && b.collectionEdges === 0) return -1;
     if (b.collectionEdges > 0 && a.collectionEdges === 0) return 1;
+    // Company/product types get a natural boost (they're what people usually ask about)
+    const aTypeBoost = ['company', 'product', 'person'].includes(a.conceptType) ? 0.2 : 0;
+    const bTypeBoost = ['company', 'product', 'person'].includes(b.conceptType) ? 0.2 : 0;
+    const aScore = a.authorityScore + aTypeBoost;
+    const bScore = b.authorityScore + bTypeBoost;
+    if (Math.abs(aScore - bScore) > 0.05) return bScore - aScore;
     return b.degree - a.degree;
   });
 
